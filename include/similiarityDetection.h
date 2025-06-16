@@ -1,0 +1,4 @@
+#ifndef SIMILIARITY_DETECTION_H
+#define SIMILIARITY_DETECTION_H
+
+#endif
