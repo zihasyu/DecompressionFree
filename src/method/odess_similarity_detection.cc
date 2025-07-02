@@ -209,14 +209,36 @@ uint64_t FeatureIndexTable::SF_Find(const SuperFeatures &superfeatures)
   {
     if (auto it = SFindex.find(sf) != SFindex.end())
     {
-      for (auto id : SFindex[sf])
+      // for (auto id : SFindex[sf])
+      // {
+      //   return id;
+      // }
+      if (!SFindex[sf].empty())
       {
-        return id;
+        // 返回vector中的最后一个元素，而不是第一个
+        return SFindex[sf].back();
       }
     }
   }
   // return -1 if not found, uint64_t's MAX value
   return -1;
+}
+// 修改函数返回类型为 vector<uint64_t>
+std::vector<uint64_t> FeatureIndexTable::SF_Find_Mi(const SuperFeatures &superfeatures)
+{
+  for (const super_feature_t &sf : superfeatures)
+  {
+    auto it = SFindex.find(sf);
+    if (it != SFindex.end())
+    {
+      if (!it->second.empty())
+      {
+        return it->second;
+      }
+    }
+  }
+  // 如果没有找到任何匹配，返回空vector
+  return std::vector<uint64_t>();
 }
 void FeatureIndexTable::SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid)
 {

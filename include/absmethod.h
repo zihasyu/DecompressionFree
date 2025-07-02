@@ -7,7 +7,7 @@
 #include "chunker.h"
 #include "lz4.h"
 #include "datawrite.h"
-
+#include "odess_similarity_detection.h"
 extern "C"
 {
 #include "./config.h"
@@ -20,6 +20,14 @@ class AbsMethod
 {
 protected:
 public:
+    // time motivation
+    std::chrono::time_point<std::chrono::high_resolution_clock> startIO, endIO;
+    std::chrono::duration<double> IOTime;
+    std::chrono::time_point<std::chrono::high_resolution_clock> startDecode, endDecode;
+    std::chrono::duration<double> DecodeTime;
+    std::chrono::time_point<std::chrono::high_resolution_clock> startMiDelta, endMiDelta;
+    std::chrono::duration<double> MiDeltaTime;
+    // old
     int ads_Version = 0;
     // util
     string filename;
@@ -109,6 +117,9 @@ public:
     long OnlyFeature = 0;
     long OnlyMeta = 0;
     long differentCount = 0;
+    uint8_t *DecodeBuffer;
+    uint8_t *CombinedBuffer;
+    FeatureIndexTable table;
     AbsMethod();
     ~AbsMethod();
     void SetFilename(string name);
@@ -128,6 +139,12 @@ public:
     int SF_Find(const char *key, size_t keySize);
     bool SF_Insert(const char *key, size_t keySize, int chunkid);
     uint8_t *xd3_encode(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer);
+    uint8_t *xd3_decode(const uint8_t *in, size_t in_size, const uint8_t *ref, size_t ref_size, size_t *res_size);
+    Chunk_t xd3_recursive_restore_BL(uint64_t BasechunkId);
+    Chunk_t xd3_recursive_restore_BL_time(uint64_t BasechunkId);
+    Chunk_t xd3_recursive_restore_DF(uint64_t BasechunkId);
+    Chunk_t xd3_recursive_restore_BL_index(uint64_t BasechunkId);
+    Chunk_t xd3_recursive_restore_DF(uint64_t BasechunkId, SuperFeatures superfeature, int *layer);
     virtual void PrintChunkInfo(string inputDirpath, int chunkingMethod, int method, int fileNum, int64_t time, double ratio, double AcceptThreshold, bool IsFalseFilter);
     virtual void PrintChunkInfo(string inputDirpath, int chunkingMethod, int method, int fileNum, int64_t time, double ratio, double chunktime, double AcceptThreshold, bool IsFalseFilter);
     virtual void PrintChunkInfo(int64_t time, CommandLine_t CmdLine);

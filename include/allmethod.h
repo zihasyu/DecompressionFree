@@ -8,6 +8,7 @@
 #include "palantir.h"
 #include "bisearch.h"
 #include "ntransform.h"
-#include "locality.h"
 
+#include "odess_mi_baseline.h"
+#include "odess_mi_df.h"
 #endif

@@ -24,7 +24,7 @@ private:
     uint64_t lz4UniqueSize = 0;
     uint64_t localLogicalSize = 0;
     uint64_t localUniqueSize = 0;
-    FeatureIndexTable table;
+
     uint64_t sameContainerTimes = 0;
     uint64_t lastContainerId = 0;
 

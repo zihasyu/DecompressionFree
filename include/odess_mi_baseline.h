@@ -1,21 +1,21 @@
-#ifndef ODESS_H
-#define ODESS_H
+#ifndef ODESS_MI_BL_H
+#define ODESS_MI_BL_H
 
 #include "absmethod.h"
 #include "odess_similarity_detection.h"
 
 using namespace std;
 
-class Odess : public AbsMethod
+class OdessMiBL : public AbsMethod
 {
 private:
-    string myName_ = "Odess";
+    string myName_ = "OdessMiBL";
     int PrevDedupChunkid = -1;
     int Version = 0;
 
 public:
-    Odess();
-    ~Odess();
+    OdessMiBL();
+    ~OdessMiBL();
     void ProcessTrace();
 };
 #endif

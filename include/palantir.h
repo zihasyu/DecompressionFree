@@ -21,7 +21,6 @@ class Palantir : public AbsMethod
 private:
     string myName_ = "Palantir";
     int PrevDedupChunkid = -1;
-    FeatureIndexTable table;
     int SFDelete = 0;
     int SFNew = 0;
 

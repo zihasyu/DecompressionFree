@@ -26,7 +26,7 @@
 #define CHUNK_HASH_SIZE 32
 #define READ_FILE_SIZE 192 * 1024 * 1024
 #define CONTAINER_MAX_SIZE 4194304
-#define CONTAINER_CACHE_SIZE 64
+#define CONTAINER_CACHE_SIZE 128
 #define MASK_GEAR 0x1fff
 #define MASK_GEAR_BIG 0x1fff
 #define MultiHeaderSize 8192
@@ -343,7 +343,8 @@ enum METHOD_TYPE
     ODESS,
     PALANTIR,
     BiSEARCH,
-    LOCALITY
+    ODESS_MI_BL,
+    ODESS_MI_DF
 };
 
 enum DELTA_TYPE

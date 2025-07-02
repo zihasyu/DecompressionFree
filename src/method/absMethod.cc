@@ -4,11 +4,15 @@ AbsMethod::AbsMethod()
 {
     mdCtx = EVP_MD_CTX_new();
     hashBuf = (uint8_t *)malloc(CHUNK_HASH_SIZE * sizeof(uint8_t));
+    DecodeBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * 2);
+    CombinedBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * 2);
 }
 
 AbsMethod::~AbsMethod()
 {
     free(hashBuf);
+    free(DecodeBuffer);
+    free(CombinedBuffer);
 }
 
 void AbsMethod::SetFilename(string name)
@@ -260,7 +264,269 @@ uint8_t *AbsMethod::xd3_encode(const uint8_t *targetChunkbuffer, size_t targetCh
     memcpy(deltaChunkBuffer, tmpbuffer, deltachunkSize);
     return deltaChunkBuffer;
 }
+uint8_t *AbsMethod::xd3_decode(const uint8_t *in, size_t in_size, const uint8_t *ref, size_t ref_size, size_t *res_size) // 更改函数
+{
+    const auto max_buffer_size = CONTAINER_MAX_SIZE * 2;
+    size_t sz;
+    auto ret = xd3_decode_memory(in, in_size, ref, ref_size, DecodeBuffer, &sz, max_buffer_size, 0);
+    if (ret != 0)
+    {
+        cout << "decode error" << endl;
+        cout << "ret code is " << ret << endl;
+        const char *errMsg = xd3_strerror(ret);
+        if (errMsg != nullptr)
+        {
+            printf("%s\n", errMsg);
+        }
+        else
+        {
+            printf("Unknown error\n");
+        }
+    }
+    uint8_t *res;
+    res = (uint8_t *)malloc(sz);
+    *res_size = sz;
+    memcpy(res, DecodeBuffer, sz);
+    return res;
+}
 
+// Chunk_t AbsMethod::xd3_recursive_restore(Chunk_t tmpLocalChunkInfo)
+// {
+//     int i = 0;
+//     Chunk_t basechunk;
+//     size_t basechunk_size = 0;
+//     size_t compareSize = tmpLocalChunkInfo.chunkSize;
+//     Chunk_t Pre[300];
+//     Pre[i] = tmpLocalChunkInfo;
+//     while (Pre[i].deltaFlag == FINESSE_DELTA || Pre[i].deltaFlag == LOCAL_DELTA)
+//     {
+//         Pre[i + 1] = dataWrite_->Get_Chunk_Info(Pre[i].basechunkID);
+//         i++;
+//     }
+//     basechunk.chunkPtr = (uint8_t *)malloc(basechunk.chunkSize * sizeof(uint8_t));
+//     memcpy(basechunk.chunkPtr, Pre[i].chunkPtr, Pre[i].chunkSize);
+//     basechunk.chunkSize = Pre[i].chunkSize;
+//     i--;
+//     while (i >= 0)
+//     {
+//         uint8_t *basechunk_ptr;
+//         basechunk_ptr = xd3_decode(Pre[i].chunkPtr, Pre[i].saveSize, basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
+//         i--;
+//         memcpy(basechunk.chunkPtr, basechunk_ptr, basechunk_size);
+//         basechunk.chunkSize = basechunk_size;
+//         free(basechunk_ptr);
+//         basechunk_size = 0;
+//     }
+//     return basechunk;
+// }
+
+Chunk_t AbsMethod::xd3_recursive_restore_BL(uint64_t BasechunkId)
+{
+    std::vector<Chunk_t> chunkChain;
+    Chunk_t basechunk;
+    size_t basechunk_size = 0;
+
+    // 收集delta链上的所有块
+    chunkChain.push_back(dataWrite_->Get_Chunk_Info(BasechunkId));
+
+    if (chunkChain.back().basechunkID < 0) // if only one layer
+        return chunkChain.back();
+
+    while (chunkChain.back().basechunkID > 0)
+    {
+        chunkChain.push_back(dataWrite_->Get_Chunk_Info(chunkChain.back().basechunkID));
+    }
+
+    basechunk.chunkPtr = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
+    memcpy(basechunk.chunkPtr, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
+    basechunk.chunkSize = chunkChain.back().chunkSize;
+    if (chunkChain.back().loadFromDisk)
+        free(chunkChain.back().chunkPtr); // free base chunk memory
+
+    for (int i = chunkChain.size() - 2; i >= 0; i--)
+    {
+        uint8_t *basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
+                                            basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
+        if (chunkChain[i].loadFromDisk)
+            free(chunkChain[i].chunkPtr);
+        memcpy(basechunk.chunkPtr, basechunk_ptr, basechunk_size);
+        basechunk.chunkSize = chunkChain[i].chunkSize; // update size
+        free(basechunk_ptr);
+        if (chunkChain[i].chunkSize != basechunk_size)
+        {
+            cout << "xd3 recursive restore error, chunk size mismatch" << endl;
+            cout << "chunkChain[i].chunkSize: " << chunkChain[i].chunkSize << ", basechunk_size: " << basechunk_size << endl;
+        }
+        basechunk_size = 0;
+    }
+    return basechunk;
+}
+
+Chunk_t AbsMethod::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
+{
+    SetTime(startMiDelta);
+    std::vector<Chunk_t> chunkChain;
+    Chunk_t basechunk;
+    size_t basechunk_size = 0;
+    SetTime(startIO);
+    chunkChain.push_back(dataWrite_->Get_Chunk_Info(BasechunkId));
+    SetTime(endIO);
+    IOTime += endIO - startIO;
+    // cout << "chunkChain size: " << chunkChain.back().chunkSize << "chunkChain.back().basechunkID < 0 is" << (chunkChain.back().basechunkID < 0) << endl;
+    if (chunkChain.back().basechunkID < 0) // if only one layer
+        return chunkChain.back();
+
+    while (chunkChain.back().basechunkID > 0)
+    {
+        SetTime(startIO);
+        chunkChain.push_back(dataWrite_->Get_Chunk_Info(chunkChain.back().basechunkID));
+        SetTime(endIO);
+        IOTime += endIO - startIO;
+    }
+
+    basechunk.chunkPtr = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
+    memcpy(basechunk.chunkPtr, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
+    basechunk.chunkSize = chunkChain.back().chunkSize;
+    if (chunkChain.back().loadFromDisk)
+        free(chunkChain.back().chunkPtr); // free base chunk memory
+
+    for (int i = chunkChain.size() - 2; i >= 0; i--)
+    {
+        SetTime(startDecode);
+        uint8_t *basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
+                                            basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
+        SetTime(endDecode);
+        DecodeTime += endDecode - startDecode;
+
+        if (chunkChain[i].loadFromDisk)
+            free(chunkChain[i].chunkPtr);
+        memcpy(basechunk.chunkPtr, basechunk_ptr, basechunk_size);
+        basechunk.chunkSize = chunkChain[i].chunkSize; // update size
+        free(basechunk_ptr);
+        if (chunkChain[i].chunkSize != basechunk_size)
+        {
+            cout << "xd3 recursive restore error, chunk size mismatch" << endl;
+            cout << "chunkChain[i].chunkSize: " << chunkChain[i].chunkSize << ", basechunk_size: " << basechunk_size << endl;
+        }
+        basechunk_size = 0;
+    }
+    SetTime(endMiDelta);
+    MiDeltaTime += endMiDelta - startMiDelta;
+    return basechunk;
+}
+
+Chunk_t AbsMethod::xd3_recursive_restore_DF(uint64_t BasechunkId)
+{
+    std::vector<Chunk_t> chunkChain;
+    Chunk_t result;
+    size_t totalBufferSize = 0;
+
+    chunkChain.push_back(dataWrite_->Get_Chunk_Info(BasechunkId));
+    if (chunkChain.back().basechunkID < 0)
+        return chunkChain.back();
+
+    while (chunkChain.back().basechunkID > 0)
+    {
+        chunkChain.push_back(dataWrite_->Get_Chunk_Info(chunkChain.back().basechunkID));
+    }
+
+    memcpy(CombinedBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
+    size_t currentSize = chunkChain.back().chunkSize;
+
+    if (chunkChain.back().loadFromDisk)
+        free(chunkChain.back().chunkPtr);
+
+    for (int i = chunkChain.size() - 2; i >= 0; i--)
+    {
+        memcpy(CombinedBuffer + currentSize, chunkChain[i].chunkPtr, chunkChain[i].saveSize);
+        if (chunkChain[i].loadFromDisk)
+            free(chunkChain[i].chunkPtr);
+        currentSize += chunkChain[i].saveSize;
+    }
+    result.chunkPtr = (uint8_t *)malloc(currentSize * sizeof(uint8_t));
+    result.chunkSize = currentSize;
+    memcpy(result.chunkPtr, CombinedBuffer, currentSize);
+    if (chunkChain.back().chunkID == 422)
+    {
+        cout << "basechunkid " << chunkChain.back().chunkID << " currentSize " << currentSize << endl;
+        cout << "As characters: ";
+        for (size_t i = 0; i < currentSize; ++i)
+        {
+            // 对于换行符直接输出，对于空字符也不停止输出
+            if (result.chunkPtr[i] == '\n')
+                cout << endl;
+            // 对于可打印字符直接输出，对于不可打印字符(包括\0)输出一个点
+            else if (isprint(result.chunkPtr[i]))
+                cout << result.chunkPtr[i];
+            else
+                cout << ".";
+        }
+        cout << endl; // 最后添加一个换行符，确保后续输出正常
+    }
+    return result;
+}
+Chunk_t AbsMethod::xd3_recursive_restore_DF(uint64_t BasechunkId, SuperFeatures superfeature, int *layer)
+{
+    std::vector<uint64_t> matchingIds = table.SF_Find_Mi(superfeature);
+    std::vector<Chunk_t> chunkChain;
+    Chunk_t result;
+    int matchingSize = matchingIds.size();
+    chunkChain.push_back(dataWrite_->Get_Chunk_Info(BasechunkId));
+    *layer = matchingSize;
+
+    if (matchingIds.size() == 1)
+        if (chunkChain.back().basechunkID > 0)
+        {
+            size_t basechunk_size = 0;
+            Chunk_t basechunk = dataWrite_->Get_Chunk_Info(chunkChain.back().basechunkID);
+            result.chunkPtr = xd3_decode(chunkChain.back().chunkPtr, chunkChain.back().saveSize,
+                                         basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
+            result.chunkSize = chunkChain.back().chunkSize;
+            if (basechunk.loadFromDisk)
+                free(basechunk.chunkPtr); // free base chunk memory
+            if (chunkChain.back().loadFromDisk)
+                free(chunkChain.back().chunkPtr); // free current chunk memory
+            return result;
+        }
+        else
+            return chunkChain.back();
+
+    for (int i = matchingSize - 2; i >= 0; i--)
+    {
+        chunkChain.push_back(dataWrite_->Get_Chunk_Info(matchingIds[i]));
+    }
+    // Chunkchain.back() is delta chunk
+    if (chunkChain.back().basechunkID > 0)
+    {
+        size_t basechunk_size = 0;
+        Chunk_t basechunk = dataWrite_->Get_Chunk_Info(chunkChain.back().basechunkID);
+        uint8_t *tmp = xd3_decode(chunkChain.back().chunkPtr, chunkChain.back().saveSize, // 不行，table的第一个不一定是delta chunk，而且她的base也不一定是。。
+                                  basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
+
+        if (basechunk.loadFromDisk)
+            free(basechunk.chunkPtr); // free base chunk memory
+        if (chunkChain.back().loadFromDisk)
+            free(chunkChain.back().chunkPtr); // free current chunk memory
+        chunkChain.back().chunkPtr = tmp;
+    }
+    memcpy(CombinedBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
+    size_t currentSize = chunkChain.back().chunkSize;
+
+    if (chunkChain.back().loadFromDisk)
+        free(chunkChain.back().chunkPtr);
+
+    for (int i = chunkChain.size() - 2; i >= 0; i--)
+    {
+        memcpy(CombinedBuffer + currentSize, chunkChain[i].chunkPtr, chunkChain[i].saveSize);
+        if (chunkChain[i].loadFromDisk)
+            free(chunkChain[i].chunkPtr);
+        currentSize += chunkChain[i].saveSize;
+    }
+    result.chunkPtr = (uint8_t *)malloc(currentSize * sizeof(uint8_t));
+    result.chunkSize = currentSize;
+    memcpy(result.chunkPtr, CombinedBuffer, currentSize);
+    return result;
+}
 void AbsMethod::PrintChunkInfo(string inputDirpath, int chunkingMethod, int method, int fileNum, int64_t time, double ratio, double AcceptThreshold, bool IsFalseFilter)
 {
     ofstream out;
@@ -269,7 +535,7 @@ void AbsMethod::PrintChunkInfo(string inputDirpath, int chunkingMethod, int meth
     {
         out.open(fileName, ios::out);
         out << "-----------------INSTRUCTION----------------------" << endl;
-        out << "./BiSearch -i " << inputDirpath << " -c " << chunkingMethod << " -m " << method << " -n " << fileNum << " -r " << ratio << " -a " << AcceptThreshold << " -b " << IsFalseFilter << endl;
+        out << "./DFree -i " << inputDirpath << " -c " << chunkingMethod << " -m " << method << " -n " << fileNum << " -r " << ratio << " -a " << AcceptThreshold << " -b " << IsFalseFilter << endl;
         out << "-----------------CHUNK NUM-----------------------" << endl;
         out << "logical chunk num: " << logicalchunkNum << endl;
         out << "unique chunk num: " << uniquechunkNum << endl;
@@ -293,6 +559,9 @@ void AbsMethod::PrintChunkInfo(string inputDirpath, int chunkingMethod, int meth
         out << "Reduce data speed: " << (double)(logicalchunkSize - uniquechunkSize) / time / 1024 / 1024 << "MiB/s" << endl;
         out << "SF generation time: " << SFTime.count() << "s" << endl;
         out << "SF generation throughput: " << (double)logicalchunkSize / SFTime.count() / 1024 / 1024 << "MiB/s" << endl;
+        out << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
+        out << "IO Time: " << IOTime.count() << "s" << endl;
+        out << "Decode Time: " << DecodeTime.count() << "s" << endl;
         out << "-----------------OverHead--------------------------" << endl;
         // out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
         out << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
@@ -315,7 +584,7 @@ void AbsMethod::PrintChunkInfo(string inputDirpath, int chunkingMethod, int meth
     {
         out.open(fileName, ios::app);
         out << "-----------------INSTRUCTION----------------------" << endl;
-        out << "./BiSearch -i " << inputDirpath << " -c " << chunkingMethod << " -m " << method << " -n " << fileNum << " -r " << ratio << " -a " << AcceptThreshold << " -b " << IsFalseFilter << endl;
+        out << "./DFree -i " << inputDirpath << " -c " << chunkingMethod << " -m " << method << " -n " << fileNum << " -r " << ratio << " -a " << AcceptThreshold << " -b " << IsFalseFilter << endl;
         out << "logical chunk num: " << logicalchunkNum << endl;
         out << "unique chunk num: " << uniquechunkNum << endl;
         out << "base chunk num: " << basechunkNum << endl;
@@ -338,6 +607,9 @@ void AbsMethod::PrintChunkInfo(string inputDirpath, int chunkingMethod, int meth
         out << "Reduce data speed: " << (double)(logicalchunkSize - uniquechunkSize) / time / 1024 / 1024 << "MiB/s" << endl;
         out << "SF generation time: " << SFTime.count() << "s" << endl;
         out << "SF generation throughput: " << (double)logicalchunkSize / SFTime.count() / 1024 / 1024 << "MiB/s" << endl;
+        out << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
+        out << "IO Time: " << IOTime.count() << "s" << endl;
+        out << "Decode Time: " << DecodeTime.count() << "s" << endl;
         out << "-----------------OverHead--------------------------" << endl;
         // out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
         out << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
@@ -370,13 +642,12 @@ void AbsMethod::PrintChunkInfo(int64_t time, CommandLine_t CmdLine)
     {
         out.open(fileName, ios::out);
         out << "-----------------INSTRUCTION----------------------" << endl;
-        out << "./BiSearch -i " << CmdLine.dirName << " -c " << CmdLine.chunkingType << " -m " << CmdLine.compressionMethod << " -n " << CmdLine.backupNum << " -r " << CmdLine.ratio << " -a " << CmdLine.AcceptThreshold << " -b " << CmdLine.IsFalseFilter << " -t " << CmdLine.TurnOnNameHash << " -H " << CmdLine.MultiHeaderChunk << endl;
+        out << "./DFree -i " << CmdLine.dirName << " -c " << CmdLine.chunkingType << " -m " << CmdLine.compressionMethod << " -n " << CmdLine.backupNum << " -r " << CmdLine.ratio << " -a " << CmdLine.AcceptThreshold << " -b " << CmdLine.IsFalseFilter << " -t " << CmdLine.TurnOnNameHash << " -H " << CmdLine.MultiHeaderChunk << endl;
         out << "-----------------CHUNK NUM-----------------------" << endl;
         out << "logical chunk num: " << logicalchunkNum << endl;
         out << "unique chunk num: " << uniquechunkNum << endl;
         out << "base chunk num: " << basechunkNum << endl;
         out << "delta chunk num: " << deltachunkNum << endl;
-
         out << "-----------------CHUNK SIZE-----------------------" << endl;
         out << "logical chunk size: " << logicalchunkSize << endl;
         out << "unique chunk size: " << uniquechunkSize << endl;
@@ -394,6 +665,9 @@ void AbsMethod::PrintChunkInfo(int64_t time, CommandLine_t CmdLine)
         out << "Reduce data speed: " << (double)(logicalchunkSize - uniquechunkSize) / time / 1024 / 1024 << "MiB/s" << endl;
         out << "SF generation time: " << SFTime.count() << "s" << endl;
         out << "SF generation throughput: " << (double)logicalchunkSize / SFTime.count() / 1024 / 1024 << "MiB/s" << endl;
+        out << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
+        out << "IO Time: " << IOTime.count() << "s" << endl;
+        out << "Decode Time: " << DecodeTime.count() << "s" << endl;
         out << "-----------------OverHead--------------------------" << endl;
         // out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
         out << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
@@ -405,21 +679,13 @@ void AbsMethod::PrintChunkInfo(int64_t time, CommandLine_t CmdLine)
         out << "Dedup ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct) << endl;
         out << "Lossless ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct - LocalReduct) << endl;
         out << "Delta ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct - LocalReduct - DeltaReduct) << endl;
-        out << "dedup reduct size : " << DedupReduct << endl;
-        out << "delta reduct size : " << DeltaReduct << endl;
-        out << "local reduct size : " << LocalReduct << endl;
-        out << "-----------------Design 2 Motivation---------------" << endl;
-        out << "case 1 OnlyFeature: " << OnlyFeature << endl;
-        out << "case 2 SameCount:" << sameCount << endl;
-        out << "case 3 OnlyMeta: " << OnlyMeta << endl;
-        out << "case 4 DifferentCount: " << differentCount << endl;
         out << "-----------------END-------------------------------" << endl;
     }
     else
     {
         out.open(fileName, ios::app);
         out << "-----------------INSTRUCTION----------------------" << endl;
-        out << "./BiSearch -i " << CmdLine.dirName << " -c " << CmdLine.chunkingType << " -m " << CmdLine.compressionMethod << " -n " << CmdLine.backupNum << " -r " << CmdLine.ratio << " -a " << CmdLine.AcceptThreshold << " -b " << CmdLine.IsFalseFilter << " -t " << CmdLine.TurnOnNameHash << " -H " << CmdLine.MultiHeaderChunk << endl;
+        out << "./DFree -i " << CmdLine.dirName << " -c " << CmdLine.chunkingType << " -m " << CmdLine.compressionMethod << " -n " << CmdLine.backupNum << " -r " << CmdLine.ratio << " -a " << CmdLine.AcceptThreshold << " -b " << CmdLine.IsFalseFilter << " -t " << CmdLine.TurnOnNameHash << " -H " << CmdLine.MultiHeaderChunk << endl;
         out << "logical chunk num: " << logicalchunkNum << endl;
         out << "unique chunk num: " << uniquechunkNum << endl;
         out << "base chunk num: " << basechunkNum << endl;
@@ -442,6 +708,9 @@ void AbsMethod::PrintChunkInfo(int64_t time, CommandLine_t CmdLine)
         out << "Reduce data speed: " << (double)(logicalchunkSize - uniquechunkSize) / time / 1024 / 1024 << "MiB/s" << endl;
         out << "SF generation time: " << SFTime.count() << "s" << endl;
         out << "SF generation throughput: " << (double)logicalchunkSize / SFTime.count() / 1024 / 1024 << "MiB/s" << endl;
+        out << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
+        out << "IO Time: " << IOTime.count() << "s" << endl;
+        out << "Decode Time: " << DecodeTime.count() << "s" << endl;
         out << "-----------------OverHead--------------------------" << endl;
         // out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
         out << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
@@ -453,14 +722,6 @@ void AbsMethod::PrintChunkInfo(int64_t time, CommandLine_t CmdLine)
         out << "Dedup ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct) << endl;
         out << "Lossless ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct - LocalReduct) << endl;
         out << "Delta ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct - LocalReduct - DeltaReduct) << endl;
-        out << "dedup reduct size : " << DedupReduct << endl;
-        out << "delta reduct size : " << DeltaReduct << endl;
-        out << "local reduct size : " << LocalReduct << endl;
-        out << "-----------------Design 2 Motivation---------------" << endl;
-        out << "case 1 OnlyFeature: " << OnlyFeature << endl;
-        out << "case 2 SameCount:" << sameCount << endl;
-        out << "case 3 OnlyMeta: " << OnlyMeta << endl;
-        out << "case 4 DifferentCount: " << differentCount << endl;
         out << "-----------------END-------------------------------" << endl;
     }
     out.close();
@@ -475,7 +736,7 @@ void AbsMethod::PrintChunkInfo(int64_t time, CommandLine_t CmdLine, double chunk
     {
         out.open(fileName, ios::out);
         out << "-----------------INSTRUCTION----------------------" << endl;
-        out << "./BiSearch -i " << CmdLine.dirName << " -c " << CmdLine.chunkingType << " -m " << CmdLine.compressionMethod << " -n " << CmdLine.backupNum << " -r " << CmdLine.ratio << " -a " << CmdLine.AcceptThreshold << " -b " << CmdLine.IsFalseFilter << " -t " << CmdLine.TurnOnNameHash << " -H " << CmdLine.MultiHeaderChunk << endl;
+        out << "./DFree -i " << CmdLine.dirName << " -c " << CmdLine.chunkingType << " -m " << CmdLine.compressionMethod << " -n " << CmdLine.backupNum << " -r " << CmdLine.ratio << " -a " << CmdLine.AcceptThreshold << " -b " << CmdLine.IsFalseFilter << " -t " << CmdLine.TurnOnNameHash << " -H " << CmdLine.MultiHeaderChunk << endl;
         out << "-----------------CHUNK NUM-----------------------" << endl;
         out << "logical chunk num: " << logicalchunkNum << endl;
         out << "unique chunk num: " << uniquechunkNum << endl;
@@ -498,6 +759,10 @@ void AbsMethod::PrintChunkInfo(int64_t time, CommandLine_t CmdLine, double chunk
         out << "Reduce data speed: " << (double)(logicalchunkSize - uniquechunkSize) / time / 1024 / 1024 << "MiB/s" << endl;
         out << "SF generation time: " << SFTime.count() << "s" << endl;
         out << "SF generation throughput: " << (double)logicalchunkSize / SFTime.count() / 1024 / 1024 << "MiB/s" << endl;
+        out << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
+        out << "IO Time: " << IOTime.count() << "s" << endl;
+        out << "Decode Time: " << DecodeTime.count() << "s" << endl;
+        out << "-----------------Time old------------------------------" << endl;
         out << "Chunk Time: " << chunktime << "s" << endl;
         out << "Dedup Time: " << DedupTime.count() << "s" << endl;
         out << "Locality Match Time: " << LocalityMatchTime.count() << "s" << endl;
@@ -532,7 +797,7 @@ void AbsMethod::PrintChunkInfo(int64_t time, CommandLine_t CmdLine, double chunk
     {
         out.open(fileName, ios::app);
         out << "-----------------INSTRUCTION----------------------" << endl;
-        out << "./BiSearch -i " << CmdLine.dirName << " -c " << CmdLine.chunkingType << " -m " << CmdLine.compressionMethod << " -n " << CmdLine.backupNum << " -r " << CmdLine.ratio << " -a " << CmdLine.AcceptThreshold << " -b " << CmdLine.IsFalseFilter << " -t " << CmdLine.TurnOnNameHash << " -H " << CmdLine.MultiHeaderChunk << endl;
+        out << "./DFree -i " << CmdLine.dirName << " -c " << CmdLine.chunkingType << " -m " << CmdLine.compressionMethod << " -n " << CmdLine.backupNum << " -r " << CmdLine.ratio << " -a " << CmdLine.AcceptThreshold << " -b " << CmdLine.IsFalseFilter << " -t " << CmdLine.TurnOnNameHash << " -H " << CmdLine.MultiHeaderChunk << endl;
         out << "-----------------CHUNK NUM-----------------------" << endl;
         out << "logical chunk num: " << logicalchunkNum << endl;
         out << "unique chunk num: " << uniquechunkNum << endl;
@@ -555,6 +820,10 @@ void AbsMethod::PrintChunkInfo(int64_t time, CommandLine_t CmdLine, double chunk
         out << "Reduce data speed: " << (double)(logicalchunkSize - uniquechunkSize) / time / 1024 / 1024 << "MiB/s" << endl;
         out << "SF generation time: " << SFTime.count() << "s" << endl;
         out << "SF generation throughput: " << (double)logicalchunkSize / SFTime.count() / 1024 / 1024 << "MiB/s" << endl;
+        out << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
+        out << "IO Time: " << IOTime.count() << "s" << endl;
+        out << "Decode Time: " << DecodeTime.count() << "s" << endl;
+        out << "-----------------Time old------------------------------" << endl;
         out << "Chunk Time: " << chunktime << "s" << endl;
         out << "Dedup Time: " << DedupTime.count() << "s" << endl;
         out << "Locality Match Time: " << LocalityMatchTime.count() << "s" << endl;
@@ -642,6 +911,9 @@ void AbsMethod::Version_log(double time)
     cout << "Reduce data speed: " << (double)(logicalchunkSize - preLogicalchunkiSize - uniquechunkSize + preuniquechunkSize) / time / 1024 / 1024 << "MiB/s" << endl;
     cout << "SF generation time: " << SFTime.count() - preSFTime.count() << "s" << endl;
     cout << "SF generation throughput: " << (double)(logicalchunkSize - preLogicalchunkiSize) / (SFTime.count() - preSFTime.count()) / 1024 / 1024 << "MiB/s" << endl;
+    cout << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
+    cout << "IO Time: " << IOTime.count() << "s" << endl;
+    cout << "Decode Time: " << DecodeTime.count() << "s" << endl;
     cout << "-----------------OverHead--------------------------" << endl;
     // out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
     cout << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
@@ -663,7 +935,7 @@ void AbsMethod::PrintChunkInfo(string inputDirpath, int chunkingMethod, int meth
     {
         out.open(fileName, ios::out);
         out << "-----------------INSTRUCTION----------------------" << endl;
-        out << "./BiSearch -i " << inputDirpath << " -c " << chunkingMethod << " -m " << method << " -n " << fileNum << " -r " << ratio << " -a " << AcceptThreshold << " -b " << IsFalseFilter << endl;
+        out << "./DFree -i " << inputDirpath << " -c " << chunkingMethod << " -m " << method << " -n " << fileNum << " -r " << ratio << " -a " << AcceptThreshold << " -b " << IsFalseFilter << endl;
         out << "-----------------CHUNK NUM-----------------------" << endl;
         out << "logical chunk num: " << logicalchunkNum << endl;
         out << "unique chunk num: " << uniquechunkNum << endl;
@@ -686,6 +958,10 @@ void AbsMethod::PrintChunkInfo(string inputDirpath, int chunkingMethod, int meth
         out << "Reduce data speed: " << (double)(logicalchunkSize - uniquechunkSize) / time / 1024 / 1024 << "MiB/s" << endl;
         out << "SF generation time: " << SFTime.count() << "s" << endl;
         out << "SF generation throughput: " << (double)logicalchunkSize / SFTime.count() / 1024 / 1024 << "MiB/s" << endl;
+        out << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
+        out << "IO Time: " << IOTime.count() << "s" << endl;
+        out << "Decode Time: " << DecodeTime.count() << "s" << endl;
+        out << "-----------------Time old------------------------------" << endl;
         out << "Chunk Time: " << chunktime << "s" << endl;
         out << "Dedup Time: " << DedupTime.count() << "s" << endl;
         out << "Locality Match Time: " << LocalityMatchTime.count() << "s" << endl;
@@ -720,7 +996,7 @@ void AbsMethod::PrintChunkInfo(string inputDirpath, int chunkingMethod, int meth
     {
         out.open(fileName, ios::app);
         out << "-----------------INSTRUCTION----------------------" << endl;
-        out << "./BiSearch -i " << inputDirpath << " -c " << chunkingMethod << " -m " << method << " -n " << fileNum << " -r " << ratio << " -a " << AcceptThreshold << " -b " << IsFalseFilter << endl;
+        out << "./DFree -i " << inputDirpath << " -c " << chunkingMethod << " -m " << method << " -n " << fileNum << " -r " << ratio << " -a " << AcceptThreshold << " -b " << IsFalseFilter << endl;
         out << "-----------------CHUNK NUM-----------------------" << endl;
         out << "logical chunk num: " << logicalchunkNum << endl;
         out << "unique chunk num: " << uniquechunkNum << endl;
@@ -742,6 +1018,10 @@ void AbsMethod::PrintChunkInfo(string inputDirpath, int chunkingMethod, int meth
         out << "Reduce data speed: " << (double)(logicalchunkSize - uniquechunkSize) / time / 1024 / 1024 << "MiB/s" << endl;
         out << "SF generation time: " << SFTime.count() << "s" << endl;
         out << "SF generation throughput: " << (double)logicalchunkSize / SFTime.count() / 1024 / 1024 << "MiB/s" << endl;
+        out << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
+        out << "IO Time: " << IOTime.count() << "s" << endl;
+        out << "Decode Time: " << DecodeTime.count() << "s" << endl;
+        out << "-----------------Time old------------------------------" << endl;
         out << "Chunk Time: " << chunktime << "s" << endl;
         out << "Dedup Time: " << DedupTime.count() << "s" << endl;
         out << "Locality Match Time: " << LocalityMatchTime.count() << "s" << endl;
@@ -800,6 +1080,10 @@ void AbsMethod::Version_log(double time, double chunktime)
     cout << "Reduce data speed: " << (double)(logicalchunkSize - preLogicalchunkiSize - uniquechunkSize + preuniquechunkSize) / time / 1024 / 1024 << "MiB/s" << endl;
     cout << "SF generation time: " << SFTime.count() - preSFTime.count() << "s" << endl;
     cout << "SF generation throughput: " << (double)(logicalchunkSize - preLogicalchunkiSize) / (SFTime.count() - preSFTime.count()) / 1024 / 1024 << "MiB/s" << endl;
+    cout << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
+    cout << "IO Time: " << IOTime.count() << "s" << endl;
+    cout << "Decode Time: " << DecodeTime.count() << "s" << endl;
+    cout << "-----------------Time old------------------------------" << endl;
     cout << "Chunk Time: " << chunktime << "s" << endl;
     cout << "Dedup Time: " << DedupTime.count() << "s" << endl;
     cout << "Locality Match Time: " << LocalityMatchTime.count() << "s" << endl;

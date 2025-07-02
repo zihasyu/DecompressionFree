@@ -798,25 +798,23 @@ Chunk_t dataWrite::Get_Chunk_Info(int id)
 
         chunklist[id].loadFromDisk = false;
         startTime = std::chrono::high_resolution_clock::now();
-        string tmpContainer;
-        tmpContainer.assign(CONTAINER_MAX_SIZE, 0);
         uint8_t *tmpContainerData = containerCache->ReadFromCache(tmpContainerIDcontainerID);
-        // memcpy((uint8_t *)tmpContainer.c_str(), tmpContainerData, CONTAINER_MAX_SIZE);
-        // memcpy(chunklist[id].chunkPtr, tmpContainer.c_str() + chunklist[id].offset, tmpSize);
-        // chunklist[id].chunkPtr = tmpContainerData + chunklist[id].offset;
 
-        if (chunklist[id].deltaFlag != NO_DELTA)
+        if (chunklist[id].deltaFlag == NO_LZ4)
             chunklist[id].chunkPtr = tmpContainerData + chunklist[id].offset;
-        else
+        else if (chunklist[id].deltaFlag == NO_DELTA)
         {
             // base chunk & lz4 compress
             int decompressedSize = LZ4_decompress_safe((char *)(tmpContainerData + chunklist[id].offset), (char *)lz4SafeChunkBuffer, chunklist[id].saveSize, CONTAINER_MAX_SIZE);
             chunklist[id].chunkPtr = (uint8_t *)malloc(chunklist[id].chunkSize);
-            memcpy(chunklist[id].chunkPtr, lz4SafeChunkBuffer, tmpSize);
+            memcpy(chunklist[id].chunkPtr, lz4SafeChunkBuffer, chunklist[id].chunkSize);
             chunklist[id].loadFromDisk = true;
         }
-        // cout << "read from cache and size is " << chunklist[id].chunkSize << endl;
-        //  memcpy(chunklist[id].chunkPtr, tmpContainerData + chunklist[id].offset, tmpSize);
+        else
+        {
+            // delta chunk & No decode
+            chunklist[id].chunkPtr = tmpContainerData + chunklist[id].offset;
+        }
         cacheHitTimes++;
         endTime = std::chrono::high_resolution_clock::now();
         readCacheTime += (endTime - startTime);
@@ -824,10 +822,14 @@ Chunk_t dataWrite::Get_Chunk_Info(int id)
     // TODO: if cache miss, read from file
     else if (chunklist[id].containerID != containerNum)
     {
-        if (chunklist[id].deltaFlag != NO_DELTA)
-            chunklist[id].chunkPtr = (uint8_t *)malloc(tmpSize);
-        else
+        if (chunklist[id].deltaFlag == NO_DELTA)
             chunklist[id].chunkPtr = (uint8_t *)malloc(chunklist[id].chunkSize);
+        else if (chunklist[id].deltaFlag == NO_LZ4)
+            chunklist[id].chunkPtr = (uint8_t *)malloc(chunklist[id].chunkSize);
+        else
+        {
+            chunklist[id].chunkPtr = (uint8_t *)malloc(chunklist[id].saveSize);
+        }
         startTime = std::chrono::high_resolution_clock::now();
         string fileName = "./Containers/" + tmpContainerIDcontainerID;
         // cout << fileName << endl;
@@ -842,15 +844,19 @@ Chunk_t dataWrite::Get_Chunk_Info(int id)
 
             // Read the entire container
             infile.read((char *)container.c_str(), size);
-            // Copy the required data to chunkPtr
-            // cout << "offset is " << chunklist[id].offset << "saveSize is " << chunklist[id].saveSize << endl;
-            if (chunklist[id].deltaFlag != NO_DELTA)
-                memcpy(chunklist[id].chunkPtr, (uint8_t *)(container.c_str() + chunklist[id].offset), tmpSize);
-            else
+
+            if (chunklist[id].deltaFlag == NO_LZ4)
+                memcpy(chunklist[id].chunkPtr, (uint8_t *)(container.c_str() + chunklist[id].offset), chunklist[id].chunkSize);
+            else if (chunklist[id].deltaFlag == NO_DELTA)
             {
                 // base chunk & lz4 compress
                 int decompressedSize = LZ4_decompress_safe((char *)(container.c_str() + chunklist[id].offset), (char *)lz4SafeChunkBuffer, chunklist[id].saveSize, CONTAINER_MAX_SIZE);
-                memcpy(chunklist[id].chunkPtr, lz4SafeChunkBuffer, tmpSize);
+                memcpy(chunklist[id].chunkPtr, lz4SafeChunkBuffer, chunklist[id].chunkSize);
+            }
+            else
+            {
+                // delta chunk & No decode
+                memcpy(chunklist[id].chunkPtr, (uint8_t *)(container.c_str() + chunklist[id].offset), chunklist[id].saveSize);
             }
 
             // Add the container to the cache
@@ -872,9 +878,6 @@ Chunk_t dataWrite::Get_Chunk_Info(int id)
         chunklist[id].loadFromDisk = false;
         if (chunklist[id].containerID == containerNum)
         {
-            // free(chunklist[id].chunkPtr);
-            //  memcpy(chunklist[id].chunkPtr, curContainer.data + chunklist[id].offset, tmpSize);
-            // chunklist[id].chunkPtr = curContainer.data + chunklist[id].offset;
 
             if (chunklist[id].deltaFlag != NO_DELTA)
                 chunklist[id].chunkPtr = curContainer.data + chunklist[id].offset;
@@ -883,7 +886,7 @@ Chunk_t dataWrite::Get_Chunk_Info(int id)
                 // base chunk & lz4 compress
                 int decompressedSize = LZ4_decompress_safe((char *)(curContainer.data + chunklist[id].offset), (char *)lz4SafeChunkBuffer, chunklist[id].saveSize, CONTAINER_MAX_SIZE);
                 chunklist[id].chunkPtr = (uint8_t *)malloc(chunklist[id].chunkSize);
-                memcpy(chunklist[id].chunkPtr, lz4SafeChunkBuffer, tmpSize);
+                memcpy(chunklist[id].chunkPtr, lz4SafeChunkBuffer, chunklist[id].chunkSize);
                 chunklist[id].loadFromDisk = true;
             }
         }
@@ -895,12 +898,6 @@ Chunk_t dataWrite::Get_Chunk_Info(int id)
 
     return chunklist[id];
 }
-
-// bool dataWrite::Recipe_Insert(Chunk_t &info)
-// {
-//     recipelist.push_back(info);
-//     return true;
-// }
 
 bool dataWrite::Recipe_Insert(uint64_t chunkID)
 {

@@ -114,9 +114,14 @@ int main(int argc, char **argv)
         absMethodObj = new BiSearch(CmdLine.ratio); // Ratio is used to debug false filter, which is not used now.
         break;
     }
-    case LOCALITY:
+    case ODESS_MI_BL:
     {
-        absMethodObj = new LocalDedup();
+        absMethodObj = new OdessMiBL();
+        break;
+    }
+    case ODESS_MI_DF:
+    {
+        absMethodObj = new OdessMiDF();
         break;
     }
     default:
