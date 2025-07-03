@@ -465,6 +465,170 @@ Chunk_t AbsMethod::xd3_recursive_restore_DF(uint64_t BasechunkId)
     }
     return result;
 }
+int AbsMethod::xd3FindPatch(const uint8_t *xd3Data, size_t dataSize)
+{
+    // VCDIFF 魔数检查 ("VCD" 序列)
+    if (dataSize < 4 || xd3Data[0] != 0xD6 || xd3Data[1] != 0xC3 || xd3Data[2] != 0xC4)
+    {
+        return false;
+    }
+
+    size_t offset = 4; // 跳过魔数
+
+    // 处理文件头指示符
+    if (offset >= dataSize)
+        return false;
+    uint8_t hdrInd = xd3Data[offset++];
+
+    // 检查是否有二级压缩
+    if (hdrInd & 0x01)
+    { // VCD_SECONDARY
+        if (offset >= dataSize)
+            return false;
+        offset++; // 跳过二级压缩标识符
+    }
+
+    // 检查是否有代码表数据
+    if (hdrInd & 0x02)
+    { // VCD_CODETABLE
+        // 读取代码表长度（可变长度编码）
+        usize_t codeTableLen = 0;
+        size_t bytesRead = 0;
+
+        // 解析可变长度编码
+        while (offset < dataSize)
+        {
+            if (offset >= dataSize)
+                return false;
+            uint8_t byte = xd3Data[offset++];
+            codeTableLen |= (byte & 0x7F) << (bytesRead * 7);
+            if (!(byte & 0x80))
+                break; // 最高位为0表示结束
+            bytesRead++;
+        }
+
+        // 跳过代码表
+        offset += codeTableLen;
+        if (offset > dataSize)
+            return false;
+    }
+
+    // 检查是否有应用头数据
+    if (hdrInd & 0x04)
+    { // VCD_APPHEADER
+        // 读取应用头长度
+        usize_t appHeaderLen = 0;
+        size_t bytesRead = 0;
+
+        // 解析可变长度编码
+        while (offset < dataSize)
+        {
+            if (offset >= dataSize)
+                return false;
+            uint8_t byte = xd3Data[offset++];
+            appHeaderLen |= (byte & 0x7F) << (bytesRead * 7);
+            if (!(byte & 0x80))
+                break; // 最高位为0表示结束
+            bytesRead++;
+        }
+
+        // 跳过应用头
+        offset += appHeaderLen;
+        if (offset > dataSize)
+            return false;
+    }
+    return offset;
+}
+
+Chunk_t AbsMethod::xd3_recursive_restore_DF_pool(uint64_t BasechunkId)
+{
+    std::vector<Chunk_t> chunkChain;
+    Chunk_t result;
+    size_t totalBufferSize = 0;
+
+    chunkChain.push_back(dataWrite_->Get_Chunk_Info(BasechunkId));
+    if (chunkChain.back().basechunkID < 0)
+        return chunkChain.back();
+
+    while (chunkChain.back().basechunkID > 0)
+    {
+        chunkChain.push_back(dataWrite_->Get_Chunk_Info(chunkChain.back().basechunkID));
+    }
+
+    memcpy(CombinedBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
+    size_t currentSize = chunkChain.back().chunkSize;
+
+    if (chunkChain.back().loadFromDisk)
+        free(chunkChain.back().chunkPtr);
+
+    for (int i = chunkChain.size() - 2; i >= 0; i--)
+    {
+        int patchOffset = xd3FindPatch(chunkChain[i].chunkPtr, chunkChain[i].saveSize);
+        cout << "patchOffset: " << patchOffset << endl;
+        // cout << "delta chunk content: " << endl;
+        // printBinaryArray(chunkChain[i].chunkPtr, chunkChain[i].saveSize);
+        memcpy(CombinedBuffer + currentSize, chunkChain[i].chunkPtr + patchOffset, chunkChain[i].saveSize - patchOffset);
+        if (chunkChain[i].loadFromDisk)
+            free(chunkChain[i].chunkPtr);
+        currentSize += chunkChain[i].saveSize - patchOffset;
+    }
+    result.chunkPtr = CombinedBuffer;
+    result.chunkSize = currentSize;
+    result.loadFromDisk = false;
+    // memcpy(result.chunkPtr, CombinedBuffer, currentSize);
+    if (chunkChain.back().chunkID == 422)
+    {
+        cout << "basechunkid " << chunkChain.back().chunkID << " currentSize " << currentSize << endl;
+        cout << "As characters: ";
+        printBinaryArray(result.chunkPtr, currentSize);
+    }
+    return result;
+}
+
+Chunk_t AbsMethod::xd3_recursive_restore_DF_FindADD(uint64_t BasechunkId)
+{
+    std::vector<Chunk_t> chunkChain;
+    Chunk_t result;
+    size_t totalBufferSize = 0;
+
+    chunkChain.push_back(dataWrite_->Get_Chunk_Info(BasechunkId));
+    if (chunkChain.back().basechunkID < 0)
+        return chunkChain.back();
+
+    while (chunkChain.back().basechunkID > 0)
+    {
+        chunkChain.push_back(dataWrite_->Get_Chunk_Info(chunkChain.back().basechunkID));
+    }
+
+    memcpy(CombinedBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
+    size_t currentSize = chunkChain.back().chunkSize;
+
+    if (chunkChain.back().loadFromDisk)
+        free(chunkChain.back().chunkPtr);
+
+    for (int i = chunkChain.size() - 2; i >= 0; i--)
+    {
+        // cout << "delta chunk content: " << endl;
+        // printBinaryArray(chunkChain[i].chunkPtr, chunkChain[i].saveSize);
+        memcpy(CombinedBuffer + currentSize, chunkChain[i].chunkPtr, chunkChain[i].saveSize);
+        auto patchOffset = extractVCDiffAddData(chunkChain[i].chunkPtr, chunkChain[i].saveSize, CombinedBuffer + currentSize);
+        if (chunkChain[i].loadFromDisk)
+            free(chunkChain[i].chunkPtr);
+        currentSize += chunkChain[i].saveSize - patchOffset;
+    }
+    result.chunkPtr = CombinedBuffer;
+    result.chunkSize = currentSize;
+    result.loadFromDisk = false;
+    // memcpy(result.chunkPtr, CombinedBuffer, currentSize);
+    if (chunkChain.back().chunkID == 422)
+    {
+        cout << "basechunkid " << chunkChain.back().chunkID << " currentSize " << currentSize << endl;
+        cout << "As characters: ";
+        printBinaryArray(result.chunkPtr, currentSize);
+    }
+    return result;
+}
+
 Chunk_t AbsMethod::xd3_recursive_restore_DF(uint64_t BasechunkId, SuperFeatures superfeature, int *layer)
 {
     std::vector<uint64_t> matchingIds = table.SF_Find_Mi(superfeature);

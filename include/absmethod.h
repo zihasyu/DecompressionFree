@@ -8,6 +8,7 @@
 #include "lz4.h"
 #include "datawrite.h"
 #include "odess_similarity_detection.h"
+#include "XdeltaAddExtractor.h"
 extern "C"
 {
 #include "./config.h"
@@ -145,6 +146,9 @@ public:
     Chunk_t xd3_recursive_restore_DF(uint64_t BasechunkId);
     Chunk_t xd3_recursive_restore_BL_index(uint64_t BasechunkId);
     Chunk_t xd3_recursive_restore_DF(uint64_t BasechunkId, SuperFeatures superfeature, int *layer);
+    Chunk_t xd3_recursive_restore_DF_pool(uint64_t BasechunkId);
+    Chunk_t xd3_recursive_restore_DF_FindADD(uint64_t BasechunkId);
+    int xd3FindPatch(const uint8_t *xd3Data, size_t dataSize);
     virtual void PrintChunkInfo(string inputDirpath, int chunkingMethod, int method, int fileNum, int64_t time, double ratio, double AcceptThreshold, bool IsFalseFilter);
     virtual void PrintChunkInfo(string inputDirpath, int chunkingMethod, int method, int fileNum, int64_t time, double ratio, double chunktime, double AcceptThreshold, bool IsFalseFilter);
     virtual void PrintChunkInfo(int64_t time, CommandLine_t CmdLine);
@@ -156,5 +160,20 @@ public:
     virtual void Version_log(double time);
     virtual void Version_log(double time, double chunktime);
     void SetTime(std::chrono::time_point<std::chrono::high_resolution_clock> &atime);
+    void printBinaryArray(const uint8_t *buffer, size_t buffer_size)
+    {
+        for (size_t i = 0; i < buffer_size; ++i)
+        {
+            // 对于换行符直接输出，对于空字符也不停止输出
+            if (buffer[i] == '\n')
+                cout << endl;
+            // 对于可打印字符直接输出，对于不可打印字符(包括\0)输出一个点
+            else if (isprint(buffer[i]))
+                cout << buffer[i];
+            else
+                cout << ".";
+        }
+        cout << endl; // 最后添加一个换行符，确保后续输出正常
+    }
 };
 #endif
