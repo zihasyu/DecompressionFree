@@ -69,7 +69,7 @@ void OdessMiDF::ProcessTrace()
                 {
                     auto basechunkInfo = dataWrite_->Get_Chunk_MetaInfo(basechunkid);
                     // int layer = 0;
-                    auto RestoreBasechunk = xd3_recursive_restore_DF_FindADD(basechunkid);
+                    auto RestoreBasechunk = xd3_recursive_restore_DF_pool(basechunkid);
                     uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
                     // if (basechunkInfo.basechunkID > 0 || RestoreBasechunk.loadFromDisk)
                     // if (layer > 1 || RestoreBasechunk.loadFromDisk)

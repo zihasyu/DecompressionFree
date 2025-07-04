@@ -148,7 +148,8 @@ public:
     Chunk_t xd3_recursive_restore_DF(uint64_t BasechunkId, SuperFeatures superfeature, int *layer);
     Chunk_t xd3_recursive_restore_DF_pool(uint64_t BasechunkId);
     Chunk_t xd3_recursive_restore_DF_FindADD(uint64_t BasechunkId);
-    int xd3FindPatch(const uint8_t *xd3Data, size_t dataSize);
+    size_t VLVCompute(const uint8_t *xd3Data, size_t &offset);
+    int xd3FindPatch(const uint8_t *xd3Data, size_t dataSize, size_t &offset);
     virtual void PrintChunkInfo(string inputDirpath, int chunkingMethod, int method, int fileNum, int64_t time, double ratio, double AcceptThreshold, bool IsFalseFilter);
     virtual void PrintChunkInfo(string inputDirpath, int chunkingMethod, int method, int fileNum, int64_t time, double ratio, double chunktime, double AcceptThreshold, bool IsFalseFilter);
     virtual void PrintChunkInfo(int64_t time, CommandLine_t CmdLine);
@@ -166,13 +167,23 @@ public:
         {
             // 对于换行符直接输出，对于空字符也不停止输出
             if (buffer[i] == '\n')
+            {
                 cout << endl;
-            // 对于可打印字符直接输出，对于不可打印字符(包括\0)输出一个点
-            else if (isprint(buffer[i]))
-                cout << buffer[i];
+            }
             else
-                cout << ".";
+                cout << buffer[i];
         }
+        // for (size_t i = 0; i < buffer_size; ++i)
+        // {
+        //     cout << hex << setfill('0') << setw(2) << (int)buffer[i] << " ";
+
+        //     // 每16字节换行，方便阅读
+        //     if ((i + 1) % 16 == 0)
+        //     {
+        //         cout << endl;
+        //     }
+        // }
+        // cout << dec;
         cout << endl; // 最后添加一个换行符，确保后续输出正常
     }
 };

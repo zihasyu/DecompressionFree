@@ -465,79 +465,34 @@ Chunk_t AbsMethod::xd3_recursive_restore_DF(uint64_t BasechunkId)
     }
     return result;
 }
-int AbsMethod::xd3FindPatch(const uint8_t *xd3Data, size_t dataSize)
+
+size_t AbsMethod::VLVCompute(const uint8_t *xd3Data, size_t &offset)
+{
+    size_t dataSize = 0;
+    do
+    {
+        dataSize = dataSize * 128 + (xd3Data[offset++] & 0x7F);
+    } while (xd3Data[offset] >= 128);
+    return dataSize;
+}
+
+int AbsMethod::xd3FindPatch(const uint8_t *xd3Data, size_t dataSize, size_t &offset)
 {
     // VCDIFF 魔数检查 ("VCD" 序列)
-    if (dataSize < 4 || xd3Data[0] != 0xD6 || xd3Data[1] != 0xC3 || xd3Data[2] != 0xC4)
+    if (dataSize < 6)
     {
         return false;
     }
-
-    size_t offset = 4; // 跳过魔数
-
-    // 处理文件头指示符
-    if (offset >= dataSize)
-        return false;
-    uint8_t hdrInd = xd3Data[offset++];
-
-    // 检查是否有二级压缩
-    if (hdrInd & 0x01)
-    { // VCD_SECONDARY
-        if (offset >= dataSize)
-            return false;
-        offset++; // 跳过二级压缩标识符
-    }
-
-    // 检查是否有代码表数据
-    if (hdrInd & 0x02)
-    { // VCD_CODETABLE
-        // 读取代码表长度（可变长度编码）
-        usize_t codeTableLen = 0;
-        size_t bytesRead = 0;
-
-        // 解析可变长度编码
-        while (offset < dataSize)
-        {
-            if (offset >= dataSize)
-                return false;
-            uint8_t byte = xd3Data[offset++];
-            codeTableLen |= (byte & 0x7F) << (bytesRead * 7);
-            if (!(byte & 0x80))
-                break; // 最高位为0表示结束
-            bytesRead++;
-        }
-
-        // 跳过代码表
-        offset += codeTableLen;
-        if (offset > dataSize)
-            return false;
-    }
-
-    // 检查是否有应用头数据
-    if (hdrInd & 0x04)
-    { // VCD_APPHEADER
-        // 读取应用头长度
-        usize_t appHeaderLen = 0;
-        size_t bytesRead = 0;
-
-        // 解析可变长度编码
-        while (offset < dataSize)
-        {
-            if (offset >= dataSize)
-                return false;
-            uint8_t byte = xd3Data[offset++];
-            appHeaderLen |= (byte & 0x7F) << (bytesRead * 7);
-            if (!(byte & 0x80))
-                break; // 最高位为0表示结束
-            bytesRead++;
-        }
-
-        // 跳过应用头
-        offset += appHeaderLen;
-        if (offset > dataSize)
-            return false;
-    }
-    return offset;
+    offset = 6;
+    // while (xd3Data[offset++] != '\0')
+    // ;
+    for (int i = 0; i < 4; i++)
+        VLVCompute(xd3Data, offset); // 跳过4个VCDIFF头部字段
+    offset++;                        // indicator
+    size_t DataLength = VLVCompute(xd3Data, offset);
+    size_t Instruction = VLVCompute(xd3Data, offset);
+    size_t Address = VLVCompute(xd3Data, offset);
+    return DataLength; // 返回处理后的偏移量
 }
 
 Chunk_t AbsMethod::xd3_recursive_restore_DF_pool(uint64_t BasechunkId)
@@ -563,14 +518,16 @@ Chunk_t AbsMethod::xd3_recursive_restore_DF_pool(uint64_t BasechunkId)
 
     for (int i = chunkChain.size() - 2; i >= 0; i--)
     {
-        int patchOffset = xd3FindPatch(chunkChain[i].chunkPtr, chunkChain[i].saveSize);
-        cout << "patchOffset: " << patchOffset << endl;
-        // cout << "delta chunk content: " << endl;
+        size_t patchOffset = 13;
+        size_t ADDlength = xd3FindPatch(chunkChain[i].chunkPtr, chunkChain[i].saveSize, patchOffset);
+        // cout << "patchOffset: " << patchOffset << " ADDlength " << ADDlength << endl;
+        // cout << "delta chunk content: " << chunkChain[i].chunkPtr + patchOffset << endl;
+        // cout << "delta chunk size: " << chunkChain[i].saveSize << endl;
         // printBinaryArray(chunkChain[i].chunkPtr, chunkChain[i].saveSize);
-        memcpy(CombinedBuffer + currentSize, chunkChain[i].chunkPtr + patchOffset, chunkChain[i].saveSize - patchOffset);
+        memcpy(CombinedBuffer + currentSize, chunkChain[i].chunkPtr + patchOffset, ADDlength);
         if (chunkChain[i].loadFromDisk)
             free(chunkChain[i].chunkPtr);
-        currentSize += chunkChain[i].saveSize - patchOffset;
+        currentSize += ADDlength;
     }
     result.chunkPtr = CombinedBuffer;
     result.chunkSize = currentSize;
@@ -611,7 +568,7 @@ Chunk_t AbsMethod::xd3_recursive_restore_DF_FindADD(uint64_t BasechunkId)
         // cout << "delta chunk content: " << endl;
         // printBinaryArray(chunkChain[i].chunkPtr, chunkChain[i].saveSize);
         memcpy(CombinedBuffer + currentSize, chunkChain[i].chunkPtr, chunkChain[i].saveSize);
-        auto patchOffset = extractVCDiffAddData(chunkChain[i].chunkPtr, chunkChain[i].saveSize, CombinedBuffer + currentSize);
+        auto patchOffset = 20;
         if (chunkChain[i].loadFromDisk)
             free(chunkChain[i].chunkPtr);
         currentSize += chunkChain[i].saveSize - patchOffset;
