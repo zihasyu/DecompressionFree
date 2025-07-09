@@ -344,7 +344,8 @@ enum METHOD_TYPE
     PALANTIR,
     BiSEARCH,
     ODESS_MI_BL,
-    ODESS_MI_DF
+    ODESS_MI_DF,
+    ODESS_MI_BL2,
 };
 
 enum DELTA_TYPE

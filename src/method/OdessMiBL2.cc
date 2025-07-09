@@ -212,8 +212,6 @@ Chunk_t OdessMiBL2::xd3_recursive_restore_BL2_time(uint64_t BasechunkId, const C
     resultchunk.loadFromDisk = false;
     resultchunk.chunkID = chunkChain.back().chunkID;
     xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, chunkChain.back().chunkPtr, chunkChain.back().chunkSize, &resultchunk.saveSize, deltaMaxChunkBuffer); //*** resultchunk.saveSize save tmpMinDeltaSize only here
-    if (resultchunk.saveSize != INT_MAX)
-        memcpy(MinBaseBuffer, tmpDeltaBuffer, resultchunk.saveSize);
 
     if (chunkChain.back().loadFromDisk)
         free(chunkChain.back().chunkPtr); // free base chunk memory
@@ -231,17 +229,30 @@ Chunk_t OdessMiBL2::xd3_recursive_restore_BL2_time(uint64_t BasechunkId, const C
             cout << "id " << chunkChain[i].chunkID << " chunkChain[i].chunkSize : " << chunkChain[i].chunkSize << "chunkChain[i].saveSize: " << chunkChain[i].saveSize
                  << " basechunksize " << basechunk.chunkSize << " restore basechunk_size : " << basechunk_size << endl;
             basechunk.chunkSize = 0;
+            if (chunkChain[i].loadFromDisk)
+                free(chunkChain[i].chunkPtr);
+            free(basechunk_ptr);
             return basechunk;
         }
         if (chunkChain[i].loadFromDisk)
             free(chunkChain[i].chunkPtr);
+        // greedy updata
+        uint64_t tmpsaveSize = 0;
+        xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer);
+        if (tmpsaveSize < resultchunk.saveSize)
+        {
+            resultchunk.saveSize = tmpsaveSize;
+            resultchunk.chunkID = chunkChain[i].chunkID;
+            resultchunk.chunkSize = chunkChain[i].chunkSize;
+            memcpy(MinBaseBuffer, basechunk_ptr, basechunk_size);
+        }
+        // updata basechunk info
         memcpy(CombinedBuffer, basechunk_ptr, basechunk_size);
-        basechunk.chunkSize = chunkChain[i].chunkSize; // update size
+        basechunk.chunkSize = chunkChain[i].chunkSize;
         free(basechunk_ptr);
 
         basechunk_size = 0;
     }
-
     SetTime(endMiDelta);
     SetTime(endMiDelta, startMiDelta, MiDeltaTime);
     return resultchunk;
@@ -249,6 +260,7 @@ Chunk_t OdessMiBL2::xd3_recursive_restore_BL2_time(uint64_t BasechunkId, const C
 
 uint8_t *OdessMiBL2::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer)
 {
+    SetTime(startMiEncode);
     size_t deltachunkSize;
     int ret = xd3_encode_memory(targetChunkbuffer, targetChunkbuffer_size, baseChunkBuffer, baseChunkBuffer_size, tmpbuffer, &deltachunkSize, CONTAINER_MAX_SIZE * 2, 0);
     if (ret != 0)
@@ -262,5 +274,7 @@ uint8_t *OdessMiBL2::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t 
     else
         *deltaChunkBuffer_size = deltachunkSize;
     memcpy(tmpDeltaBuffer, tmpbuffer, deltachunkSize);
+    SetTime(endMiEncode);
+    SetTime(endMiEncode, startMiEncode, EncodeTime);
     return tmpDeltaBuffer;
 }

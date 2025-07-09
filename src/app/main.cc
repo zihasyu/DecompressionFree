@@ -124,6 +124,11 @@ int main(int argc, char **argv)
         absMethodObj = new OdessMiDF();
         break;
     }
+    case ODESS_MI_BL2:
+    {
+        absMethodObj = new OdessMiBL2();
+        break;
+    }
     default:
         break;
     }
