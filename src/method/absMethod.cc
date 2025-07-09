@@ -24,6 +24,12 @@ void AbsMethod::SetTime(std::chrono::time_point<std::chrono::high_resolution_clo
 {
     atime = std::chrono::high_resolution_clock::now();
 }
+void AbsMethod::SetTime(std::chrono::time_point<std::chrono::high_resolution_clock> atime, std::chrono::time_point<std::chrono::high_resolution_clock> btime, std::chrono::duration<double> &time)
+{
+    atime = std::chrono::high_resolution_clock::now();
+    btime = std::chrono::high_resolution_clock::now();
+    time += btime - atime;
+}
 bool AbsMethod::compareNat(const std::string &a, const std::string &b)
 {
     if (a.empty())

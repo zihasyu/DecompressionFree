@@ -26,8 +26,11 @@ public:
     std::chrono::duration<double> IOTime;
     std::chrono::time_point<std::chrono::high_resolution_clock> startDecode, endDecode;
     std::chrono::duration<double> DecodeTime;
+    std::chrono::time_point<std::chrono::high_resolution_clock> startMiEncode, endMiEncode;
+    std::chrono::duration<double> EncodeTime;
     std::chrono::time_point<std::chrono::high_resolution_clock> startMiDelta, endMiDelta;
     std::chrono::duration<double> MiDeltaTime;
+
     // old
     int ads_Version = 0;
     // util
@@ -126,12 +129,7 @@ public:
     void SetFilename(string name);
     virtual void ProcessTrace() = 0;
     void SetInputMQ(MessageQueue<Chunk_t> *mq) { recieveQueue = mq; }
-    // void SetInputMaskMQ(MessageQueue<uint64_t> *mq) { MaskRecieveQueue = mq; }
-    //  void SetOutputMQ(MessageQueue<Chunk_t> *outputMQ)
-    //  {
-    //      outputMQ_ = outputMQ;
-    //      return;
-    //  }
+
     static bool compareNat(const std::string &a, const std::string &b);
     void GenerateHash(EVP_MD_CTX *mdCtx, uint8_t *dataBuffer, const int dataSize, uint8_t *hash);
     int FP_Find(string fp);
@@ -143,6 +141,7 @@ public:
     uint8_t *xd3_decode(const uint8_t *in, size_t in_size, const uint8_t *ref, size_t ref_size, size_t *res_size);
     Chunk_t xd3_recursive_restore_BL(uint64_t BasechunkId);
     Chunk_t xd3_recursive_restore_BL_time(uint64_t BasechunkId);
+
     Chunk_t xd3_recursive_restore_DF(uint64_t BasechunkId);
     Chunk_t xd3_recursive_restore_BL_index(uint64_t BasechunkId);
     Chunk_t xd3_recursive_restore_DF(uint64_t BasechunkId, SuperFeatures superfeature, int *layer);
@@ -161,6 +160,7 @@ public:
     virtual void Version_log(double time);
     virtual void Version_log(double time, double chunktime);
     void SetTime(std::chrono::time_point<std::chrono::high_resolution_clock> &atime);
+    void SetTime(std::chrono::time_point<std::chrono::high_resolution_clock> atime, std::chrono::time_point<std::chrono::high_resolution_clock> btime, std::chrono::duration<double> &time);
     void printBinaryArray(const uint8_t *buffer, size_t buffer_size)
     {
         for (size_t i = 0; i < buffer_size; ++i)
@@ -173,17 +173,6 @@ public:
             else
                 cout << buffer[i];
         }
-        // for (size_t i = 0; i < buffer_size; ++i)
-        // {
-        //     cout << hex << setfill('0') << setw(2) << (int)buffer[i] << " ";
-
-        //     // 每16字节换行，方便阅读
-        //     if ((i + 1) % 16 == 0)
-        //     {
-        //         cout << endl;
-        //     }
-        // }
-        // cout << dec;
         cout << endl; // 最后添加一个换行符，确保后续输出正常
     }
 };
