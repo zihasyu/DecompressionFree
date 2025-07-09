@@ -70,10 +70,10 @@ void OdessMiBL::ProcessTrace()
                     auto basechunkInfo = dataWrite_->Get_Chunk_MetaInfo(basechunkid);
                     auto RestoreBasechunk = xd3_recursive_restore_BL_time(basechunkid);
                     uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
-                    if (basechunkInfo.basechunkID > 0 || RestoreBasechunk.loadFromDisk)
+                    if (RestoreBasechunk.loadFromDisk)
                         free(RestoreBasechunk.chunkPtr);
 
-                    if (tmpChunk.saveSize > tmpChunk.chunkSize)
+                    if (tmpChunk.saveSize > tmpChunk.chunkSize || tmpChunk.saveSize <= 0 || RestoreBasechunk.chunkSize == 0)
                     {
                         cout << "delta no effective" << endl;
                         int tmpChunkLz4CompressSize = 0;
@@ -97,6 +97,7 @@ void OdessMiBL::ProcessTrace()
                         basechunkNum++;
                         basechunkSize += tmpChunk.saveSize;
                         LocalReduct += tmpChunk.chunkSize - tmpChunk.saveSize;
+                        free(deltachunk);
                         if (tmpChunk.deltaFlag == NO_LZ4)
                             // base chunk & Lz4 error
                             dataWrite_->Chunk_Insert(tmpChunk);

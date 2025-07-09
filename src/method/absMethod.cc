@@ -290,36 +290,6 @@ uint8_t *AbsMethod::xd3_decode(const uint8_t *in, size_t in_size, const uint8_t 
     return res;
 }
 
-// Chunk_t AbsMethod::xd3_recursive_restore(Chunk_t tmpLocalChunkInfo)
-// {
-//     int i = 0;
-//     Chunk_t basechunk;
-//     size_t basechunk_size = 0;
-//     size_t compareSize = tmpLocalChunkInfo.chunkSize;
-//     Chunk_t Pre[300];
-//     Pre[i] = tmpLocalChunkInfo;
-//     while (Pre[i].deltaFlag == FINESSE_DELTA || Pre[i].deltaFlag == LOCAL_DELTA)
-//     {
-//         Pre[i + 1] = dataWrite_->Get_Chunk_Info(Pre[i].basechunkID);
-//         i++;
-//     }
-//     basechunk.chunkPtr = (uint8_t *)malloc(basechunk.chunkSize * sizeof(uint8_t));
-//     memcpy(basechunk.chunkPtr, Pre[i].chunkPtr, Pre[i].chunkSize);
-//     basechunk.chunkSize = Pre[i].chunkSize;
-//     i--;
-//     while (i >= 0)
-//     {
-//         uint8_t *basechunk_ptr;
-//         basechunk_ptr = xd3_decode(Pre[i].chunkPtr, Pre[i].saveSize, basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
-//         i--;
-//         memcpy(basechunk.chunkPtr, basechunk_ptr, basechunk_size);
-//         basechunk.chunkSize = basechunk_size;
-//         free(basechunk_ptr);
-//         basechunk_size = 0;
-//     }
-//     return basechunk;
-// }
-
 Chunk_t AbsMethod::xd3_recursive_restore_BL(uint64_t BasechunkId)
 {
     std::vector<Chunk_t> chunkChain;
@@ -355,7 +325,7 @@ Chunk_t AbsMethod::xd3_recursive_restore_BL(uint64_t BasechunkId)
         if (chunkChain[i].chunkSize != basechunk_size)
         {
             cout << "xd3 recursive restore error, chunk size mismatch" << endl;
-            cout << "chunkChain[i].chunkSize: " << chunkChain[i].chunkSize << ", basechunk_size: " << basechunk_size << endl;
+            cout << "chunkid: " << chunkChain[i].chunkID << "chunkChain[i].chunkSize: " << chunkChain[i].chunkSize << ", basechunk_size: " << basechunk_size << endl;
         }
         basechunk_size = 0;
     }
@@ -372,7 +342,6 @@ Chunk_t AbsMethod::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
     chunkChain.push_back(dataWrite_->Get_Chunk_Info(BasechunkId));
     SetTime(endIO);
     IOTime += endIO - startIO;
-    // cout << "chunkChain size: " << chunkChain.back().chunkSize << "chunkChain.back().basechunkID < 0 is" << (chunkChain.back().basechunkID < 0) << endl;
     if (chunkChain.back().basechunkID < 0) // if only one layer
         return chunkChain.back();
 
@@ -384,9 +353,12 @@ Chunk_t AbsMethod::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
         IOTime += endIO - startIO;
     }
 
-    basechunk.chunkPtr = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
-    memcpy(basechunk.chunkPtr, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
+    // basechunk.chunkPtr = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
+    // memcpy(basechunk.chunkPtr, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
+    memcpy(CombinedBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
+    basechunk.loadFromDisk = false;
     basechunk.chunkSize = chunkChain.back().chunkSize;
+    basechunk.chunkPtr = CombinedBuffer;
     if (chunkChain.back().loadFromDisk)
         free(chunkChain.back().chunkPtr); // free base chunk memory
 
@@ -397,19 +369,23 @@ Chunk_t AbsMethod::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
                                             basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
         SetTime(endDecode);
         DecodeTime += endDecode - startDecode;
-
-        if (chunkChain[i].loadFromDisk)
-            free(chunkChain[i].chunkPtr);
-        memcpy(basechunk.chunkPtr, basechunk_ptr, basechunk_size);
-        basechunk.chunkSize = chunkChain[i].chunkSize; // update size
-        free(basechunk_ptr);
         if (chunkChain[i].chunkSize != basechunk_size)
         {
             cout << "xd3 recursive restore error, chunk size mismatch" << endl;
-            cout << "chunkChain[i].chunkSize: " << chunkChain[i].chunkSize << ", basechunk_size: " << basechunk_size << endl;
+            cout << "id " << chunkChain[i].chunkID << " chunkChain[i].chunkSize : " << chunkChain[i].chunkSize << "chunkChain[i].saveSize: " << chunkChain[i].saveSize
+                 << " basechunksize " << basechunk.chunkSize << " restore basechunk_size : " << basechunk_size << endl;
+            basechunk.chunkSize = 0;
+            return basechunk;
         }
+        if (chunkChain[i].loadFromDisk)
+            free(chunkChain[i].chunkPtr);
+        memcpy(CombinedBuffer, basechunk_ptr, basechunk_size);
+        basechunk.chunkSize = chunkChain[i].chunkSize; // update size
+        free(basechunk_ptr);
+
         basechunk_size = 0;
     }
+
     SetTime(endMiDelta);
     MiDeltaTime += endMiDelta - startMiDelta;
     return basechunk;
@@ -492,6 +468,9 @@ int AbsMethod::xd3FindPatch(const uint8_t *xd3Data, size_t dataSize, size_t &off
     size_t DataLength = VLVCompute(xd3Data, offset);
     size_t Instruction = VLVCompute(xd3Data, offset);
     size_t Address = VLVCompute(xd3Data, offset);
+    cout << "ADDlength: " << DataLength << endl;
+    cout << "Instruction: " << Instruction << endl;
+    cout << "Address: " << Address << endl;
     return DataLength; // 返回处理后的偏移量
 }
 
@@ -522,7 +501,7 @@ Chunk_t AbsMethod::xd3_recursive_restore_DF_pool(uint64_t BasechunkId)
         size_t ADDlength = xd3FindPatch(chunkChain[i].chunkPtr, chunkChain[i].saveSize, patchOffset);
         // cout << "patchOffset: " << patchOffset << " ADDlength " << ADDlength << endl;
         // cout << "delta chunk content: " << chunkChain[i].chunkPtr + patchOffset << endl;
-        // cout << "delta chunk size: " << chunkChain[i].saveSize << endl;
+        cout << "delta chunk size: " << chunkChain[i].saveSize << endl;
         // printBinaryArray(chunkChain[i].chunkPtr, chunkChain[i].saveSize);
         memcpy(CombinedBuffer + currentSize, chunkChain[i].chunkPtr + patchOffset, ADDlength);
         if (chunkChain[i].loadFromDisk)
