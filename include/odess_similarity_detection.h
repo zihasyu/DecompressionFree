@@ -57,6 +57,9 @@ public:
   void PalantirResemblanceDetect(const string &value);
   SuperFeatures PalantirMakeSF();
 
+  void GenerateSampledFeatures(const string &value);
+  vector<feature_t> GetSampledFeatures(const string &value);
+
 private:
   /**
    * @summary: Use Odess method to calculate the features of a value. The

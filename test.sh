@@ -11,7 +11,8 @@ run_method(){
 # ./DFree -i $path -c 1 -m 6 -n $num  >OdessMiBL$name.txt
 # sudo rm Containers/*
 # sudo echo 3 > /proc/sys/vm/drop_caches
-./DFree -i $path -c 1 -m 8 -n $num  >OdessMiBL2$name.txt
+# ./DFree -i $path -c 1 -m 8 -n $num  >OdessMiBL2$name.txt
+./DFree -i $path -c 1 -m 9 -n $num  >OdessMiBL3$name.txt
 # sudo rm Containers/*
 # sudo echo 3 > /proc/sys/vm/drop_caches
 

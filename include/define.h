@@ -346,6 +346,7 @@ enum METHOD_TYPE
     ODESS_MI_BL,
     ODESS_MI_DF,
     ODESS_MI_BL2,
+    ODESS_MI_BL3
 };
 
 enum DELTA_TYPE

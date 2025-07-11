@@ -203,6 +203,22 @@ SuperFeatures FeatureGenerator::GenerateSuperFeatures(const string &value)
   return MakeSuperFeatures();
 }
 
+void FeatureGenerator::GenerateSampledFeatures(const string &value){
+  feature_t hash = 0;
+  for(size_t i = 0; i < value.size(); ++i){
+    hash = (hash << 1) + GEARmx[static_cast<uint8_t>(value[i])];
+    if(!(hash & kSampleRatioMask)){
+      features_.push_back(hash);
+    }
+  }
+}
+
+vector<feature_t> FeatureGenerator::GetSampledFeatures(const string &value){
+  features_.clear();
+  GenerateSampledFeatures(value);
+  return features_;
+}
+
 uint64_t FeatureIndexTable::SF_Find(const SuperFeatures &superfeatures)
 {
   for (const super_feature_t &sf : superfeatures)
