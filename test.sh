@@ -5,18 +5,22 @@ run_method(){
   local num=$3
 
 # ./DFree -i $path -c 1 -m 3 -n $num  >Odess$name.txt
-# sudo rm Containers/*
-# sudo echo 3 > /proc/sys/vm/drop_caches
-
+# # sudo rm Containers/*
+# # sudo echo 3 > /proc/sys/vm/drop_caches
 # ./DFree -i $path -c 1 -m 6 -n $num  >OdessMiBL$name.txt
-# sudo rm Containers/*
-# sudo echo 3 > /proc/sys/vm/drop_caches
+# # sudo rm Containers/*
+# # sudo echo 3 > /proc/sys/vm/drop_caches
 # ./DFree -i $path -c 1 -m 8 -n $num  >OdessMiBL2$name.txt
-./DFree -i $path -c 1 -m 9 -n $num  >OdessMiBL3$name.txt
+# # sudo rm Containers/*
+# # sudo echo 3 > /proc/sys/vm/drop_caches
+# ./DFree -i $path -c 1 -m 9 -n $num  >OdessMiBL3$name.txt
 # sudo rm Containers/*
 # sudo echo 3 > /proc/sys/vm/drop_caches
+# ./DFree -i $path -c 1 -m 10 -n $num  >OdessMiLog2$name.txt
 
-
+./DFree -i $path -c 4 -m 3 -n $num  >OdessFile$name.txt
+./DFree -i $path -c 4 -m 6 -n $num  >OdessFileMiBL$name.txt
+./DFree -i $path -c 4 -m 10 -n $num  >OdessFileMiLog2$name.txt
 }
 
 
@@ -28,11 +32,12 @@ run_method(){
 # run_method /mnt/dataset2/smalltalk_tarballs _smalltalk 40
 # run_method /mnt/dataset2/GNU_GCC/gcc-packed/tar _gcc 117
 # run_method /mnt/dataset2/chromium _chromium 107
-run_method /mnt/dataset2/linux _linux 200
+run_method /mnt/dataset2/linux _linux 270
+
+
 # run_method /mnt/dataset2/WEB _WEB 102
 # run_method /mnt/dataset2/Windows Windows 738
 # run_method /mnt/dataset2/Android _Android 36
 # run_method /mnt/dataset2/ThunderbirdTar _Thunderbird 240
 
-
-# run_method /mnt/dataset2/linux _linux 270
+# run_method /mnt/dataset2/linux _linux 200

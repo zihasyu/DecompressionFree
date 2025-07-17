@@ -134,6 +134,11 @@ int main(int argc, char **argv)
         absMethodObj = new OdessMiBL3();
         break;
     }
+    case ODESS_ML_LOG2:
+    {
+        absMethodObj = new OdessMLLog2();
+        break;
+    }
     default:
         break;
     }

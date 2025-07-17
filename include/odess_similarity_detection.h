@@ -15,7 +15,12 @@ using namespace std;
 typedef uint64_t feature_t;
 typedef unsigned long long super_feature_t;
 typedef vector<super_feature_t> SuperFeatures;
-
+typedef struct Log2Entry
+{
+  uint64_t id = -1;
+  uint32_t fitCount = 0;
+  uint32_t otherInfo;
+} Log2Entry;
 // The Mask has X bits of 1's, so the sample rate is 1/(2^X). It means the
 // number of sampled chunks to generate feature will be 1/(2^X) of the all
 // sliding window chunks.
@@ -128,11 +133,15 @@ public:
   unordered_map<super_feature_t, unordered_set<string>> feature_key_table_;
   map<string, SuperFeatures> key_feature_table_;
 
-  // new feature-id index table
+  // new feature-vector<id> index table
   unordered_map<super_feature_t, vector<uint64_t>> SFindex;
   uint64_t SF_Find(const SuperFeatures &superfeatures);
   std::vector<uint64_t> SF_Find_Mi(const SuperFeatures &superfeatures);
   void SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid);
+  // log2 feature -> <Id, FitCount, otherInfo>
+  unordered_map<super_feature_t, Log2Entry> Log2_SFIndex;
+  uint64_t Log2_SF_Find(const SuperFeatures &superfeatures);
+  void Log2_SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid);
 
 private:
   // unordered_map<super_feature_t, unordered_set<string>> feature_key_table_;

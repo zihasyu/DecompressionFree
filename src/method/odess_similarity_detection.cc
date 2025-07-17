@@ -203,17 +203,21 @@ SuperFeatures FeatureGenerator::GenerateSuperFeatures(const string &value)
   return MakeSuperFeatures();
 }
 
-void FeatureGenerator::GenerateSampledFeatures(const string &value){
+void FeatureGenerator::GenerateSampledFeatures(const string &value)
+{
   feature_t hash = 0;
-  for(size_t i = 0; i < value.size(); ++i){
+  for (size_t i = 0; i < value.size(); ++i)
+  {
     hash = (hash << 1) + GEARmx[static_cast<uint8_t>(value[i])];
-    if(!(hash & kSampleRatioMask)){
+    if (!(hash & kSampleRatioMask))
+    {
       features_.push_back(hash);
     }
   }
 }
 
-vector<feature_t> FeatureGenerator::GetSampledFeatures(const string &value){
+vector<feature_t> FeatureGenerator::GetSampledFeatures(const string &value)
+{
   features_.clear();
   GenerateSampledFeatures(value);
   return features_;
@@ -237,6 +241,18 @@ uint64_t FeatureIndexTable::SF_Find(const SuperFeatures &superfeatures)
     }
   }
   // return -1 if not found, uint64_t's MAX value
+  return -1;
+}
+uint64_t FeatureIndexTable::Log2_SF_Find(const SuperFeatures &superfeatures)
+{
+  for (const super_feature_t &sf : superfeatures)
+  {
+    auto it = Log2_SFIndex.find(sf);
+    if (it != Log2_SFIndex.end())
+    {
+      return it->second.id;
+    }
+  }
   return -1;
 }
 // 修改函数返回类型为 vector<uint64_t>
@@ -266,7 +282,23 @@ void FeatureIndexTable::SF_Insert(const SuperFeatures &superfeatures, const uint
   // return -1 if not found, uint64_t's MAX value
   return;
 }
-
+void FeatureIndexTable::Log2_SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid)
+{
+  for (int i = 0; i < ODESS_SF_NUM; i++)
+  {
+    int n = Log2_SFIndex[superfeatures[i]].fitCount;
+    if ((n & (n - 1)) == 0)
+    {
+      Log2_SFIndex[superfeatures[i]].id = chunkid;
+      Log2_SFIndex[superfeatures[i]].fitCount++;
+    }
+    else
+    {
+      Log2_SFIndex[superfeatures[i]].fitCount++;
+    }
+  }
+  return;
+}
 SuperFeatures FeatureGenerator::PalantirGetSF(const string &value)
 {
   CleanFeatures();
