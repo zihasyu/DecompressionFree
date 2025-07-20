@@ -4,7 +4,7 @@ run_method(){
   local name=$2
   local num=$3
 
-# ./DFree -i $path -c 1 -m 3 -n $num  >Odess$name.txt
+./DFree -i $path -c 1 -m 3 -n $num  >Odess$name.txt
 # # sudo rm Containers/*
 # # sudo echo 3 > /proc/sys/vm/drop_caches
 # ./DFree -i $path -c 1 -m 6 -n $num  >OdessMiBL$name.txt
@@ -17,10 +17,10 @@ run_method(){
 # sudo rm Containers/*
 # sudo echo 3 > /proc/sys/vm/drop_caches
 # ./DFree -i $path -c 1 -m 10 -n $num  >OdessMiLog2$name.txt
-
-./DFree -i $path -c 4 -m 3 -n $num  >OdessFile$name.txt
-./DFree -i $path -c 4 -m 6 -n $num  >OdessFileMiBL$name.txt
-./DFree -i $path -c 4 -m 10 -n $num  >OdessFileMiLog2$name.txt
+# ./DFree -i $path -c 1 -m 11 -n $num  >OdessMiLess4$name.txt
+# ./DFree -i $path -c 4 -m 3 -n $num  >OdessFile$name.txt
+# ./DFree -i $path -c 4 -m 6 -n $num  >OdessFileMiBL$name.txt
+# ./DFree -i $path -c 4 -m 10 -n $num  >OdessFileMiLog2$name.txt
 }
 
 

@@ -347,7 +347,8 @@ enum METHOD_TYPE
     ODESS_MI_DF,
     ODESS_MI_BL2,
     ODESS_MI_BL3,
-    ODESS_ML_LOG2
+    ODESS_ML_LOG2,
+    ODESS_ML_LESS4, // New method added
 };
 
 enum DELTA_TYPE

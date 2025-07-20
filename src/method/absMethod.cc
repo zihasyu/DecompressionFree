@@ -344,23 +344,26 @@ Chunk_t AbsMethod::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
     std::vector<Chunk_t> chunkChain;
     Chunk_t basechunk;
     size_t basechunk_size = 0;
-    SetTime(startIO);
-    chunkChain.push_back(dataWrite_->Get_Chunk_Info(BasechunkId));
-    SetTime(endIO);
-    IOTime += endIO - startIO;
-    if (chunkChain.back().basechunkID < 0) // if only one layer
-        return chunkChain.back();
-
-    while (chunkChain.back().basechunkID > 0)
+    chunkChain.push_back(dataWrite_->Get_Chunk_MetaInfo(BasechunkId));
+    // if only one layer
+    if (chunkChain.back().basechunkID < 0)
     {
         SetTime(startIO);
-        chunkChain.push_back(dataWrite_->Get_Chunk_Info(chunkChain.back().basechunkID));
+        chunkChain.back() = dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);
         SetTime(endIO);
-        IOTime += endIO - startIO;
+        SetTime(startIO, endIO, IOTime);
+        return chunkChain.back();
     }
 
-    // basechunk.chunkPtr = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
-    // memcpy(basechunk.chunkPtr, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
+    // collect all delta chain blocks
+    while (chunkChain.back().basechunkID > 0)
+        chunkChain.push_back(dataWrite_->Get_Chunk_MetaInfo(chunkChain.back().basechunkID));
+    // push the last chunk
+    SetTime(startIO);
+    chunkChain.back() = dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);
+    SetTime(endIO);
+    SetTime(startIO, endIO, IOTime);
+
     memcpy(CombinedBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
     basechunk.loadFromDisk = false;
     basechunk.chunkSize = chunkChain.back().chunkSize;
@@ -370,6 +373,11 @@ Chunk_t AbsMethod::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
 
     for (int i = chunkChain.size() - 2; i >= 0; i--)
     {
+        SetTime(startIO);
+        chunkChain[i] = dataWrite_->Get_Chunk_Info(chunkChain[i].chunkID);
+        SetTime(endIO);
+        SetTime(startIO, endIO, IOTime);
+
         SetTime(startDecode);
         uint8_t *basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
                                             basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);

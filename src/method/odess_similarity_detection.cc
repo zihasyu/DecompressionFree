@@ -299,6 +299,24 @@ void FeatureIndexTable::Log2_SF_Insert(const SuperFeatures &superfeatures, const
   }
   return;
 }
+void FeatureIndexTable::Less4_SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid)
+{
+  for (int i = 0; i < ODESS_SF_NUM; i++)
+  {
+    int n = Log2_SFIndex[superfeatures[i]].fitCount;
+    // if ((n & (n - 1)) == 0)
+    if (n <= 4)
+    {
+      Log2_SFIndex[superfeatures[i]].id = chunkid;
+      Log2_SFIndex[superfeatures[i]].fitCount++;
+    }
+    else
+    {
+      Log2_SFIndex[superfeatures[i]].fitCount++;
+    }
+  }
+  return;
+}
 SuperFeatures FeatureGenerator::PalantirGetSF(const string &value)
 {
   CleanFeatures();
