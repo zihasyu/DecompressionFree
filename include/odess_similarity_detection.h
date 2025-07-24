@@ -142,6 +142,7 @@ public:
   unordered_map<super_feature_t, Log2Entry> Log2_SFIndex;
   uint64_t Log2_SF_Find(const SuperFeatures &superfeatures);
   void Log2_SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid);
+  void Less4_SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid);
 
 private:
   // unordered_map<super_feature_t, unordered_set<string>> feature_key_table_;

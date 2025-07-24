@@ -189,7 +189,7 @@ Chunk_t OdessMiBL3::xd3_recursive_restore_BL2_time(uint64_t BasechunkId, const C
     SetTime(startIO);
     chunkChain.push_back(dataWrite_->Get_Chunk_Info(BasechunkId));
     SetTime(endIO);
-    SetTime(endIO, startIO, IOTime);
+    SetTime(startIO, endIO, IOTime);
     if (chunkChain.back().basechunkID < 0) // if only one layer
         return chunkChain.back();
 
@@ -201,7 +201,7 @@ Chunk_t OdessMiBL3::xd3_recursive_restore_BL2_time(uint64_t BasechunkId, const C
         IOTime += endIO - startIO;
     }
 
-    std::string target_content((char*)Targetchunk.chunkPtr, Targetchunk.chunkSize);
+    std::string target_content((char *)Targetchunk.chunkPtr, Targetchunk.chunkSize);
     auto sampled_features_target = table.feature_generator_.GetSampledFeatures(target_content);
 
     // first layer init
@@ -217,12 +217,14 @@ Chunk_t OdessMiBL3::xd3_recursive_restore_BL2_time(uint64_t BasechunkId, const C
     xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, chunkChain.back().chunkPtr, chunkChain.back().chunkSize, &resultchunk.saveSize, deltaMaxChunkBuffer); //*** resultchunk.saveSize save tmpMinDeltaSize only here
 
     size_t max_overlap = 0;
-    std::string base_content((char*)chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
+    std::string base_content((char *)chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
     auto sampled_features_base = table.feature_generator_.GetSampledFeatures(base_content);
     {
         std::unordered_set<feature_t> set_target(sampled_features_target.begin(), sampled_features_target.end());
         size_t overlap = 0;
-        for(auto& f : sampled_features_base) if(set_target.count(f)) overlap++;
+        for (auto &f : sampled_features_base)
+            if (set_target.count(f))
+                overlap++;
         max_overlap = overlap;
     }
 
@@ -235,7 +237,7 @@ Chunk_t OdessMiBL3::xd3_recursive_restore_BL2_time(uint64_t BasechunkId, const C
         uint8_t *basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
                                             basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
         SetTime(endDecode);
-        SetTime(endDecode, startDecode, DecodeTime);
+        SetTime(startDecode, endDecode, DecodeTime);
         if (chunkChain[i].chunkSize != basechunk_size) // bug
         {
             cout << "xd3 recursive restore error, chunk size mismatch" << endl;
@@ -250,13 +252,16 @@ Chunk_t OdessMiBL3::xd3_recursive_restore_BL2_time(uint64_t BasechunkId, const C
         if (chunkChain[i].loadFromDisk)
             free(chunkChain[i].chunkPtr);
 
-        std::string cur_content((char*)basechunk_ptr, basechunk_size);
+        std::string cur_content((char *)basechunk_ptr, basechunk_size);
         auto sampled_features_cur = table.feature_generator_.GetSampledFeatures(cur_content);
         std::unordered_set<feature_t> set_target(sampled_features_target.begin(), sampled_features_target.end());
         size_t overlap = 0;
-        for(auto& f : sampled_features_cur) if(set_target.count(f)) overlap++;
+        for (auto &f : sampled_features_cur)
+            if (set_target.count(f))
+                overlap++;
 
-        if(overlap > max_overlap){
+        if (overlap > max_overlap)
+        {
             max_overlap = overlap;
             resultchunk.chunkID = chunkChain[i].chunkID;
             resultchunk.chunkSize = chunkChain[i].chunkSize;
@@ -264,7 +269,7 @@ Chunk_t OdessMiBL3::xd3_recursive_restore_BL2_time(uint64_t BasechunkId, const C
             resultchunk.chunkPtr = MinBaseBuffer;
             xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, basechunk_size, &resultchunk.saveSize, deltaMaxChunkBuffer);
         }
-        
+
         // updata basechunk info
         memcpy(CombinedBuffer, basechunk_ptr, basechunk_size);
         basechunk.chunkSize = chunkChain[i].chunkSize;

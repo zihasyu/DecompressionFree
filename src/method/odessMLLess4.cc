@@ -93,7 +93,7 @@ void OdessMLLess4::ProcessTrace()
                         tmpChunk.basechunkID = -1;
                         tmpChunkid = tmpChunk.chunkID;
                         if (tmpChunk.chunkSize > 60)
-                            table.Log2_SF_Insert(superfeature, tmpChunk.chunkID);
+                            table.Less4_SF_Insert(superfeature, tmpChunk.chunkID);
                         basechunkNum++;
                         basechunkSize += tmpChunk.saveSize;
                         LocalReduct += tmpChunk.chunkSize - tmpChunk.saveSize;
@@ -111,7 +111,7 @@ void OdessMLLess4::ProcessTrace()
                         tmpChunk.basechunkID = basechunkid;
                         // cout << "tmpChunk.savesize is " << tmpChunk.saveSize << endl;
                         if (tmpChunk.chunkSize > 60)
-                            table.Log2_SF_Insert(superfeature, tmpChunk.chunkID);
+                            table.Less4_SF_Insert(superfeature, tmpChunk.chunkID);
                         memcpy(tmpChunk.chunkPtr, deltachunk, tmpChunk.saveSize);
                         StatsDelta(tmpChunk);
                         free(deltachunk);
@@ -140,7 +140,7 @@ void OdessMLLess4::ProcessTrace()
                     tmpChunk.basechunkID = -1;
                     tmpChunkid = tmpChunk.chunkID;
                     if (tmpChunk.chunkSize > 60)
-                        table.Log2_SF_Insert(superfeature, tmpChunk.chunkID);
+                        table.Less4_SF_Insert(superfeature, tmpChunk.chunkID);
                     basechunkNum++;
                     basechunkSize += tmpChunk.saveSize;
                     LocalReduct += tmpChunk.chunkSize - tmpChunk.saveSize;

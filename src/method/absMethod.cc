@@ -26,8 +26,6 @@ void AbsMethod::SetTime(std::chrono::time_point<std::chrono::high_resolution_clo
 }
 void AbsMethod::SetTime(std::chrono::time_point<std::chrono::high_resolution_clock> atime, std::chrono::time_point<std::chrono::high_resolution_clock> btime, std::chrono::duration<double> &time)
 {
-    atime = std::chrono::high_resolution_clock::now();
-    btime = std::chrono::high_resolution_clock::now();
     time += btime - atime;
 }
 bool AbsMethod::compareNat(const std::string &a, const std::string &b)
@@ -352,6 +350,12 @@ Chunk_t AbsMethod::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
         chunkChain.back() = dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);
         SetTime(endIO);
         SetTime(startIO, endIO, IOTime);
+
+        // memcpy(CombinedBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
+        // basechunk.loadFromDisk = false;
+        // basechunk.chunkSize = chunkChain.back().chunkSize;
+        // basechunk.chunkPtr = CombinedBuffer;
+        // return basechunk;
         return chunkChain.back();
     }
 
