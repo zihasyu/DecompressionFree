@@ -220,10 +220,10 @@ Chunk_t OdessMiBL3::xd3_recursive_restore_BL2_time(uint64_t BasechunkId, const C
     std::string base_content((char *)chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
     auto sampled_features_base = table.feature_generator_.GetSampledFeatures(base_content);
     {
-        std::unordered_set<feature_t> set_target(sampled_features_target.begin(), sampled_features_target.end());
+        std::unordered_set<feature_t> set_base(sampled_features_base.begin(),sampled_features_base.end());
         size_t overlap = 0;
-        for (auto &f : sampled_features_base)
-            if (set_target.count(f))
+        for (auto &f : sampled_features_target)
+            if (set_base.count(f))
                 overlap++;
         max_overlap = overlap;
     }
@@ -254,10 +254,10 @@ Chunk_t OdessMiBL3::xd3_recursive_restore_BL2_time(uint64_t BasechunkId, const C
 
         std::string cur_content((char *)basechunk_ptr, basechunk_size);
         auto sampled_features_cur = table.feature_generator_.GetSampledFeatures(cur_content);
-        std::unordered_set<feature_t> set_target(sampled_features_target.begin(), sampled_features_target.end());
+        std::unordered_set<feature_t> set_cur(sampled_features_cur.begin(),sampled_features_cur.end());
         size_t overlap = 0;
-        for (auto &f : sampled_features_cur)
-            if (set_target.count(f))
+        for (auto &f : sampled_features_target)
+            if (set_cur.count(f))
                 overlap++;
 
         if (overlap > max_overlap)
