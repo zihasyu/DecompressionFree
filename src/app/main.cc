@@ -144,6 +144,11 @@ int main(int argc, char **argv)
         absMethodObj = new OdessMLLess4();
         break;
     }
+    case Tree_Cut:
+    {
+        absMethodObj = new TreeCut();
+        break;
+    }
     default:
         break;
     }

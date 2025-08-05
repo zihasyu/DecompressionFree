@@ -24,6 +24,8 @@ typedef struct
     uint8_t *chunkPtr;            // 8 bytes (assuming 64-bit pointer)
     uint64_t name = 0;            // 8 bytes
     int basechunkID;              // 4 bytes
+    int FirstChildID = -1;        // 4 bytes
+    int FirstBroID = -1;          // 4 bytes
     uint8_t deltaFlag = NO_DELTA; // 1 byte
     bool loadFromDisk = false;    // 1 byte
     bool HeaderFlag = false;      // 1 byte

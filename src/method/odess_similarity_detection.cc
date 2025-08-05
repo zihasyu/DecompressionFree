@@ -229,10 +229,6 @@ uint64_t FeatureIndexTable::SF_Find(const SuperFeatures &superfeatures)
   {
     if (auto it = SFindex.find(sf) != SFindex.end())
     {
-      // for (auto id : SFindex[sf])
-      // {
-      //   return id;
-      // }
       if (!SFindex[sf].empty())
       {
         // 返回vector中的最后一个元素，而不是第一个
@@ -254,6 +250,35 @@ uint64_t FeatureIndexTable::Log2_SF_Find(const SuperFeatures &superfeatures)
     }
   }
   return -1;
+}
+
+uint64_t FeatureIndexTable::Tree_SF_Find(const SuperFeatures &superfeatures)
+{
+  for (const super_feature_t &sf : superfeatures)
+  {
+    auto it = Tree_SFIndex.find(sf);
+    if (it != Tree_SFIndex.end())
+    {
+      return it->second;
+    }
+  }
+  // return -1 if not found, uint64_t's MAX value
+  return -1;
+}
+
+void FeatureIndexTable::Tree_SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid)
+{
+  for (const super_feature_t &sf : superfeatures)
+  {
+    if (Tree_SFIndex.find(sf) == Tree_SFIndex.end())
+    {
+      Tree_SFIndex[sf] = chunkid;
+    }
+    else
+    {
+      // TreeNode will maintain in the absmethod;
+    }
+  }
 }
 // 修改函数返回类型为 vector<uint64_t>
 std::vector<uint64_t> FeatureIndexTable::SF_Find_Mi(const SuperFeatures &superfeatures)

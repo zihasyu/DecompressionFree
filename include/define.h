@@ -349,6 +349,7 @@ enum METHOD_TYPE
     ODESS_MI_BL3,
     ODESS_ML_LOG2,
     ODESS_ML_LESS4, // New method added
+    Tree_Cut
 };
 
 enum DELTA_TYPE
