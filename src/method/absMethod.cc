@@ -351,11 +351,6 @@ Chunk_t AbsMethod::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
         SetTime(endIO);
         SetTime(startIO, endIO, IOTime);
 
-        // memcpy(CombinedBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
-        // basechunk.loadFromDisk = false;
-        // basechunk.chunkSize = chunkChain.back().chunkSize;
-        // basechunk.chunkPtr = CombinedBuffer;
-        // return basechunk;
         return chunkChain.back();
     }
 
@@ -372,6 +367,7 @@ Chunk_t AbsMethod::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
     basechunk.loadFromDisk = false;
     basechunk.chunkSize = chunkChain.back().chunkSize;
     basechunk.chunkPtr = CombinedBuffer;
+    basechunk.chunkID = chunkChain.back().chunkID;
     if (chunkChain.back().loadFromDisk)
         free(chunkChain.back().chunkPtr); // free base chunk memory
 
@@ -399,6 +395,8 @@ Chunk_t AbsMethod::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
             free(chunkChain[i].chunkPtr);
         memcpy(CombinedBuffer, basechunk_ptr, basechunk_size);
         basechunk.chunkSize = chunkChain[i].chunkSize; // update size
+        basechunk.FirstChildID = chunkChain[i].FirstChildID;
+        basechunk.chunkID = chunkChain[i].chunkID;
         free(basechunk_ptr);
 
         basechunk_size = 0;

@@ -112,10 +112,14 @@ void TreeCut::ProcessTrace()
                     else
                     {
                         tmpChunk.deltaFlag = DELTA;
+                        // cout << "RestoreBasechunk.chunkID is " << RestoreBasechunk.chunkID << endl;
                         tmpChunk.basechunkID = RestoreBasechunk.chunkID;
                         // cout << "tmpChunk.savesize is " << tmpChunk.saveSize << endl;
-                        // if (tmpChunk.chunkSize > 60)
-                        //     table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
+                        if (tmpChunk.chunkSize > 60)
+                            table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
+                        // cout << "tmpChunk.chunkID is " << tmpChunk.chunkID << endl;
+                        // cout << "basechunkid is " << tmpChunk.basechunkID << endl;
+
                         if (dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID < 0)
                         {
                             // cout << "here 1" << endl;
@@ -202,16 +206,19 @@ Chunk_t TreeCut::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
     if (basechunk.basechunkID < 0)
     {
         basechunk = dataWrite_->Get_Chunk_Info(BasechunkId);
+        if (basechunk.FirstChildID < 0) // if only one layer
+            return basechunk;
         // basechunk = xd3_recursive_restore_BL_time(BasechunkId);
     }
     else
     {
         basechunk = xd3_recursive_restore_BL_time(BasechunkId);
+        // cout << "basechunk.ChunkID is " << basechunk.chunkID << endl;
+        if (basechunk.FirstChildID < 0) // if only one layer
+            return basechunk;
     }
     SetTime(endIO);
     SetTime(startIO, endIO, IOTime);
-    if (basechunk.FirstChildID < 0) // if only one layer
-        return basechunk;
 
     memcpy(CombinedBuffer, basechunk.chunkPtr, basechunk.chunkSize);
     // greed init
