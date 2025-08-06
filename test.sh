@@ -13,7 +13,7 @@ run_method(){
 # ./DFree -i $path -c 1 -m 8 -n $num  >OdessMiBL2$name.txt
 # # sudo rm Containers/*
 # # sudo echo 3 > /proc/sys/vm/drop_caches
-./DFree -i $path -c 1 -m 9 -n $num  >OdessMiBL3$name.txt
+./DFree -i $path -c 1 -m 12 -n $num  >OdessMiBL3$name.txt
 # sudo rm Containers/*
 # sudo echo 3 > /proc/sys/vm/drop_caches
 # ./DFree -i $path -c 1 -m 11 -n $num  >OdessMiLess4$name.txt
@@ -27,7 +27,7 @@ run_method(){
 }
 
 
-run_method /mnt/dataset2/automake_tarballs _automake 100
+ run_method /mnt/dataset2/automake_tarballs _automake 100
 # run_method /mnt/dataset2/bash_tarballs _bash 44
 # run_method /mnt/dataset2/coreutils_tarballs _coreutils 28
 # run_method /mnt/dataset2/fdisk_tarballs _fdisk 22

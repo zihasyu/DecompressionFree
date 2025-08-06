@@ -348,7 +348,8 @@ enum METHOD_TYPE
     ODESS_MI_BL2,
     ODESS_MI_BL3,
     ODESS_ML_LOG2,
-    ODESS_ML_LESS4, // New method added
+    ODESS_ML_LESS4,
+    ODESS_ML_TREE, // New method added
 };
 
 enum DELTA_TYPE

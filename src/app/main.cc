@@ -126,12 +126,12 @@ int main(int argc, char **argv)
     }
     case ODESS_MI_BL2:
     {
-        absMethodObj = new OdessMiBL2();
+        absMethodObj = new OdessMiBL2();  //8
         break;
     }
     case ODESS_MI_BL3:
     {
-        absMethodObj = new OdessMiBL3();
+        absMethodObj = new OdessMiBL3(); //9
         break;
     }
     case ODESS_ML_LOG2:
@@ -142,6 +142,11 @@ int main(int argc, char **argv)
     case ODESS_ML_LESS4:
     {
         absMethodObj = new OdessMLLess4();
+        break;
+    }
+    case ODESS_ML_TREE:
+    { 
+        absMethodObj = new OdessMLTree();    //12
         break;
     }
     default:

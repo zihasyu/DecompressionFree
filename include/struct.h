@@ -14,7 +14,7 @@
 #include <vector>
 #include <unordered_map>
 
-typedef struct
+typedef struct Chunk_t
 {
     uint64_t chunkID;             // 8 bytes
     uint64_t chunkSize;           // 8 bytes
@@ -29,6 +29,9 @@ typedef struct
     bool HeaderFlag = false;      // 1 byte
     bool NameExist = true;        // 1 byte
     // 1 byte padding to align the structure to 8 bytes boundary
+
+    uint64_t firstChildID = UINT64_MAX;
+    uint64_t nextSiblingID = UINT64_MAX;
 } Chunk_t;
 
 typedef struct

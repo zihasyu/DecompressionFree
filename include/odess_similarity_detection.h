@@ -144,6 +144,10 @@ public:
   void Log2_SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid);
   void Less4_SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid);
 
+  unordered_map<super_feature_t, uint64_t> SFTreeIndex;
+  uint64_t tree_SF_Find(const SuperFeatures &superfeatures);
+  void tree_SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid);
+
 private:
   // unordered_map<super_feature_t, unordered_set<string>> feature_key_table_;
   // // unordered_map<feature_t, unordered_set<string>> original_feature_key_table;

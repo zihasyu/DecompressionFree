@@ -166,9 +166,9 @@ bool dataWrite::Chunk_Insert(Chunk_t chunk)
     memcpy(curContainer.data + curOffset, chunk.chunkPtr, tmpSize);
     curOffset += tmpSize;
     // cout << "free chunk " << endl;
-    free(chunk.chunkPtr);
+    //free(chunk.chunkPtr);
     // cout << "free chunk done" << endl;
-    chunk.chunkPtr = nullptr;
+    //chunk.chunkPtr = nullptr;
     chunklist.push_back(chunk);
     // cout << "chunkset entry id is  " << chunklist[chunk.chunkid].chunkid << endl;
     return true;
@@ -243,9 +243,9 @@ bool dataWrite::Chunk_Insert(Chunk_t chunk, uint8_t *lz4Buffer)
 
     curOffset += tmpSize;
     // cout << "free chunk " << endl;
-    free(chunk.chunkPtr);
+    //free(chunk.chunkPtr);
     // cout << "free chunk done" << endl;
-    chunk.chunkPtr = nullptr;
+    //chunk.chunkPtr = nullptr;
     chunklist.push_back(chunk);
     // cout << "chunkset entry id is  " << chunklist[chunk.chunkid].chunkid << endl;
     return true;

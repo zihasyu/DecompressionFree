@@ -255,6 +255,26 @@ uint64_t FeatureIndexTable::Log2_SF_Find(const SuperFeatures &superfeatures)
   }
   return -1;
 }
+
+uint64_t FeatureIndexTable::tree_SF_Find(const SuperFeatures &superfeatures){
+  for(const super_feature_t &sf : superfeatures){
+    auto it = SFTreeIndex.find(sf);
+    if(it != SFTreeIndex.end()){
+      return it->second;
+    }
+  }
+  return -1;
+}
+
+void FeatureIndexTable::tree_SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid){
+  for(const auto& sf: superfeatures){
+    if(SFTreeIndex.find(sf) == SFTreeIndex.end()){
+      SFTreeIndex[sf] = chunkid;
+    }
+  }
+  return;
+}
+
 // 修改函数返回类型为 vector<uint64_t>
 std::vector<uint64_t> FeatureIndexTable::SF_Find_Mi(const SuperFeatures &superfeatures)
 {
