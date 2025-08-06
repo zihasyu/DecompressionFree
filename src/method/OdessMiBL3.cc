@@ -220,7 +220,7 @@ Chunk_t OdessMiBL3::xd3_recursive_restore_BL2_time(uint64_t BasechunkId, const C
     std::string base_content((char *)chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
     auto sampled_features_base = table.feature_generator_.GetSampledFeatures(base_content);
     {
-        std::unordered_set<feature_t> set_base(sampled_features_base.begin(),sampled_features_base.end());
+        std::unordered_set<feature_t> set_base(sampled_features_base.begin(), sampled_features_base.end());
         size_t overlap = 0;
         for (auto &f : sampled_features_target)
             if (set_base.count(f))
@@ -233,11 +233,8 @@ Chunk_t OdessMiBL3::xd3_recursive_restore_BL2_time(uint64_t BasechunkId, const C
 
     for (int i = chunkChain.size() - 2; i >= 0; i--)
     {
-        SetTime(startDecode);
         uint8_t *basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
                                             basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
-        SetTime(endDecode);
-        SetTime(startDecode, endDecode, DecodeTime);
         if (chunkChain[i].chunkSize != basechunk_size) // bug
         {
             cout << "xd3 recursive restore error, chunk size mismatch" << endl;
@@ -254,7 +251,7 @@ Chunk_t OdessMiBL3::xd3_recursive_restore_BL2_time(uint64_t BasechunkId, const C
 
         std::string cur_content((char *)basechunk_ptr, basechunk_size);
         auto sampled_features_cur = table.feature_generator_.GetSampledFeatures(cur_content);
-        std::unordered_set<feature_t> set_cur(sampled_features_cur.begin(),sampled_features_cur.end());
+        std::unordered_set<feature_t> set_cur(sampled_features_cur.begin(), sampled_features_cur.end());
         size_t overlap = 0;
         for (auto &f : sampled_features_target)
             if (set_cur.count(f))

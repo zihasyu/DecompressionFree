@@ -201,11 +201,14 @@ Chunk_t TreeCut::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
     SetTime(startMiDelta);
     Chunk_t resultchunk;
     size_t basechunk_size = 0;
-    SetTime(startIO);
+
     Chunk_t basechunk = dataWrite_->Get_Chunk_MetaInfo(BasechunkId);
     if (basechunk.basechunkID < 0)
     {
+        SetTime(startIO);
         basechunk = dataWrite_->Get_Chunk_Info(BasechunkId);
+        SetTime(endIO);
+        SetTime(startIO, endIO, IOTime);
         if (basechunk.FirstChildID < 0) // if only one layer
             return basechunk;
         // basechunk = xd3_recursive_restore_BL_time(BasechunkId);
@@ -217,8 +220,6 @@ Chunk_t TreeCut::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
         if (basechunk.FirstChildID < 0) // if only one layer
             return basechunk;
     }
-    SetTime(endIO);
-    SetTime(startIO, endIO, IOTime);
 
     memcpy(CombinedBuffer, basechunk.chunkPtr, basechunk.chunkSize);
     // greed init
@@ -228,6 +229,7 @@ Chunk_t TreeCut::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
     resultchunk.loadFromDisk = false;
     resultchunk.chunkID = basechunk.chunkID;
     resultchunk.FirstChildID = basechunk.FirstChildID;
+
     xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk.chunkPtr, basechunk.chunkSize, &resultchunk.saveSize, deltaMaxChunkBuffer); //*** resultchunk.saveSize save tmpMinDeltaSize only here
 
     if (basechunk.loadFromDisk)
@@ -238,7 +240,12 @@ Chunk_t TreeCut::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
     while (!end && resultchunk.FirstChildID >= 0)
     {
         uint64_t tmpChildID = resultchunk.chunkID;
+
+        SetTime(startIO);
         Chunk_t TmpChildChunk = dataWrite_->Get_Chunk_Info(resultchunk.FirstChildID);
+        SetTime(endIO);
+        SetTime(startIO, endIO, IOTime);
+
         uint8_t *basechunk_ptr = xd3_decode(TmpChildChunk.chunkPtr, TmpChildChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);
         xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer);
         if (tmpsaveSize < resultchunk.saveSize)
@@ -256,7 +263,10 @@ Chunk_t TreeCut::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
         Chunk_t TmpBroChunk = TmpChildChunk;
         while (TmpBroChunk.FirstBroID >= 0)
         {
+            SetTime(startIO);
             TmpBroChunk = dataWrite_->Get_Chunk_Info(TmpBroChunk.FirstBroID);
+            SetTime(endIO);
+            SetTime(startIO, endIO, IOTime);
             uint8_t *basechunk_ptr = xd3_decode(TmpBroChunk.chunkPtr, TmpBroChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);
             xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer); //*** resultchunk.saveSize save tmpMinDeltaSize only here
             if (tmpsaveSize < resultchunk.saveSize)
@@ -279,6 +289,8 @@ Chunk_t TreeCut::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
             memcpy(CombinedBuffer, resultchunk.chunkPtr, resultchunk.chunkSize);
         }
     }
+    SetTime(endMiDelta);
+    SetTime(startMiDelta, endMiDelta, MiDeltaTime);
     return resultchunk;
 }
 
@@ -299,6 +311,6 @@ uint8_t *TreeCut::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t tar
         *deltaChunkBuffer_size = deltachunkSize;
     memcpy(tmpDeltaBuffer, tmpbuffer, deltachunkSize);
     SetTime(endMiEncode);
-    SetTime(endMiEncode, startMiEncode, EncodeTime);
+    SetTime(startMiEncode, endMiEncode, EncodeTime);
     return tmpDeltaBuffer;
 }

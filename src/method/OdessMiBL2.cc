@@ -218,11 +218,9 @@ Chunk_t OdessMiBL2::xd3_recursive_restore_BL2_time(uint64_t BasechunkId, const C
 
     for (int i = chunkChain.size() - 2; i >= 0; i--)
     {
-        SetTime(startDecode);
         uint8_t *basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
                                             basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
-        SetTime(endDecode);
-        SetTime(endDecode, startDecode, DecodeTime);
+
         if (chunkChain[i].chunkSize != basechunk_size) // bug
         {
             cout << "xd3 recursive restore error, chunk size mismatch" << endl;

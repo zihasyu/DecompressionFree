@@ -218,11 +218,8 @@ Chunk_t TreeGreedy::xd3_recursive_restore(uint64_t BasechunkId, const Chunk_t Ta
 
     for (int i = chunkChain.size() - 2; i >= 0; i--)
     {
-        SetTime(startDecode);
         uint8_t *basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
                                             basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
-        SetTime(endDecode);
-        SetTime(endDecode, startDecode, DecodeTime);
         if (chunkChain[i].chunkSize != basechunk_size) // bug
         {
             cout << "xd3 recursive restore error, chunk size mismatch" << endl;
