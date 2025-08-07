@@ -887,6 +887,7 @@ void AbsMethod::StatsDelta(Chunk_t &tmpChunk)
     deltachunkNum++;
     DeltaReduct += tmpChunk.chunkSize - tmpChunk.saveSize;
     DCESum += tmpChunk.chunkSize / tmpChunk.saveSize;
+    // cout << "ChunkID is " << tmpChunk.chunkID << " basechunkID is " << tmpChunk.basechunkID << " saveSize is " << tmpChunk.saveSize << endl;
 }
 void AbsMethod::StatsDeltaFeature(Chunk_t &tmpChunk)
 {

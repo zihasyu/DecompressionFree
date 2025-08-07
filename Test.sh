@@ -18,7 +18,6 @@ methods=(
   ["Odess"]="-c 1 -m 3"
   ["TreeCut"]="-c 1 -m 12"
   ["AllGreedy"]="-c 1 -m 13"
-  # 可以添加或注释其他方法
   # ["OdessMiBL"]="-c 1 -m 6"
   # ["OdessMiBL2"]="-c 1 -m 8"
   # ["OdessMiBL3"]="-c 1 -m 9"
@@ -26,7 +25,6 @@ methods=(
   # ["OdessMiLog2"]="-c 1 -m 10"
 )
 
-# 定义要运行的数据集列表（可以修改此数组来选择要跑的数据集）
 selected_datasets=(
   "automake"
   "bash"
@@ -39,22 +37,18 @@ selected_datasets=(
   # "linux"
 )
 
-# 先遍历方法，每个方法跑完所有数据集
 for method_name in "${!methods[@]}"; do
   method_params="${methods[$method_name]}"
   echo "Running method: $method_name"
   
-  # 对每个选中的数据集执行当前方法
   for dataset in "${selected_datasets[@]}"; do
     if [[ -n "${datasets[$dataset]}" ]]; then
       read -r path num <<< "${datasets[$dataset]}"
       echo "Processing dataset: $dataset"
       
-      # 清理缓存，确保公平的缓冲区状态
     #   sudo rm -f Containers/*
     #   sudo echo 3 > /proc/sys/vm/drop_caches
       
-      # 执行测试并输出到对应文件
       ./DFree -i "$path" $method_params -n "$num" > "${method_name}_${dataset}.txt"
       
       echo "Completed $method_name on $dataset"

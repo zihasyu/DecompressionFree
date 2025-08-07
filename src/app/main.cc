@@ -154,6 +154,11 @@ int main(int argc, char **argv)
         absMethodObj = new AllGreedy();
         break;
     }
+    case Tree_Greedy:
+    {
+        absMethodObj = new TreeGreedy();
+        break;
+    }
     default:
         break;
     }

@@ -20,14 +20,16 @@ run_method(){
 # ./DFree -i $path -c 1 -m 11 -n $num  >OdessMiLess4$name.txt
 
 # ./DFree -i $path -c 1 -m 10 -n $num  >OdessMiLog2$name.txt
-
 # ./DFree -i $path -c 1 -m 3 -n $num  >Odess$name.txt
 # ./DFree -i $path -c 4 -m 3 -n $num  >OdessFile$name.txt
 # ./DFree -i $path -c 4 -m 6 -n $num  >OdessFileMiBL$name.txt
 # ./DFree -i $path -c 4 -m 10 -n $num  >OdessFileMiLog2$name.txt
-./DFree -i $path -c 1 -m 3 -n $num  >Odess$name.txt
-./DFree -i $path -c 1 -m 12 -n $num  >TreeCut$name.txt
-./DFree -i $path -c 1 -m 13 -n $num  >AllGreedy$name.txt
+
+
+# ./DFree -i $path -c 1 -m 3 -n $num  >Odess$name.txt
+# ./DFree -i $path -c 1 -m 12 -n $num  >TreeCut$name.txt
+./DFree -i $path -c 1 -m 13 -n $num  >TreeGreedy$name.txt
+./DFree -i $path -c 1 -m 14 -n $num  >AllGreedy$name.txt
 }
 
 

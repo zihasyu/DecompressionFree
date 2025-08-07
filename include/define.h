@@ -350,7 +350,8 @@ enum METHOD_TYPE
     ODESS_ML_LOG2,
     ODESS_ML_LESS4, // New method added
     Tree_Cut,
-    All_Greedy // New method added
+    Tree_Greedy,
+    All_Greedy,
 };
 
 enum DELTA_TYPE
