@@ -16,6 +16,6 @@
 #include "odessMLLog2.h"
 #include "odessMLLess4.h"
 #include "Tree/TreeCut.h"
-#include "Tree/TreeGreedy.h"
+#include "AllGreedy.h"
 
 #endif

@@ -25,7 +25,8 @@ run_method(){
 # ./DFree -i $path -c 4 -m 3 -n $num  >OdessFile$name.txt
 # ./DFree -i $path -c 4 -m 6 -n $num  >OdessFileMiBL$name.txt
 # ./DFree -i $path -c 4 -m 10 -n $num  >OdessFileMiLog2$name.txt
-./DFree -i $path -c 1 -m 12 -n $num  >TreeCut$name.txt
+# ./DFree -i $path -c 1 -m 12 -n $num  >TreeCut$name.txt
+./DFree -i $path -c 1 -m 13 -n $num  >AllGreedy$name.txt
 }
 
 

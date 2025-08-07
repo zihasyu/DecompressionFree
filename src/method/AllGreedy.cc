@@ -1,6 +1,6 @@
-#include "../../include/Tree/TreeGreedy.h"
+#include "../../include/AllGreedy.h"
 
-TreeGreedy::TreeGreedy()
+AllGreedy::AllGreedy()
 {
     // cout << " Chunk_t is " << sizeof(Chunk_t) << " Chunk_t_ori is " << sizeof(Chunk_t_odess) << " <super_feature_t, unordered_set<string>> is " << sizeof(super_feature_t);
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
@@ -12,7 +12,7 @@ TreeGreedy::TreeGreedy()
     MinBaseBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
 }
 
-TreeGreedy::~TreeGreedy()
+AllGreedy::~AllGreedy()
 {
     free(lz4ChunkBuffer);
     free(deltaMaxChunkBuffer);
@@ -22,7 +22,7 @@ TreeGreedy::~TreeGreedy()
     free(MinBaseBuffer);
 }
 
-void TreeGreedy::ProcessTrace()
+void AllGreedy::ProcessTrace()
 {
     string tmpChunkHash;
     string tmpChunkContent;
@@ -54,7 +54,7 @@ void TreeGreedy::ProcessTrace()
                 FP_Insert(hashStr, tmpChunk.chunkID);
                 tmpChunkContent.assign((char *)tmpChunk.chunkPtr, tmpChunk.chunkSize);
                 tmpChunkHash.assign((char *)hashBuf, CHUNK_HASH_SIZE);
-                // TreeGreedy get superfeature & get time
+                // TreeCut get superfeature & get time
                 uint64_t basechunkid = -1;
                 // compute SF
                 if (tmpChunk.chunkSize > 60)
@@ -64,7 +64,7 @@ void TreeGreedy::ProcessTrace()
                     endSF = std::chrono::high_resolution_clock::now();
                     SFTime += (endSF - startSF);
 
-                    basechunkid = table.SF_Find(superfeature);
+                    basechunkid = table.Tree_SF_Find(superfeature);
                     // auto ret = table.GetSimilarRecordsKeys(tmpChunkHash);
                 }
 
@@ -72,7 +72,7 @@ void TreeGreedy::ProcessTrace()
                 // unique chunk & delta chunk
                 {
                     auto basechunkInfo = dataWrite_->Get_Chunk_MetaInfo(basechunkid);
-                    auto RestoreBasechunk = xd3_recursive_restore(basechunkid, tmpChunk);
+                    auto RestoreBasechunk = FindBest(basechunkid, tmpChunk);
                     uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
                     if (RestoreBasechunk.loadFromDisk)
                         free(RestoreBasechunk.chunkPtr);
@@ -97,7 +97,7 @@ void TreeGreedy::ProcessTrace()
                         tmpChunk.basechunkID = -1;
                         tmpChunkid = tmpChunk.chunkID;
                         if (tmpChunk.chunkSize > 60)
-                            table.SF_Insert(superfeature, tmpChunk.chunkID);
+                            table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
                         basechunkNum++;
                         basechunkSize += tmpChunk.saveSize;
                         LocalReduct += tmpChunk.chunkSize - tmpChunk.saveSize;
@@ -112,10 +112,27 @@ void TreeGreedy::ProcessTrace()
                     else
                     {
                         tmpChunk.deltaFlag = DELTA;
+                        // cout << "RestoreBasechunk.chunkID is " << RestoreBasechunk.chunkID << endl;
                         tmpChunk.basechunkID = RestoreBasechunk.chunkID;
                         // cout << "tmpChunk.savesize is " << tmpChunk.saveSize << endl;
                         if (tmpChunk.chunkSize > 60)
-                            table.SF_Insert(superfeature, tmpChunk.chunkID);
+                            table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
+                        // cout << "tmpChunk.chunkID is " << tmpChunk.chunkID << endl;
+                        // cout << "basechunkid is " << tmpChunk.basechunkID << endl;
+
+                        if (dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID < 0)
+                        {
+                            // cout << "here 1" << endl;
+                            dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID = tmpChunk.chunkID;
+                        }
+                        else
+                        {
+                            // cout << "here 2" << endl;
+                            int broID = dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID;
+                            while (dataWrite_->chunklist[broID].FirstBroID >= 0)
+                                broID = dataWrite_->chunklist[broID].FirstBroID;
+                            dataWrite_->chunklist[broID].FirstBroID = tmpChunk.chunkID;
+                        }
                         memcpy(tmpChunk.chunkPtr, deltachunk, tmpChunk.saveSize);
                         StatsDelta(tmpChunk);
                         free(deltachunk);
@@ -144,7 +161,7 @@ void TreeGreedy::ProcessTrace()
                     tmpChunk.basechunkID = -1;
                     tmpChunkid = tmpChunk.chunkID;
                     if (tmpChunk.chunkSize > 60)
-                        table.SF_Insert(superfeature, tmpChunk.chunkID);
+                        table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
                     basechunkNum++;
                     basechunkSize += tmpChunk.saveSize;
                     LocalReduct += tmpChunk.chunkSize - tmpChunk.saveSize;
@@ -179,83 +196,77 @@ void TreeGreedy::ProcessTrace()
     return;
 }
 
-Chunk_t TreeGreedy::xd3_recursive_restore(uint64_t BasechunkId, const Chunk_t Targetchunk)
+Chunk_t AllGreedy::FindBest(uint64_t BasechunkId, const Chunk_t &Targetchunk)
 {
     SetTime(startMiDelta);
-    std::vector<Chunk_t> chunkChain;
-    Chunk_t basechunk;
     Chunk_t resultchunk;
     size_t basechunk_size = 0;
-    SetTime(startIO);
-    chunkChain.push_back(dataWrite_->Get_Chunk_Info(BasechunkId));
-    SetTime(endIO);
-    SetTime(endIO, startIO, IOTime);
-    if (chunkChain.back().basechunkID < 0) // if only one layer
-        return chunkChain.back();
-
-    while (chunkChain.back().basechunkID > 0)
+    Chunk_t basechunk = dataWrite_->Get_Chunk_MetaInfo(BasechunkId);
+    if (basechunk.basechunkID < 0)
     {
         SetTime(startIO);
-        chunkChain.push_back(dataWrite_->Get_Chunk_Info(chunkChain.back().basechunkID));
+        basechunk = dataWrite_->Get_Chunk_Info(BasechunkId);
         SetTime(endIO);
-        IOTime += endIO - startIO;
+        SetTime(startIO, endIO, IOTime);
+        if (basechunk.FirstChildID < 0) // if only one layer
+            return basechunk;
     }
-
-    // first layer init
-    memcpy(CombinedBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
-    basechunk.chunkSize = chunkChain.back().chunkSize;
-    basechunk.chunkPtr = CombinedBuffer;
-    // greed init
-    memcpy(MinBaseBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
-    resultchunk.chunkSize = chunkChain.back().chunkSize;
+    else
+    {
+        basechunk = xd3_recursive_restore_BL_time(BasechunkId);
+        if (basechunk.FirstChildID < 0) // if only one layer
+            return basechunk;
+    }
+    memcpy(MinBaseBuffer, basechunk.chunkPtr, basechunk.chunkSize);
+    resultchunk.saveSize = INT_MAX;
+    resultchunk.chunkSize = basechunk.chunkSize;
     resultchunk.chunkPtr = MinBaseBuffer;
     resultchunk.loadFromDisk = false;
-    resultchunk.chunkID = chunkChain.back().chunkID;
-    xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, chunkChain.back().chunkPtr, chunkChain.back().chunkSize, &resultchunk.saveSize, deltaMaxChunkBuffer); //*** resultchunk.saveSize save tmpMinDeltaSize only here
+    resultchunk.chunkID = basechunk.chunkID;
+    resultchunk.FirstChildID = basechunk.FirstChildID;
 
-    if (chunkChain.back().loadFromDisk)
-        free(chunkChain.back().chunkPtr); // free base chunk memory
+    // xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk.chunkPtr, basechunk.chunkSize, &resultchunk.saveSize, deltaMaxChunkBuffer);
 
-    for (int i = chunkChain.size() - 2; i >= 0; i--)
+    if (basechunk.loadFromDisk)
+        free(basechunk.chunkPtr); // free base chunk memory
+
+    std::queue<uint64_t> toVisit;
+    toVisit.push(BasechunkId);
+
+    while (!toVisit.empty())
     {
-        uint8_t *basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
-                                            basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
-        if (chunkChain[i].chunkSize != basechunk_size) // bug
-        {
-            cout << "xd3 recursive restore error, chunk size mismatch" << endl;
-            cout << "id " << chunkChain[i].chunkID << " chunkChain[i].chunkSize : " << chunkChain[i].chunkSize << "chunkChain[i].saveSize: " << chunkChain[i].saveSize
-                 << " basechunksize " << basechunk.chunkSize << " restore basechunk_size : " << basechunk_size << endl;
-            basechunk.chunkSize = 0;
-            if (chunkChain[i].loadFromDisk)
-                free(chunkChain[i].chunkPtr);
-            free(basechunk_ptr);
-            return basechunk;
-        }
-        if (chunkChain[i].loadFromDisk)
-            free(chunkChain[i].chunkPtr);
-        // greedy updata
-        uint64_t tmpsaveSize = 0;
-        xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer);
-        if (tmpsaveSize < resultchunk.saveSize)
-        {
-            resultchunk.saveSize = tmpsaveSize;
-            resultchunk.chunkID = chunkChain[i].chunkID;
-            resultchunk.chunkSize = chunkChain[i].chunkSize;
-            memcpy(MinBaseBuffer, basechunk_ptr, basechunk_size);
-        }
-        // updata basechunk info
-        memcpy(CombinedBuffer, basechunk_ptr, basechunk_size);
-        basechunk.chunkSize = chunkChain[i].chunkSize;
-        free(basechunk_ptr);
+        uint64_t currentID = toVisit.front();
+        toVisit.pop();
 
-        basechunk_size = 0;
+        Chunk_t current = xd3_recursive_restore_BL_time(currentID);
+        size_t deltaSize = 0;
+        uint8_t *delta = xd3_encode_buffer(
+            Targetchunk.chunkPtr, Targetchunk.chunkSize,
+            current.chunkPtr, current.chunkSize,
+            &deltaSize, deltaMaxChunkBuffer);
+
+        if (deltaSize < resultchunk.saveSize)
+        {
+            resultchunk.chunkSize = current.chunkSize;
+            resultchunk.saveSize = deltaSize;
+            resultchunk.chunkID = currentID;
+            resultchunk.FirstChildID = current.FirstChildID;
+            memcpy(MinBaseBuffer, current.chunkPtr, current.chunkSize);
+        }
+
+        for (uint64_t childID = current.FirstChildID; childID != -1; childID = dataWrite_->chunklist[childID].FirstBroID)
+        {
+            toVisit.push(childID);
+        }
+        if (current.loadFromDisk)
+            free(current.chunkPtr); // free current chunk memory, but if it in pool or memory container, it will not be freed
     }
     SetTime(endMiDelta);
-    SetTime(endMiDelta, startMiDelta, MiDeltaTime);
+    SetTime(startMiDelta, endMiDelta, MiDeltaTime);
     return resultchunk;
 }
 
-uint8_t *TreeGreedy::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer)
+uint8_t *AllGreedy::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer)
 {
     SetTime(startMiEncode);
     size_t deltachunkSize;
@@ -272,6 +283,6 @@ uint8_t *TreeGreedy::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t 
         *deltaChunkBuffer_size = deltachunkSize;
     memcpy(tmpDeltaBuffer, tmpbuffer, deltachunkSize);
     SetTime(endMiEncode);
-    SetTime(endMiEncode, startMiEncode, EncodeTime);
+    SetTime(startMiEncode, endMiEncode, EncodeTime);
     return tmpDeltaBuffer;
 }
