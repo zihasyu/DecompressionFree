@@ -358,7 +358,7 @@ Chunk_t AbsMethod::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
     }
 
     // collect all delta chain blocks
-    while (chunkChain.back().basechunkID > 0)
+    while (chunkChain.back().basechunkID >= 0)
         chunkChain.push_back(dataWrite_->Get_Chunk_MetaInfo(chunkChain.back().basechunkID));
     // push the last chunk
     SetTime(startIO);
