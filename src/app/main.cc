@@ -149,14 +149,15 @@ int main(int argc, char **argv)
         absMethodObj = new TreeCut();
         break;
     }
-    case All_Greedy:
-    {
-        absMethodObj = new AllGreedy();
-        break;
-    }
+
     case Tree_Greedy:
     {
         absMethodObj = new TreeGreedy();
+        break;
+    }
+    case All_Greedy:
+    {
+        absMethodObj = new AllGreedy();
         break;
     }
     default:
