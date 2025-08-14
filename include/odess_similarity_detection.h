@@ -147,6 +147,7 @@ public:
   unordered_map<super_feature_t, uint64_t> Tree_SFIndex;
   uint64_t Tree_SF_Find(const SuperFeatures &superfeatures);
   void Tree_SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid);
+  void Tree_SF_ReWrite(const SuperFeatures &superfeatures, const uint64_t newid);
 
 private:
   // unordered_map<super_feature_t, unordered_set<string>> feature_key_table_;

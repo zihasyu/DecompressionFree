@@ -352,6 +352,7 @@ enum METHOD_TYPE
     Tree_Cut,
     Tree_Greedy,
     All_Greedy,
+    Tree_Cut_Layer
 };
 
 enum DELTA_TYPE

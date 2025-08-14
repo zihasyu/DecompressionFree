@@ -72,7 +72,7 @@ void TreeCutLayer::ProcessTrace()
                 // unique chunk & delta chunk
                 {
                     auto basechunkInfo = dataWrite_->Get_Chunk_MetaInfo(basechunkid);
-                    auto RestoreBasechunk = CutGreedy(basechunkid, tmpChunk);
+                    auto RestoreBasechunk = CutGreedy(basechunkid, tmpChunk, superfeature);
                     uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
                     if (RestoreBasechunk.loadFromDisk)
                         free(RestoreBasechunk.chunkPtr);
@@ -196,7 +196,7 @@ void TreeCutLayer::ProcessTrace()
     return;
 }
 
-Chunk_t TreeCutLayer::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
+Chunk_t TreeCutLayer::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, SuperFeatures sfs)
 {
     SetTime(startMiDelta);
     Chunk_t resultchunk;
@@ -239,6 +239,7 @@ Chunk_t TreeCutLayer::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
     uint64_t tmpsaveSize = 0;
     while (!end && resultchunk.FirstChildID >= 0)
     {
+        uint64_t tmpFatherID = resultchunk.chunkID;
         uint64_t tmpChildID = resultchunk.chunkID;
 
         SetTime(startIO);
@@ -281,12 +282,15 @@ Chunk_t TreeCutLayer::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
                 free(TmpBroChunk.chunkPtr); // free bro chunk memory
             free(basechunk_ptr);
         }
+        StatsFit(tmpFatherID, resultchunk.chunkID, sfs);
         if (resultchunk.chunkID == tmpChildID)
+        {
             end = true; // no more child or bro
+        }
         else
         {
             basechunk.chunkSize = resultchunk.chunkSize;
-            memcpy(CombinedBuffer, resultchunk.chunkPtr, resultchunk.chunkSize);
+            memcpy(CombinedBuffer, resultchunk.chunkPtr, resultchunk.chunkSize); // CombineBuffer is FatherNode
         }
     }
     SetTime(endMiDelta);
@@ -313,4 +317,21 @@ uint8_t *TreeCutLayer::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_
     SetTime(endMiEncode);
     SetTime(startMiEncode, endMiEncode, EncodeTime);
     return tmpDeltaBuffer;
+}
+
+void TreeCutLayer::StatsFit(uint64_t FatherID, uint64_t FitID, SuperFeatures sfs)
+{
+    if (dataWrite_->chunklist[FatherID].BeforeFit == FitID)
+    {
+        dataWrite_->chunklist[FatherID].FitCount++;
+    }
+    else
+    {
+        dataWrite_->chunklist[FatherID].BeforeFit = FitID;
+        dataWrite_->chunklist[FatherID].FitCount = 1;
+    }
+    if (dataWrite_->chunklist[FatherID].FitCount > 4)
+    {
+        table.Tree_SF_ReWrite(sfs, FitID);
+    }
 }

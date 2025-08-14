@@ -17,6 +17,7 @@
 #include "odessMLLess4.h"
 #include "Tree/TreeCut.h"
 #include "Tree/TreeGreedy.h"
+#include "Tree/TreeCutLayer.h"
 #include "AllGreedy.h"
 
 #endif

@@ -160,6 +160,11 @@ int main(int argc, char **argv)
         absMethodObj = new AllGreedy();
         break;
     }
+    case Tree_Cut_Layer:
+    {
+        absMethodObj = new TreeCutLayer();
+        break;
+    }
     default:
         break;
     }

@@ -15,10 +15,11 @@ datasets=(
 
 declare -A methods
 methods=(
-  ["Odess"]="-c 1 -m 3"
-  ["TreeCut"]="-c 1 -m 12"
-  ["TreeGreedy"]="-c 1 -m 13"
+  # ["Odess"]="-c 1 -m 3"
+  # ["TreeCut"]="-c 1 -m 12"
+  # ["TreeGreedy"]="-c 1 -m 13"
   # ["AllGreedy"]="-c 1 -m 14"
+    ["TreeCutLayer"]="-c 1 -m 15"
   # ["OdessMiBL"]="-c 1 -m 6"
   # ["OdessMiBL2"]="-c 1 -m 8"
   # ["OdessMiBL3"]="-c 1 -m 9"
@@ -27,13 +28,13 @@ methods=(
 )
 
 selected_datasets=(
-  # "automake"
+  "automake"
   # "bash"
   # "coreutils"
   # "fdisk"
-  # "glibc"
-  # "smalltalk"
-  # "gcc"
+  "glibc"
+  "smalltalk"
+  "gcc"
   # "chromium"
   "linux"
 )
