@@ -157,12 +157,17 @@ int main(int argc, char **argv)
     }
     case All_Greedy:
     {
-        absMethodObj = new AllGreedy();
+        absMethodObj = new AllGreedy();//14
         break;
     }
     case Tree_Cut_Layer:
     {
-        absMethodObj = new TreeCutLayer();
+        absMethodObj = new TreeCutLayer();//15
+        break;
+    }
+    case Tree_Cache:
+    {
+        absMethodObj = new TreeCache();
         break;
     }
     default:
