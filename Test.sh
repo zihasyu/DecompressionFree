@@ -11,15 +11,19 @@ datasets=(
   ["gcc"]="/mnt/dataset2/GNU_GCC/gcc-packed/tar 117"
   ["chromium"]="/mnt/dataset2/chromium 107"
   ["linux"]="/mnt/dataset2/linux 270"
+  ["cassandra"]="/mnt/dataset2/cassandra 97"
+  ["vmdk"]="/mnt/dataset2/vmdk 8"
+  ["WEB"]="/mnt/dataset2/WEB 20"
 )
 
 declare -A methods
 methods=(
   # ["Odess"]="-c 1 -m 3"
   # ["TreeCut"]="-c 1 -m 12"
-  # ["TreeGreedy"]="-c 1 -m 13"
+  # ["Greedy"]="-c 1 -m 13"
   # ["AllGreedy"]="-c 1 -m 14"
     ["TreeCutLayer"]="-c 1 -m 15"
+    #  ["TreeCache"]="-c 1 -m 16"
   # ["OdessMiBL"]="-c 1 -m 6"
   # ["OdessMiBL2"]="-c 1 -m 8"
   # ["OdessMiBL3"]="-c 1 -m 9"
@@ -28,15 +32,18 @@ methods=(
 )
 
 selected_datasets=(
-  "automake"
+  # "automake"
   # "bash"
   # "coreutils"
   # "fdisk"
-  "glibc"
-  "smalltalk"
-  "gcc"
+  # "glibc"
+  # "smalltalk"
+  # "gcc"
   # "chromium"
   "linux"
+  # "cassandra"
+  # "vmdk"
+  # "WEB"
 )
 
 for method_name in "${!methods[@]}"; do

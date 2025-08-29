@@ -35,12 +35,12 @@ void TreeCache::ProcessTrace()
         if (recieveQueue->done_ && recieveQueue->IsEmpty())
         {
             cout << "Version " << ads_Version
-            << " Cache Stats - Hits: " << cacheHitCount
-            << " Accesses: " << cacheAccessCount 
-            << " Hit Rate: " << (float)cacheHitCount/cacheAccessCount*100 << "%" 
-            << endl;
+                 << " Cache Stats - Hits: " << cacheHitCount
+                 << " Accesses: " << cacheAccessCount
+                 << " Hit Rate: " << (float)cacheHitCount / cacheAccessCount * 100 << "%"
+                 << endl;
 
-            //chunkCache.clear();
+            // chunkCache.clear();
 
             cacheHitCount = 0;
             cacheAccessCount = 0;
@@ -344,7 +344,8 @@ void TreeCache::StatsFit(uint64_t FatherID, uint64_t FitID, SuperFeatures sfs)
     }
     if (dataWrite_->chunklist[FatherID].FitCount > 4)
     {
-        table.Tree_SF_ReWrite(sfs, FitID);
+        if (table.Tree_SF_Find(sfs) == FatherID)
+            table.Tree_SF_ReWrite(sfs, FitID);
     }
 }
 
@@ -352,12 +353,13 @@ Chunk_t TreeCache::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
 {
     std::vector<uint8_t> cachedData;
     cacheAccessCount++;
-    if(chunkCache.tryGet(BasechunkId, cachedData)){
+    if (chunkCache.tryGet(BasechunkId, cachedData))
+    {
         cacheHitCount++;
         Chunk_t cachedChunk;
         cachedChunk.chunkID = BasechunkId;
         cachedChunk.chunkSize = cachedData.size();
-        cachedChunk.chunkPtr = (uint8_t*)malloc(cachedData.size());
+        cachedChunk.chunkPtr = (uint8_t *)malloc(cachedData.size());
         cachedChunk.FirstChildID = dataWrite_->chunklist[BasechunkId].FirstChildID;
         memcpy(cachedChunk.chunkPtr, cachedData.data(), cachedData.size());
         cachedChunk.loadFromDisk = false;
@@ -431,8 +433,8 @@ Chunk_t TreeCache::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
     // SetTime(endMiDelta);
     // MiDeltaTime += endMiDelta - startMiDelta;
     int hotThreshold = 2;
-    if(dataWrite_->chunklist[BasechunkId].basechunkID > 0 && chunkHotMap[BasechunkId] >= hotThreshold)
+    if (dataWrite_->chunklist[BasechunkId].basechunkID > 0 && chunkHotMap[BasechunkId] >= hotThreshold)
         chunkCache.insert(BasechunkId, std::vector<uint8_t>(basechunk.chunkPtr, basechunk.chunkPtr + basechunk.chunkSize));
 
-    return basechunk;  
+    return basechunk;
 }
