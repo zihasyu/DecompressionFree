@@ -64,7 +64,8 @@ void TreeCutLayer::ProcessTrace()
                     endSF = std::chrono::high_resolution_clock::now();
                     SFTime += (endSF - startSF);
 
-                    basechunkid = table.Tree_SF_Find(superfeature);
+                    auto findResult = table.Tree_SF_Find(superfeature);
+                    basechunkid = findResult.first;
                     // auto ret = table.GetSimilarRecordsKeys(tmpChunkHash);
                 }
 

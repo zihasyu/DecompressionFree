@@ -145,7 +145,7 @@ public:
   void Less4_SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid);
   // Tree Frature->Rootnode
   unordered_map<super_feature_t, uint64_t> Tree_SFIndex;
-  uint64_t Tree_SF_Find(const SuperFeatures &superfeatures);
+  std::pair<uint64_t, super_feature_t> Tree_SF_Find(const SuperFeatures &superfeatures);
   void Tree_SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid);
   void Tree_SF_ReWrite(const SuperFeatures &superfeatures, const uint64_t newid);
 

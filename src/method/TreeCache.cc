@@ -28,19 +28,41 @@ void TreeCache::ProcessTrace()
     string tmpChunkHash;
     string tmpChunkContent;
     SuperFeatures superfeature;
+
+    //std::unordered_map<super_feature_t, int> superFeatureHitMap;
+    std::vector<std::pair<int, int>> sf_access_seq;
+    std::unordered_map<super_feature_t, int> sf_id_map;
+    int sf_id_counter = 1;
+    int access_counter = 0;
+
     while (true)
     {
         string hashStr;
         hashStr.assign(CHUNK_HASH_SIZE, 0);
         if (recieveQueue->done_ && recieveQueue->IsEmpty())
         {
-            cout << "Version " << ads_Version
-            << " Cache Stats - Hits: " << cacheHitCount
-            << " Accesses: " << cacheAccessCount 
-            << " Hit Rate: " << (float)cacheHitCount/cacheAccessCount*100 << "%" 
-            << endl;
+            if(ads_Version > 0){
+                cout << "Version " << ads_Version
+                << " Cache Stats - Hits: " << cacheHitCount
+                << " Accesses: " << cacheAccessCount 
+                << " Hit Rate: " << (float)cacheHitCount/cacheAccessCount*100 << "%" 
+                << endl;
 
-            //chunkCache.clear();
+                std::string folder = "sf_csv";
+                std::filesystem::create_directory(folder);
+                std::string filename = folder + "/sf_access_seq_v" + std::to_string(ads_Version) + ".csv";
+                std::ofstream outFile(filename);
+                outFile << "AccessIndex,SF_ID\n";
+                for(const auto& p : sf_access_seq){
+                    outFile << p.first << "," << p.second << "\n";
+                }
+                outFile.close();
+
+                sf_access_seq.clear();
+                sf_id_map.clear();
+                sf_id_counter = 1;
+                access_counter = 0;
+            }
 
             cacheHitCount = 0;
             cacheAccessCount = 0;
@@ -76,8 +98,19 @@ void TreeCache::ProcessTrace()
                     endSF = std::chrono::high_resolution_clock::now();
                     SFTime += (endSF - startSF);
 
-                    basechunkid = table.Tree_SF_Find(superfeature);
+                    auto findResult = table.Tree_SF_Find(superfeature);
+                    basechunkid = findResult.first;
+                    super_feature_t hitSF = findResult.second;
+                    // if(basechunkid != -1){
+                    //     superFeatureHitMap[hitSF]++;
+                    // }
                     // auto ret = table.GetSimilarRecordsKeys(tmpChunkHash);
+
+                    access_counter++;
+                    if(sf_id_map.count(hitSF) == 0){
+                        sf_id_map[hitSF] = sf_id_counter++;
+                    }
+                    sf_access_seq.emplace_back(access_counter, sf_id_map[hitSF]);
                 }
 
                 if (basechunkid != -1)
@@ -204,6 +237,7 @@ void TreeCache::ProcessTrace()
             logicalchunkSize += tmpChunk.chunkSize;
         }
     }
+
     recieveQueue->done_ = false;
     return;
 }
@@ -344,6 +378,7 @@ void TreeCache::StatsFit(uint64_t FatherID, uint64_t FitID, SuperFeatures sfs)
     }
     if (dataWrite_->chunklist[FatherID].FitCount > 4)
     {
+        
         table.Tree_SF_ReWrite(sfs, FitID);
     }
 }

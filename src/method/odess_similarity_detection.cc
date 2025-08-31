@@ -252,18 +252,18 @@ uint64_t FeatureIndexTable::Log2_SF_Find(const SuperFeatures &superfeatures)
   return -1;
 }
 
-uint64_t FeatureIndexTable::Tree_SF_Find(const SuperFeatures &superfeatures)
+std::pair<uint64_t, super_feature_t> FeatureIndexTable::Tree_SF_Find(const SuperFeatures &superfeatures)
 {
   for (const super_feature_t &sf : superfeatures)
   {
     auto it = Tree_SFIndex.find(sf);
     if (it != Tree_SFIndex.end())
     {
-      return it->second;
+      return {it->second, sf};
     }
   }
   // return -1 if not found, uint64_t's MAX value
-  return -1;
+  return {-1,0};
 }
 void FeatureIndexTable::Tree_SF_ReWrite(const SuperFeatures &superfeatures, const uint64_t newid)
 {
