@@ -23,6 +23,8 @@ private:
     size_t cacheHitCount = 0;
     size_t cacheAccessCount = 0;
     std::unordered_map<uint64_t, int> chunkHotMap;
+    std::unordered_map<super_feature_t, int> sf_id_map;
+    int sf_id_counter;    
 
 public:
     TreeCache();

@@ -1,7 +1,7 @@
 #include "../../include/Tree/TreeCache.h"
 
 TreeCache::TreeCache()
-    : chunkCache(1024, 64)
+    : chunkCache(1024, 64) , sf_id_counter(1)
 {
     // cout << " Chunk_t is " << sizeof(Chunk_t) << " Chunk_t_ori is " << sizeof(Chunk_t_odess) << " <super_feature_t, unordered_set<string>> is " << sizeof(super_feature_t);
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
@@ -31,9 +31,10 @@ void TreeCache::ProcessTrace()
 
     //std::unordered_map<super_feature_t, int> superFeatureHitMap;
     std::vector<std::pair<int, int>> sf_access_seq;
-    std::unordered_map<super_feature_t, int> sf_id_map;
-    int sf_id_counter = 1;
+    //std::unordered_map<super_feature_t, int> sf_id_map;
+    //int sf_id_counter = 1;
     int access_counter = 0;
+    cout << "sf_id_map.size() before version1: " << sf_id_map.size() << endl;
 
     while (true)
     {
@@ -59,8 +60,8 @@ void TreeCache::ProcessTrace()
                 outFile.close();
 
                 sf_access_seq.clear();
-                sf_id_map.clear();
-                sf_id_counter = 1;
+                //sf_id_map.clear();
+                //sf_id_counter = 1;
                 access_counter = 0;
             }
 
@@ -106,11 +107,13 @@ void TreeCache::ProcessTrace()
                     // }
                     // auto ret = table.GetSimilarRecordsKeys(tmpChunkHash);
 
-                    access_counter++;
-                    if(sf_id_map.count(hitSF) == 0){
+                    if(basechunkid != -1)
+                        access_counter++;
+                    if(sf_id_map.count(hitSF) == 0 && basechunkid != -1){
                         sf_id_map[hitSF] = sf_id_counter++;
                     }
-                    sf_access_seq.emplace_back(access_counter, sf_id_map[hitSF]);
+                    if(basechunkid != -1)
+                        sf_access_seq.emplace_back(access_counter, sf_id_map[hitSF]);
                 }
 
                 if (basechunkid != -1)

@@ -35,7 +35,7 @@ run_method(){
 }
 
 
-run_method /mnt/dataset2/automake_tarballs _automake 100
+# run_method /mnt/dataset2/automake_tarballs _automake 100
 # run_method /mnt/dataset2/bash_tarballs _bash 44
 # run_method /mnt/dataset2/coreutils_tarballs _coreutils 28
 # run_method /mnt/dataset2/fdisk_tarballs _fdisk 22
@@ -52,4 +52,4 @@ run_method /mnt/dataset2/automake_tarballs _automake 100
 # run_method /mnt/dataset2/ThunderbirdTar _Thunderbird 240
 # run_method /mnt/dataset2/vmdk _Vmdk 100
 
-# run_method /mnt/dataset2/linux _linux 200
+run_method /mnt/dataset2/linux _linux 200
