@@ -20,5 +20,5 @@
 #include "Tree/TreeCutLayer.h"
 #include "AllGreedy.h"
 #include "Tree/TreeCache.h"
-
+#include "Tree/TreeCache2.h"
 #endif
