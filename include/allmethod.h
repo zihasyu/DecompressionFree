@@ -20,5 +20,6 @@
 #include "Tree/TreeCutLayer.h"
 #include "AllGreedy.h"
 #include "Tree/TreeCache.h"
+#include "Tree/TreePre.h"
 
 #endif

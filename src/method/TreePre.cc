@@ -1,7 +1,7 @@
-#include "../../include/Tree/TreeCache.h"
+#include "../../include/Tree/TreePre.h"
 
-TreeCache::TreeCache()
-    : chunkCache(1024, 64) , sf_id_counter(1)
+TreePre::TreePre()
+    : chunkCache(1024, 64)
 {
     // cout << " Chunk_t is " << sizeof(Chunk_t) << " Chunk_t_ori is " << sizeof(Chunk_t_odess) << " <super_feature_t, unordered_set<string>> is " << sizeof(super_feature_t);
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
@@ -11,9 +11,12 @@ TreeCache::TreeCache()
     SFindex = new unordered_map<string, vector<int>>[FINESSE_SF_NUM];
     tmpDeltaBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
     MinBaseBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
+
+    stop_prefetch = false;
+    prefetch_thread = std::thread(&TreePre::PrefetchThreadFunc, this);
 }
 
-TreeCache::~TreeCache()
+TreePre::~TreePre()
 {
     free(lz4ChunkBuffer);
     free(deltaMaxChunkBuffer);
@@ -21,17 +24,20 @@ TreeCache::~TreeCache()
     free(hashBuf);
     free(tmpDeltaBuffer);
     free(MinBaseBuffer);
+
+    stop_prefetch = true;
+    prefetch_cv.notify_all();
+    if(prefetch_thread.joinable())
+        prefetch_thread.join();
 }
 
-void TreeCache::ProcessTrace()
+void TreePre::ProcessTrace()
 {
     string tmpChunkHash;
     string tmpChunkContent;
     SuperFeatures superfeature;
 
-    //std::unordered_map<super_feature_t, int> superFeatureHitMap;
-    // std::vector<std::pair<int, int>> sf_access_seq;
-    // int access_counter = 0;
+    uint64_t lastChunkId = UINT64_MAX;
 
     while (true)
     {
@@ -39,29 +45,10 @@ void TreeCache::ProcessTrace()
         hashStr.assign(CHUNK_HASH_SIZE, 0);
         if (recieveQueue->done_ && recieveQueue->IsEmpty())
         {
-            // if(ads_Version >= 0){
-            //     cout << "Version " << ads_Version
-            //     << " Cache Stats - Hits: " << cacheHitCount
-            //     << " Accesses: " << cacheAccessCount 
-            //     << " Hit Rate: " << (float)cacheHitCount/cacheAccessCount*100 << "%" 
-            //     << endl;
+            Prev_Chunk_seq_map = std::move(Chunk_seq_map);
+            Chunk_seq_map.clear();
 
-            //     std::string folder = "sf_csv";
-            //     std::filesystem::create_directory(folder);
-            //     std::string filename = folder + "/sf_access_seq_v" + std::to_string(ads_Version) + ".csv";
-            //     std::ofstream outFile(filename);
-            //     outFile << "AccessIndex,SF_ID\n";
-            //     for(const auto& p : sf_access_seq){
-            //         outFile << p.first << "," << p.second << "\n";
-            //     }
-            //     outFile.close();
-
-            //     sf_access_seq.clear();
-            //     access_counter = 0;
-            // }
-
-            // cacheHitCount = 0;
-            // cacheAccessCount = 0;
+            lastChunkId = UINT64_MAX;
 
             // outputMQ_->done_ = true;
             recieveQueue->done_ = false;
@@ -96,22 +83,13 @@ void TreeCache::ProcessTrace()
 
                     auto findResult = table.Tree_SF_Find(superfeature);
                     basechunkid = findResult.first;
+                    if(basechunkid != -1)
+                        dataWrite_->chunklist[basechunkid].isRoot = true;
                     super_feature_t hitSF = findResult.second;
-                    // if(basechunkid != -1){
-                    //     superFeatureHitMap[hitSF]++;
-                    // }
-                    // auto ret = table.GetSimilarRecordsKeys(tmpChunkHash);
 
-                    // Chunk_t basechunk;
-                    // if(basechunkid != -1)
-                    //     basechunk = dataWrite_->Get_Chunk_MetaInfo(basechunkid);
-                    // if(basechunkid != -1 && basechunk.basechunkID >= 0)
-                    //     access_counter++;
-                    // if(sf_id_map.count(basechunkid) == 0 && basechunkid != -1 && basechunk.basechunkID >= 0){
-                    //     sf_id_map[basechunkid] = sf_id_counter++;
-                    // }
-                    // if(basechunkid != -1 && basechunk.basechunkID >= 0)
-                    //     sf_access_seq.emplace_back(access_counter, sf_id_map[basechunkid]);
+                    if(Prev_Chunk_seq_map.count(basechunkid)){
+                        RequestPrefetch(basechunkid);
+                    }
                 }
 
                 if (basechunkid != -1)
@@ -230,8 +208,21 @@ void TreeCache::ProcessTrace()
                 PrevDedupChunkid = findRes;
                 DedupReduct += tmpChunk.chunkSize;
             }
-            if (tmpChunk.HeaderFlag == 0)
+            if (tmpChunk.HeaderFlag == 0){
                 dataWrite_->Recipe_Insert(tmpChunk.chunkID);
+                if(lastChunkId != UINT64_MAX){
+                    uint64_t lastChunkRootId = lastChunkId;
+                    uint64_t chunkRootId = tmpChunk.chunkID;
+                    while(dataWrite_->chunklist[lastChunkRootId].basechunkID >= 0 && dataWrite_->chunklist[lastChunkRootId].isRoot != true){
+                        lastChunkRootId = dataWrite_->chunklist[lastChunkRootId].basechunkID;
+                    }
+                    while(dataWrite_->chunklist[chunkRootId].basechunkID >= 0 && dataWrite_->chunklist[chunkRootId].isRoot != true){
+                        chunkRootId = dataWrite_->chunklist[chunkRootId].basechunkID;
+                    }
+                    Chunk_seq_map[lastChunkRootId] = chunkRootId;
+                    lastChunkId = tmpChunk.chunkID;
+                }
+            }
             else
                 dataWrite_->Recipe_Header_Insert(tmpChunk.chunkID);
             logicalchunkNum++;
@@ -243,7 +234,7 @@ void TreeCache::ProcessTrace()
     return;
 }
 
-Chunk_t TreeCache::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, SuperFeatures sfs)
+Chunk_t TreePre::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, SuperFeatures sfs)
 {
     SetTime(startMiDelta);
     Chunk_t resultchunk;
@@ -345,7 +336,7 @@ Chunk_t TreeCache::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, Su
     return resultchunk;
 }
 
-uint8_t *TreeCache::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer)
+uint8_t *TreePre::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer)
 {
     SetTime(startMiEncode);
     size_t deltachunkSize;
@@ -366,7 +357,7 @@ uint8_t *TreeCache::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t t
     return tmpDeltaBuffer;
 }
 
-void TreeCache::StatsFit(uint64_t FatherID, uint64_t FitID, SuperFeatures sfs)
+void TreePre::StatsFit(uint64_t FatherID, uint64_t FitID, SuperFeatures sfs)
 {
     if (dataWrite_->chunklist[FatherID].BeforeFit == FitID)
     {
@@ -378,13 +369,14 @@ void TreeCache::StatsFit(uint64_t FatherID, uint64_t FitID, SuperFeatures sfs)
         dataWrite_->chunklist[FatherID].FitCount = 1;
     }
     if (dataWrite_->chunklist[FatherID].FitCount > 4)
-    {
-        
+    {        
         table.Tree_SF_ReWrite(sfs, FitID);
+        dataWrite_->chunklist[FatherID].isRoot = false;
+        dataWrite_->chunklist[FitID].isRoot = true;
     }
 }
 
-Chunk_t TreeCache::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
+Chunk_t TreePre::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
 {
     std::vector<uint8_t> cachedData;
     cacheAccessCount++;
@@ -471,4 +463,43 @@ Chunk_t TreeCache::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
         chunkCache.insert(BasechunkId, std::vector<uint8_t>(basechunk.chunkPtr, basechunk.chunkPtr + basechunk.chunkSize));
 
     return basechunk;  
+}
+
+void TreePre::PrefetchThreadFunc(){
+    while(!stop_prefetch){
+        uint64_t chunk_id = UINT64_MAX;
+        {
+            std::unique_lock<std::mutex> lock(prefetch_mutex);
+            prefetch_cv.wait(lock, [this]{ return !prefetch_queue.empty() || stop_prefetch;});
+            if(stop_prefetch) break;
+            chunk_id = prefetch_queue.front();
+            prefetch_queue.pop();
+        }
+
+        int cnt = 0;
+        uint64_t cur = chunk_id;
+        while(cnt < 4 && cur != UINT64_MAX){
+            if(cur < dataWrite_->chunklist.size()){
+                Chunk_t chunk = dataWrite_->Get_Chunk_Info(cur);
+
+                if(chunk.chunkPtr && chunk.loadFromDisk){
+                    free(chunk.chunkPtr);
+                }
+            }
+            auto it = Prev_Chunk_seq_map.find(cur);
+            if(it != Prev_Chunk_seq_map.end())
+                cur = it->second;
+            else
+                break;
+            cnt++;
+        }
+    }
+}
+
+void TreePre::RequestPrefetch(uint64_t chunk_id){
+    {
+        std::lock_guard<std::mutex> lock(prefetch_mutex);
+        prefetch_queue.push(chunk_id);
+    }
+    prefetch_cv.notify_one();
 }

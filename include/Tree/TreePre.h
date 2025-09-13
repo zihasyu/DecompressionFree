@@ -1,19 +1,17 @@
-#ifndef TREE_CACHE_H
-#define TREE_CACHE_H
+#ifndef TREE_PRE_H
+#define TREE_PRE_H
 
 #include "../absmethod.h"
 #include "../odess_similarity_detection.h"
-
 #include "../lruCache.h"
-
 #include <unordered_map>
 
 using namespace std;
 
-class TreeCache : public AbsMethod
+class TreePre : public AbsMethod
 {
 private:
-    string myName_ = "TreeCache";
+    string myName_ = "TreePre";
     int PrevDedupChunkid = -1;
     int Version = 0;
     uint8_t *MinBaseBuffer = nullptr;
@@ -23,12 +21,22 @@ private:
     size_t cacheHitCount = 0;
     size_t cacheAccessCount = 0;
     std::unordered_map<uint64_t, int> chunkHotMap;
-    std::unordered_map<uint64_t, int> sf_id_map;
-    int sf_id_counter;    
+
+    std::unordered_map<uint64_t,uint64_t> Prev_Chunk_seq_map;
+    std::unordered_map<uint64_t,uint64_t> Chunk_seq_map; 
+
+    std::thread prefetch_thread;
+    std::atomic<bool> stop_prefetch{false};
+    std::queue<uint64_t> prefetch_queue;
+    std::mutex prefetch_mutex;
+    std::condition_variable prefetch_cv;
+
+    void PrefetchThreadFunc();
+    void RequestPrefetch(uint64_t chunk_id);
 
 public:
-    TreeCache();
-    ~TreeCache();
+    TreePre();
+    ~TreePre();
     void ProcessTrace();
     Chunk_t CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, SuperFeatures sfs);
     uint8_t *xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer);

@@ -170,6 +170,11 @@ int main(int argc, char **argv)
         absMethodObj = new TreeCache();
         break;
     }
+    case Tree_Pre:
+    {
+        absMethodObj = new TreePre();   //17
+        break;
+    }
     default:
         break;
     }

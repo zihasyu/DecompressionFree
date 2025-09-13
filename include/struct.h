@@ -33,6 +33,7 @@ typedef struct
     bool HeaderFlag = false;      // 1 byte
     bool NameExist = true;        // 1 byte
     // 1 byte padding to align the structure to 8 bytes boundary
+    bool isRoot = false;
 } Chunk_t;
 
 typedef struct
