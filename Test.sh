@@ -41,10 +41,10 @@ selected_datasets=(
   # "smalltalk"
   # "gcc"
   # "chromium"
-  "linux"
+  # "linux"
   # "cassandra"
   # "vmdk"
-  # "WEB"
+  "WEB"
 )
 
 for method_name in "${!methods[@]}"; do

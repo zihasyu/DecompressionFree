@@ -74,6 +74,7 @@ private:
     uint8_t *lz4SafeChunkBuffer;
 
 public:
+    std::mutex chunklist_mutex;
     void SetFilename(string name);
     vector<Chunk_t> chunklist;
     void writing();
@@ -94,7 +95,7 @@ public:
     int Get_Chunk_Num();
     int Get_Container_Num(Chunk_t chunk);
     Chunk_t Get_Chunk_Info(int id);
-
+    Chunk_t Get_Chunk_Info_thread(int id);
     bool Recipe_Insert(uint64_t chunkID);
     bool Recipe_Header_Insert(uint64_t chunkID);
     void restoreFile(string fileName);

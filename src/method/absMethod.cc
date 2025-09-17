@@ -276,7 +276,7 @@ uint8_t *AbsMethod::xd3_decode(const uint8_t *in, size_t in_size, const uint8_t 
     auto ret = xd3_decode_memory(in, in_size, ref, ref_size, DecodeBuffer, &sz, max_buffer_size, 0);
     if (ret != 0)
     {
-        cout << "decode error" << endl;
+        cout << "ads decode error" << endl;
         cout << "ret code is " << ret << endl;
         const char *errMsg = xd3_strerror(ret);
         if (errMsg != nullptr)
