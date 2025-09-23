@@ -205,6 +205,43 @@ void TreeCache::ProcessTrace()
         }
     }
     recieveQueue->done_ = false;
+
+    int totalRoots = 0;
+    int chainRoots = 0;
+    int dotRoots = 0;
+    for(size_t i = 0; i < dataWrite_->chunklist.size(); i++){
+        const auto& node = dataWrite_->chunklist[i];
+        if(node.basechunkID == -1){
+            totalRoots++;
+            if(node.FirstChildID < 0){
+                dotRoots++;
+                continue;
+            }
+
+            int cur = node.chunkID;
+            bool isChain = true;
+            while(dataWrite_->chunklist[cur].FirstChildID >= 0){
+                int child = dataWrite_->chunklist[cur].FirstChildID;
+                if(dataWrite_->chunklist[child].FirstBroID >= 0){
+                    isChain = false;
+                    break;
+                }
+                cur = child;
+            }
+            if(isChain) chainRoots++;
+        }
+    }
+    if(totalRoots > 0){
+        double chainPercent = 100.0 * chainRoots / totalRoots;
+        double dotPercent = 100.0 * dotRoots / totalRoots;
+        cout << "链的数量：" << chainRoots << " / 总树数：" << totalRoots
+             << "，链占比：" << chainPercent << "%" << endl;
+        cout << "点的数量：" << dotRoots << " / 总树数：" << totalRoots
+             << "，点占比：" << dotPercent << "%" << endl;
+    }else{
+        cout << "没有根节点" << endl;
+    }
+
     return;
 }
 
