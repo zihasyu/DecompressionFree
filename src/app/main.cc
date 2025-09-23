@@ -248,6 +248,8 @@ int main(int argc, char **argv)
             absMethodObj->Version_log(TimeTmp, chunkerObj->ChunkTime.count());
     }
 
+    absMethodObj->paintCDF();
+
     auto endsum = std::chrono::high_resolution_clock::now();
     auto sumTime = (endsum - startsum);
     auto sumTimeInSeconds = std::chrono::duration_cast<std::chrono::seconds>(endsum - startsum).count();

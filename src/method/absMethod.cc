@@ -1142,3 +1142,45 @@ void AbsMethod::Version_log(double time, double chunktime)
     preuniquechunkSize = uniquechunkSize;
     preSFTime = SFTime;
 }
+
+void AbsMethod::paintCDF(){
+    std::string folder = "cdf_sf";
+    std::filesystem::create_directory(folder);
+
+    for(const auto& kv : table.Tree_SFIndex){
+        const super_feature_t sf = kv.first;
+        int rootID = kv.second;
+
+        std::vector<int> tree_chunks;
+        std::queue<int> q;
+        q.push(rootID);
+        while(!q.empty()){
+            int cid = q.front(); q.pop();
+            tree_chunks.push_back(cid);
+            int child = dataWrite_->chunklist[cid].FirstChildID;
+            while(child >= 0){
+                q.push(child);
+                child = dataWrite_->chunklist[child].FirstBroID;
+            }
+        }
+
+        if(tree_chunks.size() < 100) continue;
+
+        std::vector<int> basechunk_count(tree_chunks.size(), 0);
+        std::unordered_map<int, int> id2idx;
+        for(size_t i = 0; i < tree_chunks.size(); ++i)
+            id2idx[tree_chunks[i]] = i;
+
+        for(int cid : tree_chunks){
+            int child = dataWrite_->chunklist[cid].FirstChildID;
+            while(child >= 0){
+                if(id2idx.count(cid)) basechunk_count[id2idx[cid]]++;
+                child = dataWrite_->chunklist[child].FirstBroID;
+            }
+        }
+
+        std::ofstream ofs(folder + "/cdf_sf_" + std::to_string(rootID) + ".txt");
+        for(int cnt : basechunk_count) ofs << cnt << "\n";
+        ofs.close();
+    }
+}

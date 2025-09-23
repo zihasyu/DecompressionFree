@@ -175,5 +175,6 @@ public:
         }
         cout << endl; // 最后添加一个换行符，确保后续输出正常
     }
+    void paintCDF();
 };
 #endif

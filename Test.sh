@@ -23,8 +23,8 @@ methods=(
   # ["Greedy"]="-c 1 -m 13"
   # ["AllGreedy"]="-c 1 -m 14"
     # ["TreeCutLayer"]="-c 1 -m 15"
-    #  ["TreeCache"]="-c 1 -m 16"
-     ["TreePre"]="-c 1 -m 17"
+     ["TreeCache"]="-c 1 -m 16"
+    #  ["TreePre"]="-c 1 -m 17"
   # ["OdessMiBL"]="-c 1 -m 6"
   # ["OdessMiBL2"]="-c 1 -m 8"
   # ["OdessMiBL3"]="-c 1 -m 9"
@@ -33,7 +33,7 @@ methods=(
 )
 
 selected_datasets=(
-  # "automake"
+  "automake"
   # "bash"
   # "coreutils"
   # "fdisk"
@@ -44,7 +44,7 @@ selected_datasets=(
   # "linux"
   # "cassandra"
   # "vmdk"
-  "WEB"
+  # "WEB"
 )
 
 for method_name in "${!methods[@]}"; do
