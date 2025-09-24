@@ -679,6 +679,7 @@ void AbsMethod::PrintChunkInfo(string inputDirpath, int chunkingMethod, int meth
         out << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
         out << "IO Time: " << IOTime.count() << "s" << endl;
         out << "Decode Time: " << DecodeTime.count() << "s" << endl;
+        cout << "Encode Time: " << EncodeTime.count() << "s" << endl;
         out << "-----------------OverHead--------------------------" << endl;
         // out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
         out << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
@@ -727,6 +728,7 @@ void AbsMethod::PrintChunkInfo(string inputDirpath, int chunkingMethod, int meth
         out << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
         out << "IO Time: " << IOTime.count() << "s" << endl;
         out << "Decode Time: " << DecodeTime.count() << "s" << endl;
+        cout << "Encode Time: " << EncodeTime.count() << "s" << endl;
         out << "-----------------OverHead--------------------------" << endl;
         // out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
         out << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
@@ -846,6 +848,7 @@ void AbsMethod::PrintChunkInfo(int64_t time, CommandLine_t CmdLine, double chunk
     out << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
     out << "IO Time: " << IOTime.count() << "s" << endl;
     out << "Decode Time: " << DecodeTime.count() << "s" << endl;
+    cout << "Encode Time: " << EncodeTime.count() << "s" << endl;
     out << "-----------------Time old------------------------------" << endl;
     out << "Chunk Time: " << chunktime << "s" << endl;
     out << "Dedup Time: " << DedupTime.count() << "s" << endl;
@@ -938,6 +941,7 @@ void AbsMethod::Version_log(double time)
     cout << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
     cout << "IO Time: " << IOTime.count() << "s" << endl;
     cout << "Decode Time: " << DecodeTime.count() << "s" << endl;
+    cout << "Encode Time: " << EncodeTime.count() << "s" << endl;
     cout << "-----------------OverHead--------------------------" << endl;
     // out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
     cout << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
@@ -985,6 +989,7 @@ void AbsMethod::PrintChunkInfo(string inputDirpath, int chunkingMethod, int meth
         out << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
         out << "IO Time: " << IOTime.count() << "s" << endl;
         out << "Decode Time: " << DecodeTime.count() << "s" << endl;
+        cout << "Encode Time: " << EncodeTime.count() << "s" << endl;
         out << "-----------------Time old------------------------------" << endl;
         out << "Chunk Time: " << chunktime << "s" << endl;
         out << "Dedup Time: " << DedupTime.count() << "s" << endl;
@@ -1045,6 +1050,7 @@ void AbsMethod::PrintChunkInfo(string inputDirpath, int chunkingMethod, int meth
         out << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
         out << "IO Time: " << IOTime.count() << "s" << endl;
         out << "Decode Time: " << DecodeTime.count() << "s" << endl;
+        cout << "Encode Time: " << EncodeTime.count() << "s" << endl;
         out << "-----------------Time old------------------------------" << endl;
         out << "Chunk Time: " << chunktime << "s" << endl;
         out << "Dedup Time: " << DedupTime.count() << "s" << endl;
@@ -1107,6 +1113,7 @@ void AbsMethod::Version_log(double time, double chunktime)
     cout << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
     cout << "IO Time: " << IOTime.count() << "s" << endl;
     cout << "Decode Time: " << DecodeTime.count() << "s" << endl;
+    cout << "Encode Time: " << EncodeTime.count() << "s" << endl;
     cout << "-----------------Time old------------------------------" << endl;
     cout << "Chunk Time: " << chunktime << "s" << endl;
     cout << "Dedup Time: " << DedupTime.count() << "s" << endl;
