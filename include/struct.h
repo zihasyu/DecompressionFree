@@ -32,7 +32,6 @@ typedef struct
     bool loadFromDisk = false;    // 1 byte
     bool HeaderFlag = false;      // 1 byte
     bool NameExist = true;        // 1 byte
-    bool isRoot = false;
     // 1 byte padding to align the structure to 8 bytes boundary
 } Chunk_t;
 
