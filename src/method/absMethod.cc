@@ -938,7 +938,6 @@ void AbsMethod::Version_log(double time)
     cout << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
     cout << "IO Time: " << IOTime.count() << "s" << endl;
     cout << "Decode Time: " << DecodeTime.count() << "s" << endl;
-    cout << "Encode Time: " << EncodeTime.count() << "s" << endl;
     cout << "-----------------OverHead--------------------------" << endl;
     // out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
     cout << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;

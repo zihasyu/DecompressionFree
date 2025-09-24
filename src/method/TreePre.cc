@@ -607,7 +607,7 @@ void TreePre::PrefetchThreadFunc()
         uint64_t cur = chunk_id;
         while (cnt <= 4 && cur != UINT64_MAX)
         {
-            if (cur < dataWrite_->chunklist.size() && cnt > 0)
+            if (cur < dataWrite_->chunklist.size() && cur > 0)
             {
                 if (!chunkCache2.contains(cur))
                 {
