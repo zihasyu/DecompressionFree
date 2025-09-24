@@ -182,6 +182,10 @@ int main(int argc, char **argv)
     tool::traverse_dir(CmdLine.dirName, readfileList, nofilter);
     sort(readfileList.begin(), readfileList.end(), AbsMethod::compareNat);
 
+    // for (size_t i = 0; i < readfileList.size(); i++)
+    // {
+    //     cout << "[" << i << "] " << readfileList[i] << endl;
+    // }
     boost::thread *thTmp[2] = {nullptr};
     boost::thread::attributes attrs;
     attrs.set_stack_size(THREAD_STACK_SIZE);

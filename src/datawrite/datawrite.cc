@@ -103,7 +103,6 @@ void dataWrite::writing()
             // cout << "free chunk done" << endl;
             chunk.chunkPtr = nullptr;
             // chunkprint(chunk); //debug
-            // std::lock_guard<std::mutex> lock(mtx);
             // chunklist.push_back(chunk);
             // cout << "dataWrite entry id is  " << chunklist[chunk.chunkID].chunkID << endl;
             // cout << "writing start if end" << endl;
@@ -1248,7 +1247,6 @@ bool dataWrite::isLz4(int id)
 
 Chunk_t dataWrite::Get_Chunk_MetaInfo(int id)
 {
-    // std::lock_guard<std::mutex> lock(mtx);
     if (chunklist.size() < id)
     {
         cout << "errorrrr!" << endl;
