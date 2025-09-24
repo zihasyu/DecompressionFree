@@ -781,7 +781,6 @@ void dataWrite::MTar2Tar(string fileName)
 
 Chunk_t dataWrite::Get_Chunk_Info(int id)
 {
-    std::lock_guard<std::mutex> lock(chunklist_mutex);
     // TODO: cache read container
     // cout << "chunk list size is " << chunklist.size() << endl;
     int tmpSize = 0;
@@ -899,112 +898,7 @@ Chunk_t dataWrite::Get_Chunk_Info(int id)
 
     return chunklist[id];
 }
-Chunk_t dataWrite::Get_Chunk_Info_thread(int id)
-{
-    std::lock_guard<std::mutex> lock(chunklist_mutex);
-    // 使用线程局部固定缓冲区
-    thread_local uint8_t *thread_lz4Buffer = nullptr;
-    thread_local uint8_t *thread_containerBuffer = nullptr;
-    thread_local bool buffers_initialized = false;
 
-    if (!buffers_initialized)
-    {
-        thread_lz4Buffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE);
-        thread_containerBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE); // 4MiB固定缓冲区
-        buffers_initialized = true;
-    }
-
-    Chunk_t ResultChunk = chunklist[id];
-    string containerID = to_string(ResultChunk.containerID);
-
-    if (containerCache->ExistsInCache(containerID)) // hit memory
-    {
-        uint8_t *tmpContainerData = containerCache->ReadFromCache(containerID);
-
-        if (ResultChunk.deltaFlag == NO_LZ4)
-        {
-            ResultChunk.loadFromDisk = false;
-            ResultChunk.chunkPtr = tmpContainerData + ResultChunk.offset;
-        }
-        else if (ResultChunk.deltaFlag == NO_DELTA)
-        {
-            // base chunk & lz4 compress
-            int decompressedSize = LZ4_decompress_safe((char *)(tmpContainerData + ResultChunk.offset), (char *)thread_lz4Buffer, ResultChunk.saveSize, CONTAINER_MAX_SIZE);
-            ResultChunk.chunkPtr = (uint8_t *)malloc(ResultChunk.chunkSize);
-            memcpy(ResultChunk.chunkPtr, thread_lz4Buffer, ResultChunk.chunkSize);
-            ResultChunk.loadFromDisk = true;
-        }
-        else
-        {
-            // delta chunk
-            ResultChunk.chunkPtr = tmpContainerData + ResultChunk.offset;
-            ResultChunk.loadFromDisk = false;
-        }
-        return ResultChunk;
-    }
-
-    // TODO: if cache miss, read from disk
-    if (ResultChunk.containerID != containerNum)
-    {
-        if (ResultChunk.deltaFlag == NO_DELTA)
-            ResultChunk.chunkPtr = (uint8_t *)malloc(ResultChunk.chunkSize);
-        else if (ResultChunk.deltaFlag == NO_LZ4)
-            ResultChunk.chunkPtr = (uint8_t *)malloc(ResultChunk.chunkSize);
-        else
-        {
-            ResultChunk.chunkPtr = (uint8_t *)malloc(ResultChunk.saveSize);
-        }
-        string fileName = "./Containers/" + containerID;
-        // cout << fileName << endl;
-        ifstream infile(fileName, ios::binary);
-
-        uint64_t containerSize;
-        infile.read(reinterpret_cast<char *>(&containerSize), sizeof(uint64_t));
-        infile.read(reinterpret_cast<char *>(thread_containerBuffer), containerSize);
-        infile.close();
-
-        if (ResultChunk.deltaFlag == NO_LZ4)
-        {
-            memcpy(ResultChunk.chunkPtr, thread_containerBuffer + ResultChunk.offset, ResultChunk.chunkSize);
-        }
-        else if (ResultChunk.deltaFlag == NO_DELTA)
-        {
-            int decompressedSize = LZ4_decompress_safe(
-                reinterpret_cast<char *>(thread_containerBuffer + ResultChunk.offset),
-                reinterpret_cast<char *>(thread_lz4Buffer),
-                ResultChunk.saveSize,
-                CONTAINER_MAX_SIZE);
-            memcpy(ResultChunk.chunkPtr, thread_lz4Buffer, ResultChunk.chunkSize);
-        }
-        else
-        {
-            memcpy(ResultChunk.chunkPtr, thread_containerBuffer + ResultChunk.offset, ResultChunk.saveSize);
-        }
-        ResultChunk.loadFromDisk = true;
-    }
-    else
-    {
-        if (ResultChunk.containerID == containerNum)
-        {
-            ResultChunk.loadFromDisk = false;
-            if (ResultChunk.deltaFlag != NO_DELTA)
-                ResultChunk.chunkPtr = curContainer.data + ResultChunk.offset;
-            else
-            {
-                // base chunk & lz4 compress
-                int decompressedSize = LZ4_decompress_safe((char *)(curContainer.data + ResultChunk.offset), (char *)thread_lz4Buffer, ResultChunk.saveSize, CONTAINER_MAX_SIZE);
-                ResultChunk.chunkPtr = (uint8_t *)malloc(ResultChunk.chunkSize);
-                memcpy(ResultChunk.chunkPtr, thread_lz4Buffer, ResultChunk.chunkSize);
-                ResultChunk.loadFromDisk = true;
-            }
-        }
-        else
-        {
-            cout << " ResultChunk.containerID == containerNum open file failed" << endl;
-        }
-    }
-    return ResultChunk;
-}
 bool dataWrite::Recipe_Insert(uint64_t chunkID)
 {
     RecipeMap[filename].push_back(chunkID);
@@ -1300,7 +1194,7 @@ uint8_t *dataWrite::xd3_decode(const uint8_t *in, size_t in_size, const uint8_t 
     auto ret = xd3_decode_memory(in, in_size, ref, ref_size, buffer, &sz, max_buffer_size, 0);
     if (ret != 0)
     {
-        cout << "dataWrite decode error" << endl;
+        cout << "decode error" << endl;
         cout << "ret code is " << ret << endl;
         const char *errMsg = xd3_strerror(ret);
         if (errMsg != nullptr)

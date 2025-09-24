@@ -1,7 +1,4 @@
-lib/libutilcore.a
-lib/libchunkcore.a  
-lib/libdatawritecore.a  
-lib/libmethodcore.a  
+lib/
 bin/
 build/
 .vscode/

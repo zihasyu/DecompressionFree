@@ -1,7 +1,7 @@
 #include "../../include/Tree/TreePre.h"
 
 TreePre::TreePre()
-    : chunkCache(1024, 64), chunkCache2(1024, 64)
+    : chunkCache(1024, 64)
 {
     // cout << " Chunk_t is " << sizeof(Chunk_t) << " Chunk_t_ori is " << sizeof(Chunk_t_odess) << " <super_feature_t, unordered_set<string>> is " << sizeof(super_feature_t);
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
@@ -11,8 +11,7 @@ TreePre::TreePre()
     SFindex = new unordered_map<string, vector<int>>[FINESSE_SF_NUM];
     tmpDeltaBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
     MinBaseBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
-    CombinedBuffer_thread = (uint8_t *)malloc(CONTAINER_MAX_SIZE * 2);
-    DecodeBuffer_thread = (uint8_t *)malloc(CONTAINER_MAX_SIZE * 2);
+
     stop_prefetch = false;
     prefetch_thread = std::thread(&TreePre::PrefetchThreadFunc, this);
 }
@@ -25,8 +24,7 @@ TreePre::~TreePre()
     free(hashBuf);
     free(tmpDeltaBuffer);
     free(MinBaseBuffer);
-    free(CombinedBuffer_thread);
-    free(DecodeBuffer_thread);
+
     stop_prefetch = true;
     prefetch_cv.notify_all();
     if (prefetch_thread.joinable())
@@ -47,12 +45,6 @@ void TreePre::ProcessTrace()
         hashStr.assign(CHUNK_HASH_SIZE, 0);
         if (recieveQueue->done_ && recieveQueue->IsEmpty())
         {
-            cout << " Cache Stats - Hits: " << cacheHitCount << endl;
-            cout << " Accesses: " << cacheAccessCount << endl;
-            cout << " Hit Rate: " << (float)cacheHitCount / cacheAccessCount * 100 << "%" << endl;
-            cout << " Cache2 Stats - Hits: " << cache2HitCount << endl;
-            cout << " Accesses: " << cache2AccessCount << endl;
-            cout << " Hit Rate: " << (float)cache2HitCount / cache2AccessCount * 100 << "%" << endl;
             Prev_Chunk_seq_map = std::move(Chunk_seq_map);
             Chunk_seq_map.clear();
 
@@ -91,10 +83,9 @@ void TreePre::ProcessTrace()
 
                     auto findResult = table.Tree_SF_Find(superfeature);
                     basechunkid = findResult;
-                    // if (basechunkid != -1)
-                    //     dataWrite_->chunklist[basechunkid].isRoot = true;
+                    if (basechunkid != -1)
+                        dataWrite_->chunklist[basechunkid].isRoot = true;
 
-                    // cout << "flag 0" << endl;
                     if (Prev_Chunk_seq_map.count(basechunkid))
                     {
                         RequestPrefetch(basechunkid);
@@ -104,7 +95,6 @@ void TreePre::ProcessTrace()
                 if (basechunkid != -1)
                 // unique chunk & delta chunk
                 {
-
                     auto basechunkInfo = dataWrite_->Get_Chunk_MetaInfo(basechunkid);
                     auto RestoreBasechunk = CutGreedy(basechunkid, tmpChunk, superfeature);
                     uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
@@ -205,7 +195,6 @@ void TreePre::ProcessTrace()
                     else
                         // base chunk &lz4 compress
                         dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
-                    dataWrite_->chunklist[tmpChunk.chunkID].isRoot = true;
                 }
                 uniquechunkNum++;
                 uniquechunkSize += tmpChunk.saveSize;
@@ -235,8 +224,8 @@ void TreePre::ProcessTrace()
                         chunkRootId = dataWrite_->chunklist[chunkRootId].basechunkID;
                     }
                     Chunk_seq_map[lastChunkRootId] = chunkRootId;
+                    lastChunkId = tmpChunk.chunkID;
                 }
-                lastChunkId = tmpChunk.chunkID;
             }
             else
                 dataWrite_->Recipe_Header_Insert(tmpChunk.chunkID);
@@ -299,15 +288,8 @@ Chunk_t TreePre::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, Supe
         Chunk_t TmpChildChunk = dataWrite_->Get_Chunk_Info(resultchunk.FirstChildID);
         SetTime(endIO);
         SetTime(startIO, endIO, IOTime);
-        // debug 1
+
         uint8_t *basechunk_ptr = xd3_decode(TmpChildChunk.chunkPtr, TmpChildChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);
-        if (basechunk_size != TmpChildChunk.chunkSize)
-        {
-            cout << "CutGreedy1 error, chunk size mismatch" << endl;
-            cout << "id " << TmpChildChunk.chunkID << " TmpChildChunk.chunkSize : " << TmpChildChunk.chunkSize << " TmpChildChunk.saveSize: " << TmpChildChunk.saveSize
-                 << " basechunksize " << basechunk.chunkSize << " restore basechunk_size : " << basechunk_size << endl;
-            basechunk_size = 0;
-        }
         xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer);
         if (tmpsaveSize < resultchunk.saveSize)
         {
@@ -328,15 +310,7 @@ Chunk_t TreePre::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, Supe
             TmpBroChunk = dataWrite_->Get_Chunk_Info(TmpBroChunk.FirstBroID);
             SetTime(endIO);
             SetTime(startIO, endIO, IOTime);
-            // debug 2
             uint8_t *basechunk_ptr = xd3_decode(TmpBroChunk.chunkPtr, TmpBroChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);
-            if (basechunk_size != TmpBroChunk.chunkSize)
-            {
-                cout << "CutGreedy2 error, chunk size mismatch" << endl;
-                cout << "id " << TmpBroChunk.chunkID << " TmpBroChunk.chunkSize : " << TmpBroChunk.chunkSize << " TmpBroChunk.saveSize: " << TmpBroChunk.saveSize
-                     << " basechunksize " << basechunk.chunkSize << " restore basechunk_size : " << basechunk_size << endl;
-                basechunk_size = 0;
-            }
             xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer); //*** resultchunk.saveSize save tmpMinDeltaSize only here
             if (tmpsaveSize < resultchunk.saveSize)
             {
@@ -409,7 +383,6 @@ void TreePre::StatsFit(uint64_t FatherID, uint64_t FitID, SuperFeatures sfs)
 
 Chunk_t TreePre::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
 {
-    SetTime(startMiDelta);
     std::vector<uint8_t> cachedData;
     cacheAccessCount++;
     if (chunkCache.tryGet(BasechunkId, cachedData))
@@ -424,21 +397,10 @@ Chunk_t TreePre::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
         cachedChunk.loadFromDisk = false;
         return cachedChunk;
     }
-    chunkHotMap[BasechunkId]++;
-    cache2AccessCount++;
-    if (chunkCache2.tryGet(BasechunkId, cachedData))
-    {
-        cache2HitCount++;
-        Chunk_t cachedChunk;
-        cachedChunk.chunkID = BasechunkId;
-        cachedChunk.chunkSize = cachedData.size();
-        cachedChunk.chunkPtr = (uint8_t *)malloc(cachedData.size());
-        cachedChunk.FirstChildID = dataWrite_->chunklist[BasechunkId].FirstChildID;
-        memcpy(cachedChunk.chunkPtr, cachedData.data(), cachedData.size());
-        cachedChunk.loadFromDisk = false;
-        return cachedChunk;
-    }
 
+    chunkHotMap[BasechunkId]++;
+
+    // SetTime(startMiDelta);
     std::vector<Chunk_t> chunkChain;
     Chunk_t basechunk;
     size_t basechunk_size = 0;
@@ -477,35 +439,17 @@ Chunk_t TreePre::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
         chunkChain[i] = dataWrite_->Get_Chunk_Info(chunkChain[i].chunkID);
         SetTime(endIO);
         SetTime(startIO, endIO, IOTime);
-        // debug 3
+
         uint8_t *basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
                                             basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
 
         if (chunkChain[i].chunkSize != basechunk_size)
         {
-            std::ostringstream oss;
-            oss << "xd3 recursive restore error, chunk size mismatch\n";
-            oss << "id " << chunkChain[i].chunkID
-                << " chunkChain[i].chunkSize : " << chunkChain[i].chunkSize
-                << " chunkChain[i].saveSize: " << chunkChain[i].saveSize
-                << " basechunksize " << basechunk.chunkSize
-                << " restore basechunk_size : " << basechunk_size << std::endl;
-
-            // dump delta chunk
-            oss << "[DEBUG] delta chunk ptr: " << static_cast<const void *>(chunkChain[i].chunkPtr)
-                << " size: " << chunkChain[i].saveSize << std::endl;
-            for (size_t dbg = 0; dbg < std::min<size_t>(64, chunkChain[i].saveSize); ++dbg)
-                oss << (int)chunkChain[i].chunkPtr[dbg] << " ";
-            oss << std::endl;
-
-            // dump base chunk
-            oss << "[DEBUG] base chunk ptr: " << static_cast<const void *>(basechunk.chunkPtr)
-                << " size: " << basechunk.chunkSize << std::endl;
-            for (size_t dbg = 0; dbg < std::min<size_t>(64, basechunk.chunkSize); ++dbg)
-                oss << (int)basechunk.chunkPtr[dbg] << " ";
-            oss << std::endl;
-
-            throw std::runtime_error(oss.str());
+            cout << "xd3 recursive restore error, chunk size mismatch" << endl;
+            cout << "id " << chunkChain[i].chunkID << " chunkChain[i].chunkSize : " << chunkChain[i].chunkSize << "chunkChain[i].saveSize: " << chunkChain[i].saveSize
+                 << " basechunksize " << basechunk.chunkSize << " restore basechunk_size : " << basechunk_size << endl;
+            basechunk.chunkSize = 0;
+            return basechunk;
         }
         if (chunkChain[i].loadFromDisk)
             free(chunkChain[i].chunkPtr);
@@ -527,69 +471,8 @@ Chunk_t TreePre::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
     return basechunk;
 }
 
-Chunk_t TreePre::xd3_recursive_restore_BL_thread(uint64_t BasechunkId)
-{
-    std::vector<Chunk_t> chunkChain;
-    Chunk_t basechunk;
-    size_t basechunk_size = 0;
-    chunkChain.push_back(dataWrite_->Get_Chunk_MetaInfo(BasechunkId));
-    // if only one layer
-    if (chunkChain.back().basechunkID < 0)
-    {
-
-        chunkChain.back() = dataWrite_->Get_Chunk_Info_thread(chunkChain.back().chunkID);
-
-        return chunkChain.back();
-    }
-
-    // collect all delta chain blocks
-    while (chunkChain.back().basechunkID >= 0)
-        chunkChain.push_back(dataWrite_->Get_Chunk_MetaInfo(chunkChain.back().basechunkID));
-    // push the last chunk
-
-    chunkChain.back() = dataWrite_->Get_Chunk_Info_thread(chunkChain.back().chunkID);
-
-    memcpy(CombinedBuffer_thread, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
-    basechunk.loadFromDisk = false;
-    basechunk.chunkSize = chunkChain.back().chunkSize;
-    basechunk.chunkPtr = CombinedBuffer_thread;
-    basechunk.chunkID = chunkChain.back().chunkID;
-    if (chunkChain.back().loadFromDisk)
-        free(chunkChain.back().chunkPtr); // free base chunk memory
-
-    for (int i = chunkChain.size() - 2; i >= 0; i--)
-    {
-
-        chunkChain[i] = dataWrite_->Get_Chunk_Info_thread(chunkChain[i].chunkID);
-
-        uint8_t *basechunk_ptr = xd3_decode_thread(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
-                                                   basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
-
-        if (chunkChain[i].chunkSize != basechunk_size)
-        {
-            cout << "THREAD xd3 recursive restore error, chunk size mismatch" << endl;
-            cout << "id " << chunkChain[i].chunkID << " chunkChain[i].chunkSize : " << chunkChain[i].chunkSize << "chunkChain[i].saveSize: " << chunkChain[i].saveSize
-                 << " basechunksize " << basechunk.chunkSize << " restore basechunk_size : " << basechunk_size << endl;
-            basechunk.chunkSize = 0;
-            return basechunk;
-        }
-        if (chunkChain[i].loadFromDisk)
-            free(chunkChain[i].chunkPtr);
-        memcpy(CombinedBuffer_thread, basechunk_ptr, basechunk_size);
-        basechunk.chunkSize = chunkChain[i].chunkSize; // update size
-        basechunk.FirstChildID = chunkChain[i].FirstChildID;
-        basechunk.chunkID = chunkChain[i].chunkID;
-        free(basechunk_ptr);
-
-        basechunk_size = 0;
-    }
-
-    return basechunk;
-}
-
 void TreePre::PrefetchThreadFunc()
 {
-
     while (!stop_prefetch)
     {
         uint64_t chunk_id = UINT64_MAX;
@@ -605,19 +488,15 @@ void TreePre::PrefetchThreadFunc()
 
         int cnt = 0;
         uint64_t cur = chunk_id;
-        while (cnt <= 4 && cur != UINT64_MAX)
+        while (cnt < 4 && cur != UINT64_MAX)
         {
-            if (cur < dataWrite_->chunklist.size() && cur > 0)
+            if (cur < dataWrite_->chunklist.size())
             {
-                if (!chunkCache2.contains(cur))
+                Chunk_t chunk = dataWrite_->Get_Chunk_Info(cur);
+
+                if (chunk.chunkPtr && chunk.loadFromDisk)
                 {
-                    Chunk_t chunk = xd3_recursive_restore_BL_thread(cur); // load full chunk
-                    // Chunk_t chunk = dataWrite_->Get_Chunk_Info_thread(cur);
-                    chunkCache2.insert(cur, std::vector<uint8_t>(chunk.chunkPtr, chunk.chunkPtr + chunk.chunkSize));
-                    if (chunk.chunkPtr && chunk.loadFromDisk)
-                    {
-                        free(chunk.chunkPtr);
-                    }
+                    free(chunk.chunkPtr);
                 }
             }
             auto it = Prev_Chunk_seq_map.find(cur);
@@ -637,30 +516,4 @@ void TreePre::RequestPrefetch(uint64_t chunk_id)
         prefetch_queue.push(chunk_id);
     }
     prefetch_cv.notify_one();
-}
-
-uint8_t *TreePre::xd3_decode_thread(const uint8_t *in, size_t in_size, const uint8_t *ref, size_t ref_size, size_t *res_size)
-{
-    const auto max_buffer_size = CONTAINER_MAX_SIZE * 2;
-    size_t sz;
-    auto ret = xd3_decode_memory(in, in_size, ref, ref_size, DecodeBuffer_thread, &sz, max_buffer_size, 0);
-    if (ret != 0)
-    {
-        cout << "TreePre decode error" << endl;
-        cout << "ret code is " << ret << endl;
-        const char *errMsg = xd3_strerror(ret);
-        if (errMsg != nullptr)
-        {
-            printf("%s\n", errMsg);
-        }
-        else
-        {
-            printf("Unknown error\n");
-        }
-    }
-    uint8_t *res;
-    res = (uint8_t *)malloc(sz);
-    *res_size = sz;
-    memcpy(res, DecodeBuffer_thread, sz);
-    return res;
 }
