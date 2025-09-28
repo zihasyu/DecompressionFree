@@ -21,11 +21,11 @@ datasets=(
 
 declare -A methods
 methods=(
-  # ["Odess"]="-c 1 -m 3"
-  # ["TreeCut"]="-c 1 -m 12"
+  ["Odess"]="-c 1 -m 3"
+  ["TreeCut"]="-c 1 -m 12"
   # ["Greedy"]="-c 1 -m 13"
     ["TreeCutLayer"]="-c 1 -m 15"
-    #  ["TreeCache"]="-c 1 -m 16"
+     ["TreeCache"]="-c 1 -m 16"
   # ["OdessMiBL"]="-c 1 -m 6"
   # ["OdessMiBL2"]="-c 1 -m 8"
   # ["OdessMiBL3"]="-c 1 -m 9"
@@ -43,7 +43,7 @@ selected_datasets=(
   # "smalltalk"
   # "gcc"
   # "chromium"
-  "linux"
+  # "linux"
   # "cassandra"
   # "vmdk"
   # "WEB"
@@ -65,7 +65,10 @@ for method_name in "${!methods[@]}"; do
     #   sudo echo 3 > /proc/sys/vm/drop_caches
       
       ./DFree -i "$path" $method_params -n "$num" > "${method_name}_${dataset}.txt"
-      
+      mv Greedy_hit_rank.txt "Greedy_hit_rank_${dataset}.txt"
+      mv Greedy_hit_rank_percent.txt "Greedy_hit_rank_percent_${dataset}.txt"
+      mv Greedy_hit_rank_filtered.txt "Greedy_hit_rank_filtered_${dataset}.txt"
+      mv Greedy_hit_rank_percent_filtered.txt "Greedy_hit_rank_percent_filtered_${dataset}.txt"
       echo "Completed $method_name on $dataset"
     else
       echo "Error: Dataset $dataset not defined"

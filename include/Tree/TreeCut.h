@@ -14,6 +14,10 @@ private:
     int Version = 0;
     uint8_t *MinBaseBuffer = nullptr;
     uint8_t *tmpDeltaBuffer = nullptr;
+    std::ofstream outfile_rank;
+    std::ofstream outfile_percent;
+    std::ofstream outfile_rank_filtered;
+    std::ofstream outfile_percent_filtered;
 
 public:
     TreeCut();
@@ -22,5 +26,6 @@ public:
     // Chunk_t xd3_recursive_restore(uint64_t BasechunkId, const Chunk_t Targetchunk);
     Chunk_t CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk);
     uint8_t *xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer);
+    void getRankInTree(uint64_t rootChunkID, uint64_t targetChunkID, int &rank, size_t &total_chunks);
 };
 #endif

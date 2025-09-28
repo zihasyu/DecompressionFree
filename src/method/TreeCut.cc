@@ -10,6 +10,11 @@ TreeCut::TreeCut()
     SFindex = new unordered_map<string, vector<int>>[FINESSE_SF_NUM];
     tmpDeltaBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
     MinBaseBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
+    // 打开所有统计文件
+    outfile_rank.open("Greedy_hit_rank.txt", std::ios_base::app);
+    outfile_percent.open("Greedy_hit_rank_percent.txt", std::ios_base::app);
+    outfile_rank_filtered.open("Greedy_hit_rank_filtered.txt", std::ios_base::app);
+    outfile_percent_filtered.open("Greedy_hit_rank_percent_filtered.txt", std::ios_base::app);
 }
 
 TreeCut::~TreeCut()
@@ -20,6 +25,15 @@ TreeCut::~TreeCut()
     free(hashBuf);
     free(tmpDeltaBuffer);
     free(MinBaseBuffer);
+    // 关闭所有统计文件
+    if (outfile_rank.is_open())
+        outfile_rank.close();
+    if (outfile_percent.is_open())
+        outfile_percent.close();
+    if (outfile_rank_filtered.is_open())
+        outfile_rank_filtered.close();
+    if (outfile_percent_filtered.is_open())
+        outfile_percent_filtered.close();
 }
 
 void TreeCut::ProcessTrace()
@@ -210,7 +224,15 @@ Chunk_t TreeCut::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
         SetTime(endIO);
         SetTime(startIO, endIO, IOTime);
         if (basechunk.FirstChildID < 0) // if only one layer
+        {
+            // 写入排名 0
+            if (outfile_rank.is_open())
+                outfile_rank << 0 << std::endl;
+            // 百分比为0 (0/1)
+            if (outfile_percent.is_open())
+                outfile_percent << 0.0 << std::endl;
             return basechunk;
+        }
         // basechunk = xd3_recursive_restore_BL_time(BasechunkId);
     }
     else
@@ -218,7 +240,14 @@ Chunk_t TreeCut::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
         basechunk = xd3_recursive_restore_BL_time(BasechunkId);
         // cout << "basechunk.ChunkID is " << basechunk.chunkID << endl;
         if (basechunk.FirstChildID < 0) // if only one layer
+        {
+            if (outfile_rank.is_open())
+                outfile_rank << 0 << std::endl;
+            // 百分比为0 (0/1)
+            if (outfile_percent.is_open())
+                outfile_percent << 0.0 << std::endl;
             return basechunk;
+        }
     }
 
     memcpy(CombinedBuffer, basechunk.chunkPtr, basechunk.chunkSize);
@@ -291,6 +320,32 @@ Chunk_t TreeCut::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
     }
     SetTime(endMiDelta);
     SetTime(startMiDelta, endMiDelta, MiDeltaTime);
+    // ---- 使用优化后的排名计算和文件写入 ----
+    int rank;
+    size_t total_chunks;
+    getRankInTree(BasechunkId, resultchunk.chunkID, rank, total_chunks);
+
+    if (total_chunks > 0)
+    {
+        // 1. 写入原始排名
+        if (outfile_rank.is_open())
+            outfile_rank << rank << std::endl;
+
+        // 2. 写入排名百分比
+        double rank_percent = static_cast<double>(rank) / total_chunks;
+        if (outfile_percent.is_open())
+            outfile_percent << rank_percent << std::endl;
+
+        // 3. 当 total_chunks > 1 时，记录到 filtered 文件
+        if (total_chunks > 1)
+        {
+            if (outfile_rank_filtered.is_open())
+                outfile_rank_filtered << rank << std::endl;
+            if (outfile_percent_filtered.is_open())
+                outfile_percent_filtered << rank_percent << std::endl;
+        }
+    }
+
     return resultchunk;
 }
 
@@ -313,4 +368,63 @@ uint8_t *TreeCut::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t tar
     SetTime(endMiEncode);
     SetTime(startMiEncode, endMiEncode, EncodeTime);
     return tmpDeltaBuffer;
+}
+
+// 新增一个辅助函数，用于遍历树并直接计算排名
+void TreeCut::getRankInTree(uint64_t rootChunkID, uint64_t targetChunkID, int &rank, size_t &total_chunks)
+{
+    rank = 0;
+    total_chunks = 0;
+    if (rootChunkID == (uint64_t)-1)
+    {
+        return;
+    }
+
+    std::stack<uint64_t> toVisit;
+    toVisit.push(rootChunkID);
+    std::unordered_set<uint64_t> visited; // 防止因树结构问题（如环）导致死循环
+
+    while (!toVisit.empty())
+    {
+        uint64_t currentID = toVisit.top();
+        toVisit.pop();
+
+        if (visited.count(currentID))
+            continue;
+        visited.insert(currentID);
+
+        total_chunks++;
+        if (currentID >= targetChunkID)
+        {
+            rank++;
+        }
+
+        Chunk_t currentChunkInfo = dataWrite_->Get_Chunk_MetaInfo(currentID);
+
+        // 遍历兄弟节点
+        int64_t broID = currentChunkInfo.FirstBroID;
+        while (broID >= 0)
+        {
+            if (visited.find(broID) == visited.end())
+            {
+                toVisit.push(broID);
+            }
+            broID = dataWrite_->Get_Chunk_MetaInfo(broID).FirstBroID;
+        }
+
+        // 遍历子节点
+        int64_t childID = currentChunkInfo.FirstChildID;
+        if (childID >= 0)
+        {
+            if (visited.find(childID) == visited.end())
+            {
+                toVisit.push(childID);
+            }
+        }
+    }
+    // 排名是从0开始的，所以要减1
+    if (rank > 0)
+    {
+        rank--;
+    }
 }
