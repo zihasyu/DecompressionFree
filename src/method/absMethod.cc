@@ -362,7 +362,19 @@ Chunk_t AbsMethod::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
         chunkChain.push_back(dataWrite_->Get_Chunk_MetaInfo(chunkChain.back().basechunkID));
     // push the last chunk
     SetTime(startIO);
-    chunkChain.back() = dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);
+    auto it = chunkCache.find(chunkChain.back().chunkID);
+    cache_lookup_count++;
+    if(it != chunkCache.end()){
+        chunkChain.back().chunkSize = it->second.size();
+        chunkChain.back().chunkPtr = (uint8_t*)malloc(chunkChain.back().chunkSize);
+        memcpy(chunkChain.back().chunkPtr, it->second.data(), chunkChain.back().chunkSize);
+        chunkChain.back().loadFromDisk = false;
+        chunkChain.back().FirstChildID = dataWrite_->chunklist[chunkChain.back().chunkID].FirstChildID;
+        chunkChain.back().FirstBroID = dataWrite_->chunklist[chunkChain.back().chunkID].FirstBroID;
+        cache_hit_count++;
+    }else{
+        chunkChain.back() = dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);
+    }
     SetTime(endIO);
     SetTime(startIO, endIO, IOTime);
 
@@ -377,12 +389,31 @@ Chunk_t AbsMethod::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
     for (int i = chunkChain.size() - 2; i >= 0; i--)
     {
         SetTime(startIO);
-        chunkChain[i] = dataWrite_->Get_Chunk_Info(chunkChain[i].chunkID);
-        SetTime(endIO);
-        SetTime(startIO, endIO, IOTime);
+        uint8_t *basechunk_ptr;
+        auto it = chunkCache.find(chunkChain[i].chunkID);
+        cache_lookup_count++;
+        if(it != chunkCache.end()){
+            chunkChain[i].chunkSize = it->second.size();
+            chunkChain[i].chunkPtr = (uint8_t*)malloc(chunkChain[i].chunkSize);
+            memcpy(chunkChain[i].chunkPtr, it->second.data(), chunkChain[i].chunkSize);
+            chunkChain[i].loadFromDisk = false;
+            chunkChain[i].FirstChildID = dataWrite_->chunklist[chunkChain[i].chunkID].FirstChildID;
+            chunkChain[i].FirstBroID = dataWrite_->chunklist[chunkChain[i].chunkID].FirstBroID;
+            cache_hit_count++;
 
-        uint8_t *basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
-                                            basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
+            basechunk_ptr = chunkChain[i].chunkPtr;
+            basechunk_size = chunkChain[i].chunkSize;
+            SetTime(endIO);
+            SetTime(startIO, endIO, IOTime);
+        }else{
+            chunkChain[i] = dataWrite_->Get_Chunk_Info(chunkChain[i].chunkID);
+
+            SetTime(endIO);
+            SetTime(startIO, endIO, IOTime);
+
+            basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
+                                                basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
+        }
 
         if (chunkChain[i].chunkSize != basechunk_size)
         {

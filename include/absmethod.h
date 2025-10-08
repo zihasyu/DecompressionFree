@@ -175,5 +175,9 @@ public:
         }
         cout << endl; // 最后添加一个换行符，确保后续输出正常
     }
+
+    std::unordered_map<int, std::vector<uint8_t>> chunkCache;
+    size_t cache_hit_count = 0;
+    size_t cache_lookup_count = 0;
 };
 #endif

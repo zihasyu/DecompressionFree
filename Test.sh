@@ -14,6 +14,7 @@ datasets=(
   ["cassandra"]="/mnt/dataset2/cassandra 97"
   ["vmdk"]="/mnt/dataset2/vmdk 8"
   ["WEB"]="/mnt/dataset2/WEB 20"
+  ["WindowsLog"]="/mnt/dataset2/Windows 1"
 )
 
 declare -A methods
@@ -36,14 +37,15 @@ selected_datasets=(
   # "bash"
   # "coreutils"
   # "fdisk"
-  # "glibc"
+  "glibc"
   # "smalltalk"
   # "gcc"
   # "chromium"
-  "linux"
+  # "linux"
   # "cassandra"
   # "vmdk"
   # "WEB"
+  # "WindowsLog"
 )
 
 for method_name in "${!methods[@]}"; do

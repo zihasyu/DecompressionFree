@@ -97,7 +97,12 @@ void TreeCutLayer::ProcessTrace()
                         tmpChunk.basechunkID = -1;
                         tmpChunkid = tmpChunk.chunkID;
                         if (tmpChunk.chunkSize > 60)
-                            table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
+                            if(table.Tree_SF_Insert(superfeature, tmpChunk.chunkID)){
+                                if(chunkCache.find(tmpChunk.chunkID) == chunkCache.end()){
+                                    chunkCache[tmpChunk.chunkID] = std::vector<uint8_t>(tmpChunk.chunkPtr, tmpChunk.chunkPtr + tmpChunk.chunkSize);
+                                }
+                            }
+                        
                         basechunkNum++;
                         basechunkSize += tmpChunk.saveSize;
                         LocalReduct += tmpChunk.chunkSize - tmpChunk.saveSize;
@@ -116,7 +121,12 @@ void TreeCutLayer::ProcessTrace()
                         tmpChunk.basechunkID = RestoreBasechunk.chunkID;
                         // cout << "tmpChunk.savesize is " << tmpChunk.saveSize << endl;
                         if (tmpChunk.chunkSize > 60)
-                            table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
+                            if(table.Tree_SF_Insert(superfeature, tmpChunk.chunkID)){
+                                if(chunkCache.find(tmpChunk.chunkID) == chunkCache.end()){
+                                    chunkCache[tmpChunk.chunkID] = std::vector<uint8_t>(tmpChunk.chunkPtr, tmpChunk.chunkPtr + tmpChunk.chunkSize);
+                                }
+                            }
+
                         // cout << "tmpChunk.chunkID is " << tmpChunk.chunkID << endl;
                         // cout << "basechunkid is " << tmpChunk.basechunkID << endl;
 
@@ -161,7 +171,11 @@ void TreeCutLayer::ProcessTrace()
                     tmpChunk.basechunkID = -1;
                     tmpChunkid = tmpChunk.chunkID;
                     if (tmpChunk.chunkSize > 60)
-                        table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
+                        if(table.Tree_SF_Insert(superfeature, tmpChunk.chunkID)){
+                            if(chunkCache.find(tmpChunk.chunkID) == chunkCache.end()){
+                                chunkCache[tmpChunk.chunkID] = std::vector<uint8_t>(tmpChunk.chunkPtr, tmpChunk.chunkPtr + tmpChunk.chunkSize);
+                            }
+                        }
                     basechunkNum++;
                     basechunkSize += tmpChunk.saveSize;
                     LocalReduct += tmpChunk.chunkSize - tmpChunk.saveSize;
@@ -202,23 +216,34 @@ Chunk_t TreeCutLayer::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk,
     Chunk_t resultchunk;
     size_t basechunk_size = 0;
 
-    Chunk_t basechunk = dataWrite_->Get_Chunk_MetaInfo(BasechunkId);
-    if (basechunk.basechunkID < 0)
-    {
-        SetTime(startIO);
-        basechunk = dataWrite_->Get_Chunk_Info(BasechunkId);
-        SetTime(endIO);
-        SetTime(startIO, endIO, IOTime);
-        if (basechunk.FirstChildID < 0) // if only one layer
-            return basechunk;
-        // basechunk = xd3_recursive_restore_BL_time(BasechunkId);
-    }
-    else
-    {
-        basechunk = xd3_recursive_restore_BL_time(BasechunkId);
-        // cout << "basechunk.ChunkID is " << basechunk.chunkID << endl;
-        if (basechunk.FirstChildID < 0) // if only one layer
-            return basechunk;
+    auto it = chunkCache.find(BasechunkId);
+    cache_lookup_count++;
+    Chunk_t basechunk;
+    if(it != chunkCache.end()){
+        basechunk.chunkID = BasechunkId;
+        basechunk.chunkSize = it->second.size();
+        basechunk.chunkPtr = (uint8_t*)malloc(basechunk.chunkSize);
+        memcpy(basechunk.chunkPtr, it->second.data(), basechunk.chunkSize);
+        basechunk.loadFromDisk = false;
+        basechunk.FirstChildID = dataWrite_->chunklist[BasechunkId].FirstChildID;
+        cache_hit_count++;
+    }else{
+        basechunk = dataWrite_->Get_Chunk_MetaInfo(BasechunkId);
+        if (basechunk.basechunkID < 0)
+        {
+            SetTime(startIO);
+            basechunk = dataWrite_->Get_Chunk_Info(BasechunkId);
+            SetTime(endIO);
+            SetTime(startIO, endIO, IOTime);
+            if (basechunk.FirstChildID < 0) // if only one layer
+                return basechunk;
+        }
+        else
+        {
+            basechunk = xd3_recursive_restore_BL_time(BasechunkId);
+            if (basechunk.FirstChildID < 0) // if only one layer
+                return basechunk;
+        }
     }
 
     memcpy(CombinedBuffer, basechunk.chunkPtr, basechunk.chunkSize);
@@ -243,11 +268,31 @@ Chunk_t TreeCutLayer::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk,
         uint64_t tmpChildID = resultchunk.chunkID;
 
         SetTime(startIO);
-        Chunk_t TmpChildChunk = dataWrite_->Get_Chunk_Info(resultchunk.FirstChildID);
-        SetTime(endIO);
-        SetTime(startIO, endIO, IOTime);
+        Chunk_t TmpChildChunk;
+        uint8_t *basechunk_ptr;
+        auto it = chunkCache.find(resultchunk.FirstChildID);
+        cache_lookup_count++;
+        if(it != chunkCache.end()){
+            TmpChildChunk.chunkID = resultchunk.FirstChildID;
+            TmpChildChunk.chunkSize = it->second.size();
+            TmpChildChunk.chunkPtr = (uint8_t*)malloc(TmpChildChunk.chunkSize);
+            memcpy(TmpChildChunk.chunkPtr, it->second.data(), TmpChildChunk.chunkSize);
+            TmpChildChunk.loadFromDisk = false;
+            TmpChildChunk.FirstChildID = dataWrite_->chunklist[resultchunk.FirstChildID].FirstChildID;
+            TmpChildChunk.FirstBroID = dataWrite_->chunklist[resultchunk.FirstChildID].FirstBroID;
+            cache_hit_count++;
 
-        uint8_t *basechunk_ptr = xd3_decode(TmpChildChunk.chunkPtr, TmpChildChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);
+            basechunk_ptr = TmpChildChunk.chunkPtr;
+            basechunk_size = TmpChildChunk.chunkSize;   
+            SetTime(endIO);         
+            SetTime(startIO, endIO, IOTime);
+        }else{
+            TmpChildChunk = dataWrite_->Get_Chunk_Info(resultchunk.FirstChildID);
+            SetTime(endIO);
+            SetTime(startIO, endIO, IOTime);
+            basechunk_ptr = xd3_decode(TmpChildChunk.chunkPtr, TmpChildChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);
+        }
+
         xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer);
         if (tmpsaveSize < resultchunk.saveSize)
         {
@@ -264,11 +309,30 @@ Chunk_t TreeCutLayer::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk,
         Chunk_t TmpBroChunk = TmpChildChunk;
         while (TmpBroChunk.FirstBroID >= 0)
         {
+            uint8_t *basechunk_ptr;
             SetTime(startIO);
-            TmpBroChunk = dataWrite_->Get_Chunk_Info(TmpBroChunk.FirstBroID);
-            SetTime(endIO);
-            SetTime(startIO, endIO, IOTime);
-            uint8_t *basechunk_ptr = xd3_decode(TmpBroChunk.chunkPtr, TmpBroChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);
+            auto it = chunkCache.find(TmpBroChunk.FirstBroID);
+            cache_lookup_count++;
+            if(it != chunkCache.end()){
+                TmpBroChunk.chunkID = TmpBroChunk.FirstBroID;
+                TmpBroChunk.chunkSize = it->second.size();
+                TmpBroChunk.chunkPtr = (uint8_t*)malloc(TmpBroChunk.chunkSize);
+                memcpy(TmpBroChunk.chunkPtr, it->second.data(), TmpBroChunk.chunkSize);
+                TmpBroChunk.loadFromDisk = false;
+                TmpBroChunk.FirstChildID = dataWrite_->chunklist[TmpBroChunk.chunkID].FirstChildID;
+                TmpBroChunk.FirstBroID = dataWrite_->chunklist[TmpBroChunk.chunkID].FirstBroID;
+                cache_hit_count++;
+
+                basechunk_ptr = TmpBroChunk.chunkPtr;
+                basechunk_size = TmpBroChunk.chunkSize;
+                SetTime(endIO);
+                SetTime(startIO, endIO, IOTime);
+            }else{
+                TmpBroChunk = dataWrite_->Get_Chunk_Info(TmpBroChunk.FirstBroID);
+                SetTime(endIO);
+                SetTime(startIO, endIO, IOTime);
+                basechunk_ptr = xd3_decode(TmpBroChunk.chunkPtr, TmpBroChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);
+            }
             xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer); //*** resultchunk.saveSize save tmpMinDeltaSize only here
             if (tmpsaveSize < resultchunk.saveSize)
             {
@@ -333,6 +397,18 @@ void TreeCutLayer::StatsFit(uint64_t FatherID, uint64_t FitID, SuperFeatures sfs
     if (dataWrite_->chunklist[FatherID].FitCount > 4)
     {
         if (table.Tree_SF_Find(sfs) == FatherID)
+        {
+            auto it = chunkCache.find(FatherID);
+            if(it != chunkCache.end()){
+               chunkCache.erase(it);
+            }
+            if(chunkCache.find(FitID) == chunkCache.end()){
+                Chunk_t fitChunk = xd3_recursive_restore_BL_time(FitID);
+                chunkCache[FitID] = std::vector<uint8_t>(fitChunk.chunkPtr, fitChunk.chunkPtr + fitChunk.chunkSize);
+                if(fitChunk.loadFromDisk && fitChunk.chunkPtr)
+                    free(fitChunk.chunkPtr);
+            }
             table.Tree_SF_ReWrite(sfs, FitID);
+        }
     }
 }

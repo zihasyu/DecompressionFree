@@ -279,19 +279,22 @@ void FeatureIndexTable::Tree_SF_ReWrite(const SuperFeatures &superfeatures, cons
   // return -1 if not found, uint64_t's MAX value
   return;
 }
-void FeatureIndexTable::Tree_SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid)
+bool FeatureIndexTable::Tree_SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid)
 {
+  bool newChunk = false;
   for (const super_feature_t &sf : superfeatures)
   {
     if (Tree_SFIndex.find(sf) == Tree_SFIndex.end())
     {
       Tree_SFIndex[sf] = chunkid;
+      newChunk = true;
     }
     else
     {
       // TreeNode will maintain in the absmethod;
     }
   }
+  return newChunk;
 }
 // 修改函数返回类型为 vector<uint64_t>
 std::vector<uint64_t> FeatureIndexTable::SF_Find_Mi(const SuperFeatures &superfeatures)
