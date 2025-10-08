@@ -167,7 +167,12 @@ int main(int argc, char **argv)
     }
     case Tree_Cache:
     {
-        absMethodObj = new TreeCache();
+        absMethodObj = new TreeCache();//16
+        break;
+    }
+    case Tree_ColumnCache_limit:
+    {
+        absMethodObj = new TreeColumnCacheLimit();//17
         break;
     }
     default:
