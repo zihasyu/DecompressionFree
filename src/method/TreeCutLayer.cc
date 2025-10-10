@@ -333,6 +333,7 @@ void TreeCutLayer::StatsFit(uint64_t FatherID, uint64_t FitID, SuperFeatures sfs
     }
     if (dataWrite_->chunklist[FatherID].FitCount > 4)
     {
-        table.Tree_SF_ReWrite(sfs, FitID);
+        if(table.Tree_SF_Find(sfs).first == FatherID)
+            table.Tree_SF_ReWrite(sfs, FitID);
     }
 }
