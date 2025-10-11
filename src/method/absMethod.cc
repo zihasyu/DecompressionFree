@@ -347,7 +347,7 @@ Chunk_t AbsMethod::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
     size_t basechunk_size = 0;
     chunkChain.push_back(dataWrite_->Get_Chunk_MetaInfo(BasechunkId));
     // if only one layer
-    if (chunkChain.back().basechunkID < 0)
+    if (chunkChain.back().basechunkID < 0 || chunkChain.back().deltaFlag == NO_DELTA || chunkChain.back().deltaFlag == NO_LZ4) // ForTest
     {
         SetTime(startIO);
         chunkChain.back() = dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);

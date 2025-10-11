@@ -14,6 +14,7 @@ AllGreedy::AllGreedy()
 
 AllGreedy::~AllGreedy()
 {
+    DumpReversePosStats("reverse_pos_stats.txt"); // insight2
     free(lz4ChunkBuffer);
     free(deltaMaxChunkBuffer);
     EVP_MD_CTX_free(mdCtx);
@@ -73,14 +74,16 @@ void AllGreedy::ProcessTrace()
                 {
                     auto basechunkInfo = dataWrite_->Get_Chunk_MetaInfo(basechunkid);
                     auto RestoreBasechunk = FindBest(superfeature, tmpChunk);
-                    uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
+                    // ForTest
+                    // uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
 
                     if (RestoreBasechunk.loadFromDisk)
                         free(RestoreBasechunk.chunkPtr);
 
-                    if (tmpChunk.saveSize > tmpChunk.chunkSize || tmpChunk.saveSize <= 0 || RestoreBasechunk.chunkSize == 0)
+                    // if (tmpChunk.saveSize > tmpChunk.chunkSize || tmpChunk.saveSize <= 0 || RestoreBasechunk.chunkSize == 0)// ForTest
+                    if (1)
                     {
-                        cout << "delta no effective" << endl;
+
                         int tmpChunkLz4CompressSize = 0;
                         tmpChunkLz4CompressSize = LZ4_compress_fast((char *)tmpChunk.chunkPtr, (char *)lz4ChunkBuffer, tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
                         if (tmpChunkLz4CompressSize > 0)
@@ -95,14 +98,15 @@ void AllGreedy::ProcessTrace()
                             tmpChunk.saveSize = tmpChunk.chunkSize;
                         }
 
-                        tmpChunk.basechunkID = -1;
+                        tmpChunk.basechunkID = RestoreBasechunk.chunkID; // ForTest
                         tmpChunkid = tmpChunk.chunkID;
                         if (tmpChunk.chunkSize > 60)
                             table.SF_Insert(superfeature, tmpChunk.chunkID);
                         basechunkNum++;
                         basechunkSize += tmpChunk.saveSize;
                         LocalReduct += tmpChunk.chunkSize - tmpChunk.saveSize;
-                        free(deltachunk);
+                        // ForTest
+                        // free(deltachunk);
                         if (tmpChunk.deltaFlag == NO_LZ4)
                             // base chunk & Lz4 error
                             dataWrite_->Chunk_Insert(tmpChunk);
@@ -113,16 +117,13 @@ void AllGreedy::ProcessTrace()
                     else
                     {
                         tmpChunk.deltaFlag = DELTA;
-                        // cout << "RestoreBasechunk.chunkID is " << RestoreBasechunk.chunkID << endl;
                         tmpChunk.basechunkID = RestoreBasechunk.chunkID;
-
-                        // cout << "tmpChunk.savesize is " << tmpChunk.saveSize << endl;
                         if (tmpChunk.chunkSize > 60)
                             table.SF_Insert(superfeature, tmpChunk.chunkID);
 
-                        memcpy(tmpChunk.chunkPtr, deltachunk, tmpChunk.saveSize);
+                        // memcpy(tmpChunk.chunkPtr, deltachunk, tmpChunk.saveSize);// ForTest
                         StatsDelta(tmpChunk);
-                        free(deltachunk);
+                        // free(deltachunk);// ForTest
 
                         dataWrite_->Chunk_Insert(tmpChunk);
                     }
@@ -193,9 +194,13 @@ Chunk_t AllGreedy::FindBest(SuperFeatures SF, const Chunk_t &Targetchunk)
     resultchunk.loadFromDisk = false;
     resultchunk.chunkID = -1;
     auto toVisit = table.SF_Find_Mi(SF);
-
-    for (auto currentID : toVisit)
+    size_t best_reverse_pos = (size_t)-1; // 用于记录最终最佳候选项的倒数位置
+    const size_t n = toVisit.size();
+    for (size_t idx = 0; idx < n; ++idx)
     {
+        auto currentID = toVisit[idx]; // 通过索引访问元素
+        // --- 修改到这里结束 ---
+
         Chunk_t current = xd3_recursive_restore_BL_time(currentID);
         size_t deltaSize = 0;
         uint8_t *delta = xd3_encode_buffer(
@@ -209,6 +214,9 @@ Chunk_t AllGreedy::FindBest(SuperFeatures SF, const Chunk_t &Targetchunk)
             resultchunk.saveSize = deltaSize;
             resultchunk.chunkID = currentID;
             memcpy(MinBaseBuffer, current.chunkPtr, current.chunkSize);
+
+            // 找到了一个更好的候选项，记下它的倒数位置
+            best_reverse_pos = (n == 0 ? 0 : (n - 1 - idx));
         }
 
         if (current.loadFromDisk)
@@ -216,6 +224,12 @@ Chunk_t AllGreedy::FindBest(SuperFeatures SF, const Chunk_t &Targetchunk)
     }
     SetTime(endMiDelta);
     SetTime(startMiDelta, endMiDelta, MiDeltaTime);
+    if (resultchunk.chunkID != -1)
+    {
+        // 单线程：直接更新容器
+        reversePosCount_[best_reverse_pos] += 1;
+        reversePosList_.push_back(best_reverse_pos);
+    }
     return resultchunk;
 }
 
@@ -238,4 +252,64 @@ uint8_t *AllGreedy::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t t
     SetTime(endMiEncode);
     SetTime(startMiEncode, endMiEncode, EncodeTime);
     return tmpDeltaBuffer;
+}
+
+void AllGreedy::DumpReversePosStats(const std::string &path)
+{
+    // 由于是在单线程的析构函数中调用，数据是最终且固定的，无需再做快照
+    if (reversePosCount_.empty())
+    {
+        std::cout << "Reverse position stats are empty, skipping dump.\n";
+        return;
+    }
+
+    // --- 1. 写入聚合统计数据 (count 和 CDF) ---
+
+    // 将 map 转换为 vector of pairs 以便排序
+    std::vector<std::pair<size_t, uint64_t>> sorted_counts(reversePosCount_.begin(), reversePosCount_.end());
+    std::sort(sorted_counts.begin(), sorted_counts.end(),
+              [](const auto &a, const auto &b)
+              {
+                  return a.first < b.first; // 按 reverse_pos (key) 升序排序
+              });
+
+    // 使用 std::accumulate 计算总命中数，更现代化
+    const uint64_t total_hits = std::accumulate(sorted_counts.begin(), sorted_counts.end(), 0ULL,
+                                                [](uint64_t sum, const auto &p)
+                                                {
+                                                    return sum + p.second; // 累加 count (value)
+                                                });
+
+    std::ofstream cdf_file(path);
+    if (!cdf_file.is_open())
+    {
+        std::cerr << "Error: Failed to open file for CDF stats: " << path << std::endl;
+        return;
+    }
+
+    cdf_file << "#reverse_pos\tcount\tcdf\n";
+    uint64_t cumulative_count = 0;
+    for (const auto &pair : sorted_counts)
+    {
+        cumulative_count += pair.second;
+        const double cdf = (total_hits == 0) ? 0.0 : static_cast<double>(cumulative_count) / total_hits;
+        cdf_file << pair.first << "\t" << pair.second << "\t" << cdf << "\n";
+    }
+    cdf_file.close();
+
+    // --- 2. 写入原始命中列表 (用于 ECDF) ---
+
+    const std::string list_path = path + ".list";
+    std::ofstream list_file(list_path);
+    if (!list_file.is_open())
+    {
+        std::cerr << "Error: Failed to open file for raw list: " << list_path << std::endl;
+        return;
+    }
+
+    for (const auto pos : reversePosList_)
+    {
+        list_file << pos << "\n";
+    }
+    list_file.close();
 }
