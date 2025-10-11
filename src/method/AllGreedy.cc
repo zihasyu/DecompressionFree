@@ -1,8 +1,9 @@
 #include "../../include/AllGreedy.h"
 
-AllGreedy::AllGreedy()
+AllGreedy::AllGreedy(int FinalVersion_)
 {
     // cout << " Chunk_t is " << sizeof(Chunk_t) << " Chunk_t_ori is " << sizeof(Chunk_t_odess) << " <super_feature_t, unordered_set<string>> is " << sizeof(super_feature_t);
+    FinalVersion = FinalVersion_;
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
     mdCtx = EVP_MD_CTX_new();
     hashBuf = (uint8_t *)malloc(CHUNK_HASH_SIZE * sizeof(uint8_t));
@@ -14,7 +15,7 @@ AllGreedy::AllGreedy()
 
 AllGreedy::~AllGreedy()
 {
-    DumpReversePosStats("reverse_pos_stats.txt"); // insight2
+
     free(lz4ChunkBuffer);
     free(deltaMaxChunkBuffer);
     EVP_MD_CTX_free(mdCtx);
@@ -38,6 +39,21 @@ void AllGreedy::ProcessTrace()
             recieveQueue->done_ = false;
             ads_Version++;
             SFnum = basechunkNum * 3;
+
+            if (ads_Version == FinalVersion)
+            {
+                DumpReversePosStats("Insight2.txt"); // insight2
+                DumpSFIndexStats();                  // insight4
+            }
+
+            if (hit_consistency_denominator_ > 0)
+            {
+                double ratio = static_cast<double>(hit_consistency_numerator_) / hit_consistency_denominator_;
+                std::cout << "Insight3 Hit Consistency Stats:"
+                          << "  - Numerator: " << hit_consistency_numerator_
+                          << "  - Denominator: " << hit_consistency_denominator_
+                          << "  - Ratio: " << ratio << std::endl;
+            }
             break;
         }
         Chunk_t tmpChunk;
@@ -229,6 +245,26 @@ Chunk_t AllGreedy::FindBest(SuperFeatures SF, const Chunk_t &Targetchunk)
         // 单线程：直接更新容器
         reversePosCount_[best_reverse_pos] += 1;
         reversePosList_.push_back(best_reverse_pos);
+        // --- 新增的命中一致性统计逻辑 ---
+        if (n > 1) // 只有当候选列表大小 > 1 时才进行统计
+        {
+            // 获取候选列表中最后一个块的元数据
+            auto last_element_meta = dataWrite_->Get_Chunk_MetaInfo(toVisit.back());
+            // 获取它的基块 ID
+            int64_t previous_hit_ID = last_element_meta.basechunkID;
+
+            // 获取当前命中的基块 ID
+            int64_t current_hit_ID = resultchunk.chunkID;
+
+            // 增加分母
+            hit_consistency_denominator_++;
+
+            // 如果两者相同，增加分子
+            if (current_hit_ID == previous_hit_ID)
+            {
+                hit_consistency_numerator_++;
+            }
+        }
     }
     return resultchunk;
 }
@@ -312,4 +348,92 @@ void AllGreedy::DumpReversePosStats(const std::string &path)
         list_file << pos << "\n";
     }
     list_file.close();
+}
+
+void AllGreedy::DumpSFIndexStats()
+{
+    std::cout << "\n--- Starting SFindex Analysis (Insight 1, 4, 5) ---\n";
+
+    // --- Insight 1: 统计 vector 大小分布 ---
+    std::map<size_t, uint64_t> vector_size_counts;
+
+    // --- Insight 4: 统计命中前半部分频率 ---
+    uint64_t insight4_numerator = 0;   // 命中前半部分的次数
+    uint64_t insight4_denominator = 0; // 总检查次数
+
+    // 遍历 SFindex 数组中的每一个 map
+    for (int i = 0; i < FINESSE_SF_NUM; ++i)
+    {
+        for (const auto &pair : SFindex[i])
+        {
+            const auto &vec = pair.second;
+            const size_t vec_size = vec.size();
+
+            // --- Insight 1 的数据收集 ---
+            vector_size_counts[vec_size]++;
+
+            // --- Insight 4 的数据收集 ---
+            if (vec_size > 4)
+            {
+                // 准备一个用于快速查找前半部分 ID 的 set
+                std::unordered_set<int> first_half_ids;
+                for (size_t j = 0; j < vec_size / 2; ++j)
+                {
+                    first_half_ids.insert(vec[j]);
+                }
+
+                // 从第4个元素开始遍历
+                for (size_t j = 3; j < vec_size; ++j)
+                {
+                    insight4_denominator++; // 增加分母（总检查次数）
+
+                    int current_chunk_id = vec[j];
+                    auto meta = dataWrite_->Get_Chunk_MetaInfo(current_chunk_id);
+                    int64_t base_id = meta.basechunkID;
+
+                    // 检查 base_id 是否在前半部分
+                    if (first_half_ids.count(base_id))
+                    {
+                        insight4_numerator++; // 增加分子（命中次数）
+                    }
+                }
+            }
+        }
+    }
+
+    // --- Insight 1: 结果输出 ---
+    std::ofstream insight1_file("Insight1_vector_size_cdf.txt");
+    if (insight1_file.is_open())
+    {
+        uint64_t total_vectors = 0;
+        for (const auto &pair : vector_size_counts)
+            total_vectors += pair.second;
+
+        insight1_file << "#vector_size\tcount\tcdf\n";
+        uint64_t cumulative_count = 0;
+        for (const auto &pair : vector_size_counts)
+        {
+            cumulative_count += pair.second;
+            double cdf = (total_vectors == 0) ? 0.0 : static_cast<double>(cumulative_count) / total_vectors;
+            insight1_file << pair.first << "\t" << pair.second << "\t" << cdf << "\n";
+        }
+        insight1_file.close();
+        std::cout << "Insight 1: Vector size CDF data written to Insight1_vector_size_cdf.txt\n";
+    }
+
+    // --- Insight 4: 结果输出 ---
+    if (insight4_denominator > 0)
+    {
+        double ratio = static_cast<double>(insight4_numerator) / insight4_denominator;
+        std::cout << "Insight 4: Early Hit Frequency Stats:\n"
+                  << "  - Hits in First Half (Numerator): " << insight4_numerator << "\n"
+                  << "  - Total Checks (Denominator): " << insight4_denominator << "\n"
+                  << "  - Ratio: " << ratio << std::endl;
+    }
+    else
+    {
+        std::cout << "Insight 4: No data collected (denominator is zero).\n";
+    }
+
+    std::cout << "--- SFindex Analysis Finished ---\n";
 }
