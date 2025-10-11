@@ -14,9 +14,12 @@ datasets=(
   ["cassandra"]="/mnt/dataset2/cassandra 97"
   ["vmdk"]="/mnt/dataset2/vmdk 8"
   ["WEB"]="/mnt/dataset2/WEB 20"
-  ["WindowsLog"]="/mnt/dataset2/Windows 1"
+  ["WindowsLog"]="/mnt/dataset2/WindowsLog 1"
   ["ThunderbirdLog"]="/mnt/dataset2/ThunderbirdLog 1"
-  ["Wiki"]="/mnt/dataset2/wiki2025 7"
+  ["Wiki2025-3"]="/mnt/dataset2/wiki2025 3"
+  ["Wiki2025-1"]="/mnt/dataset2/wiki2025 1"
+  ["Wiki2025-bz-1"]="/mnt/dataset2/wiki2025-bz 1"
+  ["Wiki2025-bz-7"]="/mnt/dataset2/wiki2025-bz 7"
 )
 
 declare -A methods
@@ -25,7 +28,7 @@ methods=(
   # ["TreeCut"]="-c 1 -m 12"
   # ["Greedy"]="-c 1 -m 13"
     ["TreeCutLayer"]="-c 1 -m 15"
-    #  ["TreeCache"]="-c 1 -m 16"
+     ["TreeCache"]="-c 1 -m 16"
   # ["OdessMiBL"]="-c 1 -m 6"
   # ["OdessMiBL2"]="-c 1 -m 8"
   # ["OdessMiBL3"]="-c 1 -m 9"
@@ -39,17 +42,21 @@ selected_datasets=(
   # "bash"
   # "coreutils"
   # "fdisk"
-  # "glibc"
+  "glibc"
   # "smalltalk"
   # "gcc"
   # "chromium"
   "linux"
   # "cassandra"
   # "vmdk"
-  # "WEB"
+  "WEB"
   "WindowsLog"
-  "ThunderbirdLog"
-  "Wiki"
+  # "ThunderbirdLog"
+  # "Wiki"
+  # Wiki2025-bz-1
+  # Wiki2025-1
+  # Wiki2025-bz-7
+  # Wiki2025-3
 )
 
 for method_name in "${!methods[@]}"; do
@@ -61,8 +68,8 @@ for method_name in "${!methods[@]}"; do
       read -r path num <<< "${datasets[$dataset]}"
       echo "Processing dataset: $dataset"
       
-    #   sudo rm -f Containers/*
-    #   sudo echo 3 > /proc/sys/vm/drop_caches
+      sudo rm -f Containers/*
+      sudo echo 3 > /proc/sys/vm/drop_caches
       
       ./DFree -i "$path" $method_params -n "$num" > "${method_name}_${dataset}.txt"
       

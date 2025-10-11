@@ -32,5 +32,7 @@ public:
     uint8_t *xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer);
     void StatsFit(uint64_t FatherID, uint64_t FitID, SuperFeatures sfs);
     Chunk_t xd3_recursive_restore_BL_time(uint64_t BasechunkId);
+    void StatsFitInsight(uint64_t FatherID);
+    void CutLayer(uint64_t FatherID, SuperFeatures sfs);
 };
 #endif

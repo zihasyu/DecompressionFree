@@ -294,7 +294,8 @@ Chunk_t TreeCache::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, Su
                 free(TmpBroChunk.chunkPtr); // free bro chunk memory
             free(basechunk_ptr);
         }
-        StatsFit(tmpFatherID, resultchunk.chunkID, sfs);
+        // StatsFit(tmpFatherID, resultchunk.chunkID, sfs);
+        StatsFitInsight(tmpFatherID);
         if (resultchunk.chunkID == tmpChildID)
         {
             end = true; // no more child or bro
@@ -305,6 +306,7 @@ Chunk_t TreeCache::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, Su
             memcpy(CombinedBuffer, resultchunk.chunkPtr, resultchunk.chunkSize); // CombineBuffer is FatherNode
         }
     }
+    CutLayer(BasechunkId, sfs);
     SetTime(endMiDelta);
     SetTime(startMiDelta, endMiDelta, MiDeltaTime);
     return resultchunk;
@@ -437,4 +439,41 @@ Chunk_t TreeCache::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
         chunkCache.insert(BasechunkId, std::vector<uint8_t>(basechunk.chunkPtr, basechunk.chunkPtr + basechunk.chunkSize));
 
     return basechunk;
+}
+
+void TreeCache::StatsFitInsight(uint64_t FatherID)
+{
+    dataWrite_->chunklist[FatherID].FitCount++;
+}
+
+void TreeCache::CutLayer(uint64_t FatherID, SuperFeatures sfs)
+{
+    if (dataWrite_->chunklist[FatherID].FitCount > 16)
+    {
+        uint64_t FitID = -1;
+        int childID = dataWrite_->chunklist[FatherID].FirstChildID;
+        if (childID < 0)
+        {
+            return; // No children
+        }
+
+        int totalFitCount = dataWrite_->chunklist[FatherID].FitCount;
+        int currentID = childID;
+
+        while (currentID >= 0)
+        {
+            if (dataWrite_->chunklist[currentID].FitCount > totalFitCount / 2)
+            {
+                FitID = currentID;
+                break;
+            }
+            currentID = dataWrite_->chunklist[currentID].FirstBroID;
+        }
+
+        if (FitID != -1)
+        // if (FitID != -1 && table.Tree_SF_Find(sfs) == FatherID)
+        {
+            table.Tree_SF_ReWrite(sfs, FitID);
+        }
+    }
 }

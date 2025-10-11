@@ -282,7 +282,8 @@ Chunk_t TreeCutLayer::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk,
                 free(TmpBroChunk.chunkPtr); // free bro chunk memory
             free(basechunk_ptr);
         }
-        StatsFit(tmpFatherID, resultchunk.chunkID, sfs);
+        StatsFitInsight(tmpFatherID);
+        // StatsFit(tmpFatherID, resultchunk.chunkID, sfs);
         if (resultchunk.chunkID == tmpChildID)
         {
             end = true; // no more child or bro
@@ -293,6 +294,7 @@ Chunk_t TreeCutLayer::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk,
             memcpy(CombinedBuffer, resultchunk.chunkPtr, resultchunk.chunkSize); // CombineBuffer is FatherNode
         }
     }
+    CutLayer(BasechunkId, sfs);
     SetTime(endMiDelta);
     SetTime(startMiDelta, endMiDelta, MiDeltaTime);
     return resultchunk;
@@ -334,5 +336,42 @@ void TreeCutLayer::StatsFit(uint64_t FatherID, uint64_t FitID, SuperFeatures sfs
     {
         if (table.Tree_SF_Find(sfs) == FatherID)
             table.Tree_SF_ReWrite(sfs, FitID);
+    }
+}
+
+void TreeCutLayer::StatsFitInsight(uint64_t FatherID)
+{
+    dataWrite_->chunklist[FatherID].FitCount++;
+}
+
+void TreeCutLayer::CutLayer(uint64_t FatherID, SuperFeatures sfs)
+{
+    if (dataWrite_->chunklist[FatherID].FitCount > 16)
+    {
+        uint64_t FitID = -1;
+        int childID = dataWrite_->chunklist[FatherID].FirstChildID;
+        if (childID < 0)
+        {
+            return; // No children
+        }
+
+        int totalFitCount = dataWrite_->chunklist[FatherID].FitCount;
+        int currentID = childID;
+
+        while (currentID >= 0)
+        {
+            if (dataWrite_->chunklist[currentID].FitCount > totalFitCount / 2)
+            {
+                FitID = currentID;
+                break;
+            }
+            currentID = dataWrite_->chunklist[currentID].FirstBroID;
+        }
+
+        if (FitID != -1)
+        // if (FitID != -1 && table.Tree_SF_Find(sfs) == FatherID)
+        {
+            table.Tree_SF_ReWrite(sfs, FitID);
+        }
     }
 }
