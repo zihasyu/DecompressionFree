@@ -1,0 +1,53 @@
+2025-10-12 04:18:54 <Chunker>: chunking done.
+total_size is 8
+
+--- Starting SFindex Analysis (Insight 1, 4, 5, 6) ---
+Insight 6: Identifying 'Super Large Sets' with size > 34075 (1% of ~3407574 total elements)
+Insight 6: Super-large set data written to Insight6_super_large_sets.txt
+Insight 1: Vector size CDF data written to Insight1_vector_size_cdf.txt
+Insight 4: Early Hit Frequency Stats (Global):
+  - Hits in First Half (Numerator): 908314
+  - Total Checks (Denominator): 1781453
+  - Ratio: 0.509873
+Insight 5: Size vs. Early Hit data written to Insight5_size_vs_early_hit.txt
+--- SFindex Analysis Finished ---
+Insight3 Hit Consistency Stats:  - Numerator: 175826  - Denominator: 816742  - Ratio: 0.215277
+Version: 1
+-----------------CHUNK NUM-----------------------
+logical chunk num: 2563441
+unique chunk num: 1135858
+base chunk num: 1135858
+delta chunk num: 0
+-----------------CHUNK SIZE-----------------------
+logicalchunkSize is 28012696901
+uniquechunkSize is 1857558094
+base chunk size: 1857558094
+delta chunk size: 0
+-----------------METRICS-------------------------
+Overall Compression Ratio: 15.0804
+DCC: 0
+DCR: -nan
+DCE: -nan
+-----------------Time------------------------------
+Version time: 12965.4s
+Throughput: 2.06048MiB/s
+Reduce data speed: 1.92385MiB/s
+SF generation time: 8.94428s
+SF generation throughput: 2986.82MiB/s
+MiDelta Time: 12898.4s
+IO Time: 330.529s
+Decode Time: 0s
+Encode Time: 12534.4s
+-----------------OverHead--------------------------
+Index Overhead: 251.311MiB
+FP Overhead: 121.323MiB
+SF Overhead: 129.989MiB
+Recipe Overhead: 19.5575MiB
+SF number: 3407574
+-----------------END-------------------------------
+Time taken by for loop: 12965 s 
+2025-10-12 04:20:41 <BiSearchSystem>: logical Chunk Num is 2563441
+2025-10-12 04:20:41 <BiSearchSystem>: unique Chunk Num is 1135858
+2025-10-12 04:20:41 <BiSearchSystem>: Total logical size is 28012696901
+2025-10-12 04:20:41 <BiSearchSystem>: Total compressed size is 1857558094
+2025-10-12 04:20:41 <BiSearchSystem>: Compression ratio is 15.0804

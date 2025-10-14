@@ -1,0 +1,252 @@
+-----------------INSTRUCTION----------------------
+./DFree -i /mnt/dataset2/glibc_tarballs -c 1 -m 14 -n 100 -r 10 -a 0 -b 1 -t 1 -H 16
+-----------------CHUNK NUM-----------------------
+logical chunk num: 1947530
+unique chunk num: 790359
+base chunk num: 790359
+delta chunk num: 0
+-----------------CHUNK SIZE-----------------------
+logical chunk size: 14690037760
+unique chunk size: 2057727948
+base chunk size: 2057727948
+delta chunk size: 0
+-----------------METRICS-------------------------
+Overall Compression Ratio: 7.13896
+DCC: 0
+DCR: -nan
+DCE: -nan
+-----------------Time------------------------------
+total time: 617s
+Throughput: 22.7059MiB/s
+Reduce data speed: 19.5253MiB/s
+SF generation time: 3.05642s
+SF generation throughput: 4583.64MiB/s
+MiDelta Time: 499.633s
+IO Time: 25.5447s
+Decode Time: 0s
+Encode Time: 471.488s
+-----------------END-------------------------------
+-----------------INSTRUCTION----------------------
+./DFree -i /mnt/dataset2/Windows -c 1 -m 14 -n 1 -r 10 -a 0 -b 1 -t 1 -H 16
+-----------------CHUNK NUM-----------------------
+logical chunk num: 20845
+unique chunk num: 9736
+base chunk num: 9736
+delta chunk num: 0
+-----------------CHUNK SIZE-----------------------
+logical chunk size: 240445440
+unique chunk size: 15621232
+base chunk size: 15621232
+delta chunk size: 0
+-----------------METRICS-------------------------
+Overall Compression Ratio: 15.3922
+DCC: 0
+DCR: -nan
+DCE: -nan
+-----------------Time------------------------------
+total time: 4s
+Throughput: 57.3267MiB/s
+Reduce data speed: 53.6023MiB/s
+SF generation time: 0.075026s
+SF generation throughput: 3056.36MiB/s
+MiDelta Time: 2.43495s
+IO Time: 0.0858061s
+Decode Time: 0s
+Encode Time: 2.3386s
+-----------------END-------------------------------
+-----------------INSTRUCTION----------------------
+./DFree -i /mnt/dataset2/glibc_tarballs -c 1 -m 14 -n 100 -r 10 -a 0 -b 1 -t 1 -H 16
+-----------------CHUNK NUM-----------------------
+logical chunk num: 1947530
+unique chunk num: 790359
+base chunk num: 790359
+delta chunk num: 0
+-----------------CHUNK SIZE-----------------------
+logical chunk size: 14690037760
+unique chunk size: 2057727948
+base chunk size: 2057727948
+delta chunk size: 0
+-----------------METRICS-------------------------
+Overall Compression Ratio: 7.13896
+DCC: 0
+DCR: -nan
+DCE: -nan
+-----------------Time------------------------------
+total time: 553s
+Throughput: 25.3337MiB/s
+Reduce data speed: 21.785MiB/s
+SF generation time: 3.04118s
+SF generation throughput: 4606.6MiB/s
+MiDelta Time: 499.313s
+IO Time: 25.5071s
+Decode Time: 0s
+Encode Time: 471.276s
+-----------------END-------------------------------
+-----------------INSTRUCTION----------------------
+./DFree -i /mnt/dataset2/glibc_tarballs -c 1 -m 14 -n 100 -r 10 -a 0 -b 1 -t 1 -H 16
+-----------------CHUNK NUM-----------------------
+logical chunk num: 1947530
+unique chunk num: 790359
+base chunk num: 790359
+delta chunk num: 0
+-----------------CHUNK SIZE-----------------------
+logical chunk size: 14690037760
+unique chunk size: 2057727948
+base chunk size: 2057727948
+delta chunk size: 0
+-----------------METRICS-------------------------
+Overall Compression Ratio: 7.13896
+DCC: 0
+DCR: -nan
+DCE: -nan
+-----------------Time------------------------------
+total time: 542s
+Throughput: 25.8478MiB/s
+Reduce data speed: 22.2271MiB/s
+SF generation time: 3.05573s
+SF generation throughput: 4584.67MiB/s
+MiDelta Time: 500.472s
+IO Time: 25.7364s
+Decode Time: 0s
+Encode Time: 472.185s
+-----------------END-------------------------------
+-----------------INSTRUCTION----------------------
+./DFree -i /mnt/dataset2/glibc_tarballs -c 1 -m 14 -n 100 -r 10 -a 0 -b 1 -t 1 -H 16
+-----------------CHUNK NUM-----------------------
+logical chunk num: 1947530
+unique chunk num: 790359
+base chunk num: 790359
+delta chunk num: 0
+-----------------CHUNK SIZE-----------------------
+logical chunk size: 14690037760
+unique chunk size: 2057727948
+base chunk size: 2057727948
+delta chunk size: 0
+-----------------METRICS-------------------------
+Overall Compression Ratio: 7.13896
+DCC: 0
+DCR: -nan
+DCE: -nan
+-----------------Time------------------------------
+total time: 542s
+Throughput: 25.8478MiB/s
+Reduce data speed: 22.2271MiB/s
+SF generation time: 3.04948s
+SF generation throughput: 4594.06MiB/s
+MiDelta Time: 500.224s
+IO Time: 25.6217s
+Decode Time: 0s
+Encode Time: 472.092s
+-----------------END-------------------------------
+-----------------INSTRUCTION----------------------
+./DFree -i /mnt/dataset2/WindowsLog -c 1 -m 14 -n 1 -r 10 -a 0 -b 1 -t 1 -H 16
+-----------------CHUNK NUM-----------------------
+logical chunk num: 2563441
+unique chunk num: 1135858
+base chunk num: 1135858
+delta chunk num: 0
+-----------------CHUNK SIZE-----------------------
+logical chunk size: 28012696901
+unique chunk size: 1857558094
+base chunk size: 1857558094
+delta chunk size: 0
+-----------------METRICS-------------------------
+Overall Compression Ratio: 15.0804
+DCC: 0
+DCR: -nan
+DCE: -nan
+-----------------Time------------------------------
+total time: 12965s
+Throughput: 2.06055MiB/s
+Reduce data speed: 1.92391MiB/s
+SF generation time: 8.94428s
+SF generation throughput: 2986.82MiB/s
+MiDelta Time: 12898.4s
+IO Time: 330.529s
+Decode Time: 0s
+Encode Time: 12534.4s
+-----------------END-------------------------------
+-----------------INSTRUCTION----------------------
+./DFree -i /mnt/dataset2/linux -c 1 -m 14 -n 100 -r 10 -a 0 -b 1 -t 1 -H 16
+-----------------CHUNK NUM-----------------------
+logical chunk num: 3503655
+unique chunk num: 1811474
+base chunk num: 1811474
+delta chunk num: 0
+-----------------CHUNK SIZE-----------------------
+logical chunk size: 27501813760
+unique chunk size: 7076693500
+base chunk size: 7076693500
+delta chunk size: 0
+-----------------METRICS-------------------------
+Overall Compression Ratio: 3.88625
+DCC: 0
+DCR: -nan
+DCE: -nan
+-----------------Time------------------------------
+total time: 827s
+Throughput: 31.7144MiB/s
+Reduce data speed: 23.5537MiB/s
+SF generation time: 9.30103s
+SF generation throughput: 2819.88MiB/s
+MiDelta Time: 629.392s
+IO Time: 101.446s
+Decode Time: 0s
+Encode Time: 524.004s
+-----------------END-------------------------------
+-----------------INSTRUCTION----------------------
+./DFree -i /mnt/dataset2/linux -c 1 -m 14 -n 270 -r 10 -a 0 -b 1 -t 1 -H 16
+-----------------CHUNK NUM-----------------------
+logical chunk num: 26557648
+unique chunk num: 10664045
+base chunk num: 10664045
+delta chunk num: 0
+-----------------CHUNK SIZE-----------------------
+logical chunk size: 212796651520
+unique chunk size: 37412507426
+base chunk size: 37412507426
+delta chunk size: 0
+-----------------METRICS-------------------------
+Overall Compression Ratio: 5.68785
+DCC: 0
+DCR: -nan
+DCE: -nan
+-----------------Time------------------------------
+total time: 65211s
+Throughput: 3.11203MiB/s
+Reduce data speed: 2.56489MiB/s
+SF generation time: 57.7499s
+SF generation throughput: 3514.09MiB/s
+MiDelta Time: 34809.2s
+IO Time: 26441.5s
+Decode Time: 0s
+Encode Time: 6975.36s
+-----------------END-------------------------------
+-----------------INSTRUCTION----------------------
+./DFree -i /mnt/dataset2/WEB -c 1 -m 14 -n 2 -r 10 -a 0 -b 1 -t 1 -H 16
+-----------------CHUNK NUM-----------------------
+logical chunk num: 700527
+unique chunk num: 225166
+base chunk num: 225166
+delta chunk num: 0
+-----------------CHUNK SIZE-----------------------
+logical chunk size: 5748879360
+unique chunk size: 1074899975
+base chunk size: 1074899975
+delta chunk size: 0
+-----------------METRICS-------------------------
+Overall Compression Ratio: 5.34829
+DCC: 0
+DCR: -nan
+DCE: -nan
+-----------------Time------------------------------
+total time: 18682s
+Throughput: 0.293467MiB/s
+Reduce data speed: 0.238596MiB/s
+SF generation time: 1.27541s
+SF generation throughput: 4298.65MiB/s
+MiDelta Time: 18662.6s
+IO Time: 601.601s
+Decode Time: 0s
+Encode Time: 18030.6s
+-----------------END-------------------------------

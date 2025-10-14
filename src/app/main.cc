@@ -243,6 +243,27 @@ int main(int argc, char **argv)
             absMethodObj->Version_log(TimeTmp, chunkerObj->ChunkTime.count());
     }
 
+    int threshold = 3;
+    int below = 0;
+    int total = absMethodObj->sf_hit_count.size();
+    for (const auto &kv : absMethodObj->sf_hit_count){
+        if(kv.second < threshold) below++;
+    }
+    double percent = 100.0 * below / (total ? total : 1);
+    std::cout << "命中次数小于 " << threshold << " 的 super feature 占比: " << percent << "%" << std::endl;
+
+    // 统计命中次数分布
+    std::vector<int> hits;
+    for (const auto& kv : absMethodObj->sf_hit_count) hits.push_back(kv.second);
+    std::sort(hits.begin(), hits.end());
+    if (!hits.empty()) {
+        std::cout << "最小命中次数: " << hits.front() << std::endl;
+        std::cout << "最大命中次数: " << hits.back() << std::endl;
+        std::cout << "中位数命中次数: " << hits[hits.size()/2] << std::endl;
+        double avg = std::accumulate(hits.begin(), hits.end(), 0.0) / hits.size();
+        std::cout << "平均命中次数: " << avg << std::endl;
+    }
+
     auto endsum = std::chrono::high_resolution_clock::now();
     auto sumTime = (endsum - startsum);
     auto sumTimeInSeconds = std::chrono::duration_cast<std::chrono::seconds>(endsum - startsum).count();

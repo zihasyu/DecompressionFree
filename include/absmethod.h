@@ -175,5 +175,7 @@ public:
         }
         cout << endl; // 最后添加一个换行符，确保后续输出正常
     }
+
+    std::unordered_map<super_feature_t, int> sf_hit_count;
 };
 #endif

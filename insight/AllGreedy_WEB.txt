@@ -1,0 +1,89 @@
+2025-10-13 00:12:25 <Chunker>: chunking done.
+total_size is 8
+Insight3 Hit Consistency Stats:  - Numerator: 14861  - Denominator: 120397  - Ratio: 0.123433
+Version: 1
+-----------------CHUNK NUM-----------------------
+logical chunk num: 349658
+unique chunk num: 181563
+base chunk num: 181563
+delta chunk num: 0
+-----------------CHUNK SIZE-----------------------
+logicalchunkSize is 2869463040
+uniquechunkSize is 838586441
+base chunk size: 838586441
+delta chunk size: 0
+-----------------METRICS-------------------------
+Overall Compression Ratio: 3.42179
+DCC: 0
+DCR: -nan
+DCE: -nan
+-----------------Time------------------------------
+Version time: 5557.29s
+Throughput: 0.492423MiB/s
+Reduce data speed: 0.348515MiB/s
+SF generation time: 1.01205s
+SF generation throughput: 2703.95MiB/s
+MiDelta Time: 5545.41s
+IO Time: 203.272s
+Decode Time: 0s
+Encode Time: 5331.23s
+-----------------OverHead--------------------------
+Index Overhead: 40.1713MiB
+FP Overhead: 19.393MiB
+SF Overhead: 20.7782MiB
+Recipe Overhead: 2.66768MiB
+SF number: 544689
+-----------------END-------------------------------
+2025-10-13 03:51:27 <Chunker>: chunking done.
+total_size is 8
+
+--- Starting SFindex Analysis (Insight 1, 4, 5, 6) ---
+Insight 6: Identifying 'Super Large Sets' with size > 6754 (1% of ~675498 total elements)
+Insight 6: Super-large set data written to Insight6_super_large_sets.txt
+Insight 1: Vector size CDF data written to Insight1_vector_size_cdf.txt
+Insight 4: Early Hit Frequency Stats (Global):
+  - Hits in First Half (Numerator): 251136
+  - Total Checks (Denominator): 345952
+  - Ratio: 0.725927
+Insight 5: Size vs. Early Hit data written to Insight5_size_vs_early_hit.txt
+--- SFindex Analysis Finished ---
+Insight3 Hit Consistency Stats:  - Numerator: 15941  - Denominator: 149807  - Ratio: 0.10641
+Version: 2
+-----------------CHUNK NUM-----------------------
+logical chunk num: 700527
+unique chunk num: 225166
+base chunk num: 225166
+delta chunk num: 0
+-----------------CHUNK SIZE-----------------------
+logicalchunkSize is 5748879360
+uniquechunkSize is 1074899975
+base chunk size: 1074899975
+delta chunk size: 0
+-----------------METRICS-------------------------
+Overall Compression Ratio: 5.34829
+DCC: 0
+DCR: -nan
+DCE: -nan
+-----------------Time------------------------------
+Version time: 13125s
+Throughput: 0.209222MiB/s
+Reduce data speed: 0.131118MiB/s
+SF generation time: 0.263365s
+SF generation throughput: 10426.7MiB/s
+MiDelta Time: 18662.6s
+IO Time: 601.601s
+Decode Time: 0s
+Encode Time: 18030.6s
+-----------------OverHead--------------------------
+Index Overhead: 49.8185MiB
+FP Overhead: 24.0503MiB
+SF Overhead: 25.7682MiB
+Recipe Overhead: 5.3446MiB
+SF number: 675498
+-----------------END-------------------------------
+Time taken by for loop: 18682 s 
+2025-10-13 03:52:51 <BiSearchSystem>: logical Chunk Num is 700527
+2025-10-13 03:52:51 <BiSearchSystem>: unique Chunk Num is 225166
+2025-10-13 03:52:51 <BiSearchSystem>: Total logical size is 5748879360
+2025-10-13 03:52:51 <BiSearchSystem>: Total compressed size is 1074899975
+2025-10-13 03:52:51 <BiSearchSystem>: Compression ratio is 5.3483

@@ -61,11 +61,15 @@ void TreeGreedy::ProcessTrace()
                 {
                     startSF = std::chrono::high_resolution_clock::now();
                     superfeature = table.feature_generator_.GenerateSuperFeatures(tmpChunkContent);
+                    for(const auto& singleSF : superfeature){
+                        if(sf_hit_count.find(singleSF) == sf_hit_count.end()) sf_hit_count[singleSF] = 0;
+                    }
                     endSF = std::chrono::high_resolution_clock::now();
                     SFTime += (endSF - startSF);
 
                     auto findResult = table.Tree_SF_Find(superfeature);
                     basechunkid = findResult.first;
+                    sf_hit_count[findResult.second]++;
                     // auto ret = table.GetSimilarRecordsKeys(tmpChunkHash);
                 }
 
