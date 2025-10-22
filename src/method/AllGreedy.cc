@@ -45,6 +45,7 @@ void AllGreedy::ProcessTrace()
                 DumpReversePosStats("Insight2.txt");  // insight2
                 DumpForwardPosStats("Insight12.txt"); // insight12
                 DumpDistanceStats("Insight11.txt");   // insight11
+                DumpInsight10Stats("Insight10.txt");  // insight10
                 DumpSFIndexStats();                   // insight4
             }
 
@@ -276,6 +277,30 @@ Chunk_t AllGreedy::FindBest(SuperFeatures SF, const Chunk_t &Targetchunk)
             if (current_hit_ID == previous_hit_ID)
             {
                 hit_consistency_numerator_++;
+            }
+        }
+        // --- Insight 10: "Skip-Delta" Analysis ---
+        auto best_base_meta = dataWrite_->Get_Chunk_MetaInfo(resultchunk.chunkID);
+        if (best_base_meta.basechunkID > -1)
+        {
+            // 1. 恢复 "祖父" 块
+            Chunk_t grandparent_chunk = xd3_recursive_restore_BL_time(best_base_meta.basechunkID);
+
+            // 2. 计算 Target 对 "祖父" 块的增量大小
+            size_t grandparent_delta_size = 0;
+            xd3_encode_buffer(
+                Targetchunk.chunkPtr, Targetchunk.chunkSize,
+                grandparent_chunk.chunkPtr, grandparent_chunk.chunkSize,
+                &grandparent_delta_size, deltaMaxChunkBuffer);
+
+            // 3. 计算差值并记录
+            int64_t diff = static_cast<int64_t>(grandparent_delta_size) - static_cast<int64_t>(resultchunk.saveSize);
+            insight10_diff_list_.push_back(diff);
+
+            // 4. 释放为 "祖父" 块分配的内存
+            if (grandparent_chunk.loadFromDisk)
+            {
+                free(grandparent_chunk.chunkPtr);
             }
         }
     }
@@ -610,4 +635,94 @@ void AllGreedy::DumpDistanceStats(const std::string &path)
         list_file << dist << "\n";
     }
     list_file.close();
+}
+
+void AllGreedy::DumpInsight10Stats(const std::string &path)
+{
+    if (insight10_diff_list_.empty())
+    {
+        std::cout << "Insight 10 (Skip-Delta) stats are empty, skipping dump.\n";
+        return;
+    }
+
+    // --- 版本 1: 包含所有差值 (正、负、零) 的 CDF ---
+
+    // 1. 统计每个差值出现的次数
+    std::map<int64_t, uint64_t> diff_counts;
+    for (const auto &diff : insight10_diff_list_)
+    {
+        diff_counts[diff]++;
+    }
+
+    // 2. 写入聚合统计数据 (count 和 CDF)
+    std::ofstream cdf_file(path);
+    if (!cdf_file.is_open())
+    {
+        std::cerr << "Error: Failed to open file for Insight 10 stats: " << path << std::endl;
+    }
+    else
+    {
+        cdf_file << "#delta_size_diff\tcount\tcdf\n";
+        const uint64_t total_count = insight10_diff_list_.size();
+        uint64_t cumulative_count = 0;
+
+        for (const auto &pair : diff_counts)
+        {
+            cumulative_count += pair.second;
+            const double cdf = (total_count == 0) ? 0.0 : static_cast<double>(cumulative_count) / total_count;
+            cdf_file << pair.first << "\t" << pair.second << "\t" << cdf << "\n";
+        }
+        cdf_file.close();
+    }
+
+    // 3. (可选) 写入原始差值列表
+    const std::string list_path = path + ".list";
+    std::ofstream list_file(list_path);
+    if (!list_file.is_open())
+    {
+        std::cerr << "Error: Failed to open file for raw Insight 10 list: " << list_path << std::endl;
+    }
+    else
+    {
+        for (const auto diff : insight10_diff_list_)
+        {
+            list_file << diff << "\n";
+        }
+        list_file.close();
+    }
+
+    // --- 版本 2: 只包含正差值 (> 0) 的 CDF ---
+
+    std::map<int64_t, uint64_t> positive_diff_counts;
+    uint64_t total_positive_count = 0;
+    for (const auto &diff : insight10_diff_list_)
+    {
+        if (diff > 0)
+        {
+            positive_diff_counts[diff]++;
+            total_positive_count++;
+        }
+    }
+
+    if (total_positive_count > 0)
+    {
+        const std::string positive_path = "Insight10_positive_only.txt";
+        std::ofstream pos_cdf_file(positive_path);
+        if (!pos_cdf_file.is_open())
+        {
+            std::cerr << "Error: Failed to open file for Insight 10 positive stats: " << positive_path << std::endl;
+        }
+        else
+        {
+            pos_cdf_file << "#positive_delta_size_diff\tcount\tcdf\n";
+            uint64_t cumulative_positive_count = 0;
+            for (const auto &pair : positive_diff_counts)
+            {
+                cumulative_positive_count += pair.second;
+                const double cdf = static_cast<double>(cumulative_positive_count) / total_positive_count;
+                pos_cdf_file << pair.first << "\t" << pair.second << "\t" << cdf << "\n";
+            }
+            pos_cdf_file.close();
+        }
+    }
 }

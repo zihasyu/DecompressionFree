@@ -27,6 +27,9 @@ private:
     // For Insight 11: 统计与候选列表中最后一个块的 chunkID 距离
     std::vector<int64_t> distanceList_;
     void DumpDistanceStats(const std::string &path);
+    // For Insight 10: "Skip-Delta" analysis
+    std::vector<int64_t> insight10_diff_list_;
+    void DumpInsight10Stats(const std::string &path);
 
 public:
     AllGreedy(int FinalVersion_);
