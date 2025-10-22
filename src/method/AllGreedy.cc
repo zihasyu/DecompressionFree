@@ -42,8 +42,10 @@ void AllGreedy::ProcessTrace()
 
             if (ads_Version == FinalVersion)
             {
-                DumpReversePosStats("Insight2.txt"); // insight2
-                DumpSFIndexStats();                  // insight4
+                DumpReversePosStats("Insight2.txt");  // insight2
+                DumpForwardPosStats("Insight12.txt"); // insight12
+                DumpDistanceStats("Insight11.txt");   // insight11
+                DumpSFIndexStats();                   // insight4
             }
 
             if (hit_consistency_denominator_ > 0)
@@ -211,6 +213,7 @@ Chunk_t AllGreedy::FindBest(SuperFeatures SF, const Chunk_t &Targetchunk)
     resultchunk.chunkID = -1;
     auto toVisit = table.SF_Find_Mi(SF);
     size_t best_reverse_pos = (size_t)-1; // 用于记录最终最佳候选项的倒数位置
+    size_t best_forward_pos = (size_t)-1; // 用于记录最终最佳候选项的正数位置
     const size_t n = toVisit.size();
     for (size_t idx = 0; idx < n; ++idx)
     {
@@ -231,8 +234,9 @@ Chunk_t AllGreedy::FindBest(SuperFeatures SF, const Chunk_t &Targetchunk)
             resultchunk.chunkID = currentID;
             memcpy(MinBaseBuffer, current.chunkPtr, current.chunkSize);
 
-            // 找到了一个更好的候选项，记下它的倒数位置
+            // 找到了一个更好的候选项，记下它的倒数和正数位置
             best_reverse_pos = (n == 0 ? 0 : (n - 1 - idx));
+            best_forward_pos = idx;
         }
 
         if (current.loadFromDisk)
@@ -245,6 +249,15 @@ Chunk_t AllGreedy::FindBest(SuperFeatures SF, const Chunk_t &Targetchunk)
         // 单线程：直接更新容器
         reversePosCount_[best_reverse_pos] += 1;
         reversePosList_.push_back(best_reverse_pos);
+        forwardPosCount_[best_forward_pos] += 1;
+        forwardPosList_.push_back(best_forward_pos);
+        if (n > 0)
+        {
+            auto last_element_meta = dataWrite_->Get_Chunk_MetaInfo(toVisit.back());
+            int64_t distance = static_cast<int64_t>(Targetchunk.chunkID) - static_cast<int64_t>(last_element_meta.chunkID);
+            distanceList_.push_back(distance);
+        }
+
         // --- 新增的命中一致性统计逻辑 ---
         if (n > 1) // 只有当候选列表大小 > 1 时才进行统计
         {
@@ -352,53 +365,91 @@ void AllGreedy::DumpReversePosStats(const std::string &path)
 
 void AllGreedy::DumpSFIndexStats()
 {
-    std::cout << "\n--- Starting SFindex Analysis (Insight 1, 4, 5) ---\n";
+    std::cout << "\n--- Starting SFindex Analysis (Insight 1, 4, 5, 6) ---\n";
 
     // --- Insight 1: 统计 vector 大小分布 ---
     std::map<size_t, uint64_t> vector_size_counts;
 
-    // --- Insight 4: 统计命中前半部分频率 ---
-    uint64_t insight4_numerator = 0;   // 命中前半部分的次数
-    uint64_t insight4_denominator = 0; // 总检查次数
+    // --- Insight 4: 统计命中前半部分频率 (全局) ---
+    uint64_t insight4_numerator = 0;
+    uint64_t insight4_denominator = 0;
 
-    // 遍历 SFindex 数组中的每一个 map
-    for (int i = 0; i < FINESSE_SF_NUM; ++i)
+    // --- Insight 5: 按 vector 大小分组统计命中前半部分频率 ---
+    std::map<size_t, std::pair<uint64_t, uint64_t>> insight5_stats;
+
+    // --- Insight 6: 识别并记录“超大集合” ---
+    const size_t threshold = static_cast<size_t>(uniquechunkNum * 3 * 0.01);
+    std::cout << "Insight 6: Identifying 'Super Large Sets' with size > " << threshold
+              << " (1% of ~" << uniquechunkNum * 3 << " total elements)\n";
+    std::ofstream insight6_file("Insight6_super_large_sets.txt");
+    if (insight6_file.is_open())
     {
-        for (const auto &pair : SFindex[i])
+        insight6_file << "# Super-large sets analysis (sets with size > " << threshold << ")\n";
+        // 注意：由于 super_feature_t 是一个复杂类型，我们无法直接打印。
+        // 这里使用一个自增的 set_id 作为标识符。
+        insight6_file << "#set_id\tchunk_id\tbasechunk_id\n";
+    }
+    size_t set_id_counter = 0;
+
+    // ===================== 核心修改 =====================
+    // 直接遍历 table.SFindex 这个单一的 map，不再有外层循环。
+    for (const auto &pair : table.SFindex)
+    {
+        // pair.first  is super_feature_t
+        // pair.second is std::vector<std::size_t>
+        const auto &vec = pair.second;
+        const size_t vec_size = vec.size();
+
+        // --- Insight 1 的数据收集 ---
+        vector_size_counts[vec_size]++;
+
+        // --- Insight 4 & 5 的数据收集 ---
+        if (vec_size > 4)
         {
-            const auto &vec = pair.second;
-            const size_t vec_size = vec.size();
-
-            // --- Insight 1 的数据收集 ---
-            vector_size_counts[vec_size]++;
-
-            // --- Insight 4 的数据收集 ---
-            if (vec_size > 4)
+            // 使用 std::size_t 来匹配 vector 的类型
+            std::unordered_set<std::size_t> first_half_ids;
+            for (size_t j = 0; j < vec_size / 2; ++j)
             {
-                // 准备一个用于快速查找前半部分 ID 的 set
-                std::unordered_set<int> first_half_ids;
-                for (size_t j = 0; j < vec_size / 2; ++j)
+                first_half_ids.insert(vec[j]);
+            }
+
+            for (size_t j = 3; j < vec_size; ++j)
+            {
+                insight4_denominator++;
+                insight5_stats[vec_size].second++;
+
+                // vec 中的 ID 类型是 std::size_t
+                size_t current_chunk_id = vec[j];
+                auto meta = dataWrite_->Get_Chunk_MetaInfo(current_chunk_id);
+                int64_t base_id = meta.basechunkID;
+
+                // .count() 的参数需要匹配 set 的 key 类型
+                if (first_half_ids.count(static_cast<std::size_t>(base_id)))
                 {
-                    first_half_ids.insert(vec[j]);
-                }
-
-                // 从第4个元素开始遍历
-                for (size_t j = 3; j < vec_size; ++j)
-                {
-                    insight4_denominator++; // 增加分母（总检查次数）
-
-                    int current_chunk_id = vec[j];
-                    auto meta = dataWrite_->Get_Chunk_MetaInfo(current_chunk_id);
-                    int64_t base_id = meta.basechunkID;
-
-                    // 检查 base_id 是否在前半部分
-                    if (first_half_ids.count(base_id))
-                    {
-                        insight4_numerator++; // 增加分子（命中次数）
-                    }
+                    insight4_numerator++;
+                    insight5_stats[vec_size].first++;
                 }
             }
         }
+
+        // --- Insight 6 的数据收集 ---
+        if (vec_size > threshold && insight6_file.is_open())
+        {
+            set_id_counter++; // 为这个超大集合分配一个ID
+            for (size_t chunk_id : vec)
+            {
+                auto meta = dataWrite_->Get_Chunk_MetaInfo(chunk_id);
+                insight6_file << set_id_counter << "\t" << chunk_id << "\t" << meta.basechunkID << "\n";
+            }
+        }
+    }
+    // ====================================================
+
+    // --- 关闭 Insight 6 文件 ---
+    if (insight6_file.is_open())
+    {
+        insight6_file.close();
+        std::cout << "Insight 6: Super-large set data written to Insight6_super_large_sets.txt\n";
     }
 
     // --- Insight 1: 结果输出 ---
@@ -425,7 +476,7 @@ void AllGreedy::DumpSFIndexStats()
     if (insight4_denominator > 0)
     {
         double ratio = static_cast<double>(insight4_numerator) / insight4_denominator;
-        std::cout << "Insight 4: Early Hit Frequency Stats:\n"
+        std::cout << "Insight 4: Early Hit Frequency Stats (Global):\n"
                   << "  - Hits in First Half (Numerator): " << insight4_numerator << "\n"
                   << "  - Total Checks (Denominator): " << insight4_denominator << "\n"
                   << "  - Ratio: " << ratio << std::endl;
@@ -435,5 +486,128 @@ void AllGreedy::DumpSFIndexStats()
         std::cout << "Insight 4: No data collected (denominator is zero).\n";
     }
 
+    // --- Insight 5: 结果输出 ---
+    std::ofstream insight5_file("Insight5_size_vs_early_hit.txt");
+    if (insight5_file.is_open())
+    {
+        insight5_file << "#vector_size\tearly_hit_ratio\thits_in_first_half\ttotal_checks\n";
+        for (const auto &pair : insight5_stats)
+        {
+            const size_t vec_size = pair.first;
+            const uint64_t num = pair.second.first;
+            const uint64_t den = pair.second.second;
+            const double ratio = (den == 0) ? 0.0 : static_cast<double>(num) / den;
+            insight5_file << vec_size << "\t" << ratio << "\t" << num << "\t" << den << "\n";
+        }
+        insight5_file.close();
+        std::cout << "Insight 5: Size vs. Early Hit data written to Insight5_size_vs_early_hit.txt\n";
+    }
+
     std::cout << "--- SFindex Analysis Finished ---\n";
+}
+
+void AllGreedy::DumpForwardPosStats(const std::string &path)
+{
+    if (forwardPosCount_.empty())
+    {
+        std::cout << "Forward position stats are empty, skipping dump.\n";
+        return;
+    }
+
+    // --- 1. 写入聚合统计数据 (count 和 CDF) ---
+    std::vector<std::pair<size_t, uint64_t>> sorted_counts(forwardPosCount_.begin(), forwardPosCount_.end());
+    std::sort(sorted_counts.begin(), sorted_counts.end(),
+              [](const auto &a, const auto &b)
+              {
+                  return a.first < b.first; // 按 forward_pos (key) 升序排序
+              });
+
+    const uint64_t total_hits = std::accumulate(sorted_counts.begin(), sorted_counts.end(), 0ULL,
+                                                [](uint64_t sum, const auto &p)
+                                                {
+                                                    return sum + p.second;
+                                                });
+
+    std::ofstream cdf_file(path);
+    if (!cdf_file.is_open())
+    {
+        std::cerr << "Error: Failed to open file for CDF stats: " << path << std::endl;
+        return;
+    }
+
+    cdf_file << "#forward_pos\tcount\tcdf\n";
+    uint64_t cumulative_count = 0;
+    for (const auto &pair : sorted_counts)
+    {
+        cumulative_count += pair.second;
+        const double cdf = (total_hits == 0) ? 0.0 : static_cast<double>(cumulative_count) / total_hits;
+        cdf_file << pair.first << "\t" << pair.second << "\t" << cdf << "\n";
+    }
+    cdf_file.close();
+
+    // --- 2. 写入原始命中列表 (用于 ECDF) ---
+    const std::string list_path = path + ".list";
+    std::ofstream list_file(list_path);
+    if (!list_file.is_open())
+    {
+        std::cerr << "Error: Failed to open file for raw list: " << list_path << std::endl;
+        return;
+    }
+
+    for (const auto pos : forwardPosList_)
+    {
+        list_file << pos << "\n";
+    }
+    list_file.close();
+}
+
+void AllGreedy::DumpDistanceStats(const std::string &path)
+{
+    if (distanceList_.empty())
+    {
+        std::cout << "Distance stats are empty, skipping dump.\n";
+        return;
+    }
+
+    // 1. 统计每个距离出现的次数
+    std::map<int64_t, uint64_t> distance_counts;
+    for (const auto &dist : distanceList_)
+    {
+        distance_counts[dist]++;
+    }
+
+    // 2. 写入聚合统计数据 (count 和 CDF)
+    std::ofstream cdf_file(path);
+    if (!cdf_file.is_open())
+    {
+        std::cerr << "Error: Failed to open file for distance stats: " << path << std::endl;
+        return;
+    }
+
+    cdf_file << "#distance\tcount\tcdf\n";
+    const uint64_t total_hits = distanceList_.size();
+    uint64_t cumulative_count = 0;
+
+    // std::map 的 key 是有序的，所以可以直接遍历以获得有序的 CDF
+    for (const auto &pair : distance_counts)
+    {
+        cumulative_count += pair.second;
+        const double cdf = (total_hits == 0) ? 0.0 : static_cast<double>(cumulative_count) / total_hits;
+        cdf_file << pair.first << "\t" << pair.second << "\t" << cdf << "\n";
+    }
+    cdf_file.close();
+
+    // 3. (可选) 写入原始距离列表
+    const std::string list_path = path + ".list";
+    std::ofstream list_file(list_path);
+    if (!list_file.is_open())
+    {
+        std::cerr << "Error: Failed to open file for raw distance list: " << list_path << std::endl;
+        return;
+    }
+    for (const auto dist : distanceList_)
+    {
+        list_file << dist << "\n";
+    }
+    list_file.close();
 }

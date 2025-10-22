@@ -10,11 +10,12 @@ datasets=(
   ["smalltalk"]="/mnt/dataset2/smalltalk_tarballs 40"
   ["gcc"]="/mnt/dataset2/GNU_GCC/gcc-packed/tar 117"
   ["chromium"]="/mnt/dataset2/chromium 107"
+  ["linux-100"]="/mnt/dataset2/linux 100"
   ["linux"]="/mnt/dataset2/linux 270"
   ["cassandra"]="/mnt/dataset2/cassandra 97"
   ["vmdk"]="/mnt/dataset2/vmdk 8"
-  ["WEB"]="/mnt/dataset2/WEB 20"
-  ["WindowsLog"]="/mnt/dataset2/Windows 1"
+  ["WEB"]="/mnt/dataset2/WEB 2"
+  ["WindowsLog"]="/mnt/dataset2/WindowsLog 1"
   ["ThunderbirdLog"]="/mnt/dataset2/ThunderbirdLog 1"
   ["Wiki"]="/mnt/dataset2/wiki2025 7"
 )
@@ -24,14 +25,14 @@ methods=(
   # ["Odess"]="-c 1 -m 3"
   # ["TreeCut"]="-c 1 -m 12"
   # ["Greedy"]="-c 1 -m 13"
-    ["TreeCutLayer"]="-c 1 -m 15"
+    # ["TreeCutLayer"]="-c 1 -m 15"
     #  ["TreeCache"]="-c 1 -m 16"
   # ["OdessMiBL"]="-c 1 -m 6"
   # ["OdessMiBL2"]="-c 1 -m 8"
   # ["OdessMiBL3"]="-c 1 -m 9"
   # ["OdessMiLess4"]="-c 1 -m 11"
   # ["OdessMiLog2"]="-c 1 -m 10"
-    # ["AllGreedy"]="-c 1 -m 14"
+    ["AllGreedy"]="-c 1 -m 14"
 )
 
 selected_datasets=(
@@ -39,17 +40,19 @@ selected_datasets=(
   # "bash"
   # "coreutils"
   # "fdisk"
-  # "glibc"
+  "glibc"
   # "smalltalk"
   # "gcc"
   # "chromium"
+  "WindowsLog"
+  # "linux-100"
   "linux"
   # "cassandra"
   # "vmdk"
-  # "WEB"
-  "WindowsLog"
-  "ThunderbirdLog"
-  "Wiki"
+  "WEB"
+
+  # "ThunderbirdLog"
+  # "Wiki"
 )
 
 for method_name in "${!methods[@]}"; do
@@ -65,7 +68,13 @@ for method_name in "${!methods[@]}"; do
     #   sudo echo 3 > /proc/sys/vm/drop_caches
       
       ./DFree -i "$path" $method_params -n "$num" > "${method_name}_${dataset}.txt"
-      
+      mkdir -p "$dataset"
+      if ls Insight*.txt 1> /dev/null 2>&1; then
+      echo "Moving Insight files to directory: $dataset/"
+      mv Insight*.txt "$dataset/"
+      else
+        echo "No Insight files found to move for dataset: $dataset"
+      fi
       echo "Completed $method_name on $dataset"
     else
       echo "Error: Dataset $dataset not defined"
