@@ -137,7 +137,7 @@ public:
   unordered_map<super_feature_t, vector<uint64_t>> SFindex;
   uint64_t SF_Find(const SuperFeatures &superfeatures);
   std::vector<uint64_t> SF_Find_Mi(const SuperFeatures &superfeatures);
-  void SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid);
+  bool SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid);
   // log2 feature -> <Id, FitCount, otherInfo>
   unordered_map<super_feature_t, Log2Entry> Log2_SFIndex;
   uint64_t Log2_SF_Find(const SuperFeatures &superfeatures);

@@ -98,7 +98,11 @@ void AllGreedy::ProcessTrace()
                         tmpChunk.basechunkID = -1;
                         tmpChunkid = tmpChunk.chunkID;
                         if (tmpChunk.chunkSize > 60)
-                            table.SF_Insert(superfeature, tmpChunk.chunkID);
+                            if(table.SF_Insert(superfeature, tmpChunk.chunkID)){
+                                if(chunkCache.find(tmpChunk.chunkID) == chunkCache.end()){
+                                    chunkCache[tmpChunk.chunkID] = std::vector<uint8_t>(tmpChunk.chunkPtr, tmpChunk.chunkPtr + tmpChunk.chunkSize);
+                                }
+                            }
                         basechunkNum++;
                         basechunkSize += tmpChunk.saveSize;
                         LocalReduct += tmpChunk.chunkSize - tmpChunk.saveSize;
@@ -118,7 +122,11 @@ void AllGreedy::ProcessTrace()
 
                         // cout << "tmpChunk.savesize is " << tmpChunk.saveSize << endl;
                         if (tmpChunk.chunkSize > 60)
-                            table.SF_Insert(superfeature, tmpChunk.chunkID);
+                            if(table.SF_Insert(superfeature, tmpChunk.chunkID)){
+                                if(chunkCache.find(tmpChunk.chunkID) == chunkCache.end()){
+                                    chunkCache[tmpChunk.chunkID] = std::vector<uint8_t>(tmpChunk.chunkPtr, tmpChunk.chunkPtr + tmpChunk.chunkSize);
+                                }
+                            }
 
                         memcpy(tmpChunk.chunkPtr, deltachunk, tmpChunk.saveSize);
                         StatsDelta(tmpChunk);
@@ -147,7 +155,11 @@ void AllGreedy::ProcessTrace()
                     tmpChunk.basechunkID = -1;
                     tmpChunkid = tmpChunk.chunkID;
                     if (tmpChunk.chunkSize > 60)
-                        table.SF_Insert(superfeature, tmpChunk.chunkID);
+                        if(table.SF_Insert(superfeature, tmpChunk.chunkID)){
+                            if(chunkCache.find(tmpChunk.chunkID) == chunkCache.end()){
+                                chunkCache[tmpChunk.chunkID] = std::vector<uint8_t>(tmpChunk.chunkPtr, tmpChunk.chunkPtr + tmpChunk.chunkSize);
+                            }
+                        }
                     basechunkNum++;
                     basechunkSize += tmpChunk.saveSize;
                     LocalReduct += tmpChunk.chunkSize - tmpChunk.saveSize;
@@ -196,7 +208,21 @@ Chunk_t AllGreedy::FindBest(SuperFeatures SF, const Chunk_t &Targetchunk)
 
     for (auto currentID : toVisit)
     {
-        Chunk_t current = xd3_recursive_restore_BL_time(currentID);
+        auto it = chunkCache.find(currentID);
+        cache_lookup_count++;
+        Chunk_t current;
+        if(it != chunkCache.end()){
+            current.chunkID = currentID;
+            current.chunkSize = it->second.size();
+            current.chunkPtr = (uint8_t*)malloc(current.chunkSize);
+            memcpy(current.chunkPtr, it->second.data(), current.chunkSize);
+            current.loadFromDisk = false;
+            cache_hit_count++;
+        }else{
+            current = xd3_recursive_restore_BL_time(currentID);
+        }
+
+        //Chunk_t current = xd3_recursive_restore_BL_time(currentID);
         size_t deltaSize = 0;
         uint8_t *delta = xd3_encode_buffer(
             Targetchunk.chunkPtr, Targetchunk.chunkSize,
