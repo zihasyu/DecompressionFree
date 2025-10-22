@@ -100,7 +100,13 @@ void AllGreedy::ProcessTrace()
                         if (tmpChunk.chunkSize > 60)
                             if(table.SF_Insert(superfeature, tmpChunk.chunkID)){
                                 if(chunkCache.find(tmpChunk.chunkID) == chunkCache.end()){
+                                    if(cache_queue.size() >= max_cache_size){
+                                        uint64_t oldest_id = cache_queue.front();
+                                        cache_queue.pop();
+                                        chunkCache.erase(oldest_id);
+                                    }
                                     chunkCache[tmpChunk.chunkID] = std::vector<uint8_t>(tmpChunk.chunkPtr, tmpChunk.chunkPtr + tmpChunk.chunkSize);
+                                    cache_queue.push(tmpChunk.chunkID);
                                 }
                             }
                         basechunkNum++;
@@ -124,7 +130,13 @@ void AllGreedy::ProcessTrace()
                         if (tmpChunk.chunkSize > 60)
                             if(table.SF_Insert(superfeature, tmpChunk.chunkID)){
                                 if(chunkCache.find(tmpChunk.chunkID) == chunkCache.end()){
+                                    if(cache_queue.size() >= max_cache_size){
+                                        uint64_t oldest_id = cache_queue.front();
+                                        cache_queue.pop();
+                                        chunkCache.erase(oldest_id);
+                                    }
                                     chunkCache[tmpChunk.chunkID] = std::vector<uint8_t>(tmpChunk.chunkPtr, tmpChunk.chunkPtr + tmpChunk.chunkSize);
+                                    cache_queue.push(tmpChunk.chunkID);
                                 }
                             }
 
@@ -157,7 +169,13 @@ void AllGreedy::ProcessTrace()
                     if (tmpChunk.chunkSize > 60)
                         if(table.SF_Insert(superfeature, tmpChunk.chunkID)){
                             if(chunkCache.find(tmpChunk.chunkID) == chunkCache.end()){
+                                if(cache_queue.size() >= max_cache_size){
+                                    uint64_t oldest_id = cache_queue.front();
+                                    cache_queue.pop();
+                                    chunkCache.erase(oldest_id);
+                                }
                                 chunkCache[tmpChunk.chunkID] = std::vector<uint8_t>(tmpChunk.chunkPtr, tmpChunk.chunkPtr + tmpChunk.chunkSize);
+                                cache_queue.push(tmpChunk.chunkID);
                             }
                         }
                     basechunkNum++;
@@ -171,6 +189,7 @@ void AllGreedy::ProcessTrace()
                         dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
                 }
                 uniquechunkNum++;
+                updateCacheSize();
                 uniquechunkSize += tmpChunk.saveSize;
             }
             else
@@ -264,4 +283,10 @@ uint8_t *AllGreedy::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t t
     SetTime(endMiEncode);
     SetTime(startMiEncode, endMiEncode, EncodeTime);
     return tmpDeltaBuffer;
+}
+
+void AllGreedy::updateCacheSize(){
+    size_t new_size = uniquechunkNum / 100;
+    if(new_size <= 256) new_size = 1024;
+    max_cache_size = new_size;
 }

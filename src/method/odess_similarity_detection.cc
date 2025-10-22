@@ -316,12 +316,9 @@ std::vector<uint64_t> FeatureIndexTable::SF_Find_Mi(const SuperFeatures &superfe
 bool FeatureIndexTable::SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid)
 {
   bool newChunk = false;
-  cout << "flag2" << endl;
   for (int i = 0; i < ODESS_SF_NUM; i++)
   {
-    cout << "flag0" << endl;
     if(SFindex.find(superfeatures[i]) == SFindex.end()){
-      cout << "flag1" << endl;
       newChunk = true;
     }
     SFindex[superfeatures[i]].push_back(chunkid);

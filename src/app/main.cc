@@ -257,6 +257,7 @@ int main(int argc, char **argv)
         cache_mem_usage += kv.second.capacity(); // vector实际数据
     }
     std::cout << "chunkCache 估算总内存: " << cache_mem_usage << " 字节" << std::endl;
+    std::cout << "chunkCache 尺寸大小" << absMethodObj->chunkCache.size() << std::endl;
 
     auto endsum = std::chrono::high_resolution_clock::now();
     auto sumTime = (endsum - startsum);
