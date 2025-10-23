@@ -5,3 +5,4 @@ lib/libmethodcore.a
 bin/
 build/
 .vscode/
+*.py

@@ -94,13 +94,13 @@ void AllGreedy::ProcessTrace()
                     auto basechunkInfo = dataWrite_->Get_Chunk_MetaInfo(basechunkid);
                     auto RestoreBasechunk = FindBest(superfeature, tmpChunk);
                     // ForTest
-                    // uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
+                    uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
 
                     if (RestoreBasechunk.loadFromDisk)
                         free(RestoreBasechunk.chunkPtr);
 
-                    // if (tmpChunk.saveSize > tmpChunk.chunkSize || tmpChunk.saveSize <= 0 || RestoreBasechunk.chunkSize == 0)// ForTest
-                    if (1)
+                    if (tmpChunk.saveSize > tmpChunk.chunkSize || tmpChunk.saveSize <= 0 || RestoreBasechunk.chunkSize == 0) // ForTest
+                    // if (1)
                     {
 
                         int tmpChunkLz4CompressSize = 0;
@@ -117,7 +117,8 @@ void AllGreedy::ProcessTrace()
                             tmpChunk.saveSize = tmpChunk.chunkSize;
                         }
 
-                        tmpChunk.basechunkID = RestoreBasechunk.chunkID; // ForTest
+                        // tmpChunk.basechunkID = RestoreBasechunk.chunkID; // ForTest
+                        tmpChunk.basechunkID = -1;
                         tmpChunkid = tmpChunk.chunkID;
                         if (tmpChunk.chunkSize > 60)
                             table.SF_Insert(superfeature, tmpChunk.chunkID);
@@ -125,7 +126,7 @@ void AllGreedy::ProcessTrace()
                         basechunkSize += tmpChunk.saveSize;
                         LocalReduct += tmpChunk.chunkSize - tmpChunk.saveSize;
                         // ForTest
-                        // free(deltachunk);
+                        free(deltachunk);
                         if (tmpChunk.deltaFlag == NO_LZ4)
                             // base chunk & Lz4 error
                             dataWrite_->Chunk_Insert(tmpChunk);
@@ -140,9 +141,9 @@ void AllGreedy::ProcessTrace()
                         if (tmpChunk.chunkSize > 60)
                             table.SF_Insert(superfeature, tmpChunk.chunkID);
 
-                        // memcpy(tmpChunk.chunkPtr, deltachunk, tmpChunk.saveSize);// ForTest
+                        memcpy(tmpChunk.chunkPtr, deltachunk, tmpChunk.saveSize); // ForTest
                         StatsDelta(tmpChunk);
-                        // free(deltachunk);// ForTest
+                        free(deltachunk); // ForTest
 
                         dataWrite_->Chunk_Insert(tmpChunk);
                     }

@@ -36,7 +36,7 @@ methods=(
 )
 
 selected_datasets=(
-  # "automake"
+  "automake"
   # "bash"
   # "coreutils"
   # "fdisk"
@@ -69,9 +69,9 @@ for method_name in "${!methods[@]}"; do
       
       ./DFree -i "$path" $method_params -n "$num" > "${method_name}_${dataset}.txt"
       mkdir -p "$dataset"
-      if ls Insight*.txt 1> /dev/null 2>&1; then
+      if ls Insight* 1> /dev/null 2>&1; then
       echo "Moving Insight files to directory: $dataset/"
-      mv Insight*.txt "$dataset/"
+      mv Insight* "$dataset/"
       else
         echo "No Insight files found to move for dataset: $dataset"
       fi
