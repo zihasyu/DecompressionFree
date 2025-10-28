@@ -15,11 +15,16 @@ private:
     uint8_t *MinBaseBuffer = nullptr;
     uint8_t *tmpDeltaBuffer = nullptr;
 
-    std::queue<uint64_t> cache_queue;
-    size_t max_cache_size = 1024;
+    // std::queue<uint64_t> cache_queue;
+    // size_t max_cache_size = 1024;
+    // void updateCacheSize();
 
-    void updateCacheSize();
+    void ResizeRowCache();
 
+    uint64_t time_lz4_disk = 0;
+    uint64_t time_lz4_mem = 0;
+    uint64_t time_delta_disk = 0;
+    uint64_t time_delta_mem = 0;
 
 public:
     AllGreedy();

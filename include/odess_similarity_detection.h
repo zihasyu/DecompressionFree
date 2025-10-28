@@ -135,6 +135,10 @@ public:
 
   // new feature-vector<id> index table
   unordered_map<super_feature_t, vector<uint64_t>> SFindex;
+  unordered_map<super_feature_t, size_t> SFindexSize;
+  super_feature_t maxFeature;
+  size_t maxSize = 0;
+
   uint64_t SF_Find(const SuperFeatures &superfeatures);
   std::vector<uint64_t> SF_Find_Mi(const SuperFeatures &superfeatures);
   bool SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid);

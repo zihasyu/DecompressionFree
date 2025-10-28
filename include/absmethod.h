@@ -179,5 +179,9 @@ public:
     std::unordered_map<int, std::vector<uint8_t>> chunkCache;
     size_t cache_hit_count = 0;
     size_t cache_lookup_count = 0;
+
+    std::unordered_map<uint64_t, std::vector<uint8_t>> rowCache;
+    std::queue<uint64_t> cache_queue;
+    int cacheSize;
 };
 #endif

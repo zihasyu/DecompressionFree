@@ -322,6 +322,7 @@ bool FeatureIndexTable::SF_Insert(const SuperFeatures &superfeatures, const uint
       newChunk = true;
     }
     SFindex[superfeatures[i]].push_back(chunkid);
+    SFindexSize[superfeatures[i]]++;
   }
   // return -1 if not found, uint64_t's MAX value
   return newChunk;
