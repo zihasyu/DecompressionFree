@@ -3,7 +3,7 @@
 TreeCache2::TreeCache2()
     : chunk_cache_(CACHE_MAX_SIZE)
 {
-    // cout << " Chunk_t is " << sizeof(Chunk_t) << " Chunk_t_ori is " << sizeof(Chunk_t_odess) << " <super_feature_t, unordered_set<string>> is " << sizeof(super_feature_t);
+    // ... 您的构造函数现有代码 ...
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
     mdCtx = EVP_MD_CTX_new();
     hashBuf = (uint8_t *)malloc(CHUNK_HASH_SIZE * sizeof(uint8_t));
@@ -15,6 +15,7 @@ TreeCache2::TreeCache2()
 
 TreeCache2::~TreeCache2()
 {
+    // ... 您的析构函数现有代码 ...
     free(lz4ChunkBuffer);
     free(deltaMaxChunkBuffer);
     EVP_MD_CTX_free(mdCtx);
@@ -25,9 +26,11 @@ TreeCache2::~TreeCache2()
 
 void TreeCache2::ProcessTrace()
 {
+    // ... 您的 ProcessTrace 现有代码 ...
     string tmpChunkHash;
     string tmpChunkContent;
     SuperFeatures superfeature;
+    uint64_t HitSF;
     while (true)
     {
         string hashStr;
@@ -66,7 +69,7 @@ void TreeCache2::ProcessTrace()
                     endSF = std::chrono::high_resolution_clock::now();
                     SFTime += (endSF - startSF);
 
-                    basechunkid = table.Tree_SF_Find(superfeature);
+                    basechunkid = table.Tree_SF_Find(superfeature, HitSF);
                     // auto ret = table.GetSimilarRecordsKeys(tmpChunkHash);
                 }
 
@@ -74,8 +77,8 @@ void TreeCache2::ProcessTrace()
                 // unique chunk & delta chunk
                 {
                     auto basechunkInfo = dataWrite_->Get_Chunk_MetaInfo(basechunkid);
-                    auto RestoreBasechunk = CutGreedy(basechunkid, tmpChunk, superfeature);
-                    uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
+                    auto RestoreBasechunk = CutGreedy(basechunkid, tmpChunk, HitSF, superfeature);
+                    uint8_t *deltachunk = xd3_encode_buffer(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
                     if (RestoreBasechunk.loadFromDisk)
                         free(RestoreBasechunk.chunkPtr);
 
@@ -198,28 +201,38 @@ void TreeCache2::ProcessTrace()
     return;
 }
 
-Chunk_t TreeCache2::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, SuperFeatures sfs)
+Chunk_t TreeCache2::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, uint64_t HitSF, SuperFeatures sfs)
 {
     SetTime(startMiDelta);
     Chunk_t resultchunk;
     size_t basechunk_size = 0;
+    uint64_t feature_hash = HitSF; // 获取SF哈希作为Feature ID
 
     Chunk_t basechunk = dataWrite_->Get_Chunk_MetaInfo(BasechunkId);
+    bool is_hit = chunk_cache_.contains(BasechunkId);
+
+    // 更新Feature统计信息
+    update_feature_stats(feature_hash, is_hit);
+
+    // 决策：是否应该缓存这个Feature
+    if (should_cache_feature(feature_hash))
+    {
+        load_feature_tree_to_cache(BasechunkId, feature_hash);
+    }
+
     if (basechunk.basechunkID < 0)
     {
         SetTime(startIO);
-        basechunk = dataWrite_->Get_Chunk_Info(BasechunkId);
+        basechunk = xd3_recursive_restore_BL_time(BasechunkId); // 使用缓存恢复逻辑
         SetTime(endIO);
         SetTime(startIO, endIO, IOTime);
         if (basechunk.FirstChildID < 0) // if only one layer
             return basechunk;
-        // basechunk = xd3_recursive_restore_BL_time(BasechunkId);
     }
     else
     {
-        basechunk = xd3_recursive_restore_BL_time(BasechunkId);
-        // cout << "basechunk.ChunkID is " << basechunk.chunkID << endl;
-        if (basechunk.FirstChildID < 0) // if only one layer
+        basechunk = xd3_recursive_restore_BL_time(BasechunkId); // 使用缓存恢复逻辑
+        if (basechunk.FirstChildID < 0)                         // if only one layer
             return basechunk;
     }
 
@@ -300,6 +313,7 @@ Chunk_t TreeCache2::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, S
     return resultchunk;
 }
 
+// ... 您的 xd3_encode_buffer 和 StatsFit 现有代码 ...
 uint8_t *TreeCache2::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer)
 {
     SetTime(startMiEncode);
@@ -339,92 +353,182 @@ void TreeCache2::StatsFit(uint64_t FatherID, uint64_t FitID, SuperFeatures sfs)
     }
 }
 
+// =================== FI-Cache (频率简化版) 核心实现 =====================
+
 Chunk_t TreeCache2::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
 {
     std::vector<uint8_t> cachedData;
-    cacheAccessCount++;
-    if (chunkCache.tryGet(BasechunkId, cachedData))
+    cache2AccessCount++;
+    if (chunk_cache_.tryGet(BasechunkId, cachedData))
     {
-        cacheHitCount++;
+        cache2HitCount++;
         Chunk_t cachedChunk;
         cachedChunk.chunkID = BasechunkId;
         cachedChunk.chunkSize = cachedData.size();
         cachedChunk.chunkPtr = (uint8_t *)malloc(cachedData.size());
-        cachedChunk.FirstChildID = dataWrite_->chunklist[BasechunkId].FirstChildID;
         memcpy(cachedChunk.chunkPtr, cachedData.data(), cachedData.size());
         cachedChunk.loadFromDisk = false;
         return cachedChunk;
     }
 
-    chunkHotMap[BasechunkId]++;
+    // Cache Miss: 按需解压
+    Chunk_t restored_chunk = decompress_on_demand(BasechunkId);
+    return restored_chunk;
+}
 
-    // SetTime(startMiDelta);
-    std::vector<Chunk_t> chunkChain;
-    Chunk_t basechunk;
-    size_t basechunk_size = 0;
-    chunkChain.push_back(dataWrite_->Get_Chunk_MetaInfo(BasechunkId));
-    // if only one layer
-    if (chunkChain.back().basechunkID < 0)
+void TreeCache2::update_feature_stats(uint64_t feature_hash, bool hit)
+{
+    if (feature_stats_.find(feature_hash) == feature_stats_.end())
     {
-        SetTime(startIO);
-        chunkChain.back() = dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);
-        SetTime(endIO);
-        SetTime(startIO, endIO, IOTime);
+        feature_stats_.emplace(feature_hash, FeatureStats(feature_hash));
+    }
+    feature_stats_.at(feature_hash).record_access();
+}
 
-        return chunkChain.back();
+bool TreeCache2::should_cache_feature(uint64_t feature_hash)
+{
+    if (feature_stats_.find(feature_hash) == feature_stats_.end())
+    {
+        return false;
+    }
+    // 仅当访问频率超过阈值时，才认为值得缓存
+    return feature_stats_.at(feature_hash).calculate_importance() > IMPORTANCE_THRESHOLD;
+}
+
+void TreeCache2::load_feature_tree_to_cache(uint64_t root_chunk_id, uint64_t feature_hash)
+{
+    if (cached_features_.count(feature_hash))
+        return; // 已在缓存中
+
+    // 1. 收集此Feature树的所有chunk ID (简化为根节点和第一层孩子)
+    vector<uint64_t> tree_chunks;
+    tree_chunks.push_back(root_chunk_id);
+    Chunk_t root_meta = dataWrite_->Get_Chunk_MetaInfo(root_chunk_id);
+    int child_id = root_meta.FirstChildID;
+    while (child_id >= 0)
+    {
+        tree_chunks.push_back(child_id);
+        Chunk_t child_meta = dataWrite_->Get_Chunk_MetaInfo(child_id);
+        child_id = child_meta.FirstBroID;
+    }
+    feature_tree_chunks_[feature_hash] = tree_chunks;
+
+    // 2. 检查空间是否足够，不够则淘汰
+    if (chunk_cache_.size() + tree_chunks.size() > CACHE_MAX_SIZE)
+    {
+        evict_least_important_features();
     }
 
-    // collect all delta chain blocks
+    // 3. 解压并加载到缓存
+    for (uint64_t chunk_id : tree_chunks)
+    {
+        if (!chunk_cache_.contains(chunk_id))
+        {
+            Chunk_t chunk_data = decompress_on_demand(chunk_id);
+            if (chunk_data.chunkPtr != nullptr && chunk_data.chunkSize > 0)
+            {
+                chunk_cache_.insert(chunk_id, std::vector<uint8_t>(chunk_data.chunkPtr, chunk_data.chunkPtr + chunk_data.chunkSize));
+            }
+            free(chunk_data.chunkPtr);
+        }
+    }
+
+    // 4. 更新缓存状态
+    cached_features_.insert(feature_hash);
+}
+
+void TreeCache2::evict_least_important_features()
+{
+    if (cached_features_.empty())
+        return;
+
+    size_t target_eviction_count = chunk_cache_.size() * EVICTION_RATIO;
+    size_t evicted_count = 0;
+
+    while (evicted_count < target_eviction_count && !cached_features_.empty())
+    {
+        double min_importance = 1e18; // 使用一个足够大的初始值
+        uint64_t least_important_fid = 0;
+
+        // 找出已缓存特征中，访问频率最低的一个
+        for (const auto &fid : cached_features_)
+        {
+            double importance = feature_stats_.at(fid).calculate_importance();
+            if (importance < min_importance)
+            {
+                min_importance = importance;
+                least_important_fid = fid;
+            }
+        }
+
+        if (least_important_fid == 0)
+            break; // 没找到可淘汰的
+
+        // 移除该Feature的所有chunks
+        if (feature_tree_chunks_.count(least_important_fid))
+        {
+            for (uint64_t chunk_id : feature_tree_chunks_.at(least_important_fid))
+            {
+                if (chunk_cache_.contains(chunk_id))
+                {
+                    chunk_cache_.remove(chunk_id);
+                    evicted_count++;
+                }
+            }
+            feature_tree_chunks_.erase(least_important_fid);
+        }
+        cached_features_.erase(least_important_fid);
+    }
+}
+
+Chunk_t TreeCache2::decompress_on_demand(uint64_t chunk_id)
+{
+    std::vector<Chunk_t> chunkChain;
+    chunkChain.push_back(dataWrite_->Get_Chunk_MetaInfo(chunk_id));
+
     while (chunkChain.back().basechunkID >= 0)
+    {
         chunkChain.push_back(dataWrite_->Get_Chunk_MetaInfo(chunkChain.back().basechunkID));
-    // push the last chunk
+    }
+
     SetTime(startIO);
-    chunkChain.back() = dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);
+    Chunk_t base_chunk = dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);
     SetTime(endIO);
     SetTime(startIO, endIO, IOTime);
 
-    memcpy(CombinedBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
-    basechunk.loadFromDisk = false;
-    basechunk.chunkSize = chunkChain.back().chunkSize;
-    basechunk.chunkPtr = CombinedBuffer;
-    basechunk.chunkID = chunkChain.back().chunkID;
-    if (chunkChain.back().loadFromDisk)
-        free(chunkChain.back().chunkPtr); // free base chunk memory
+    uint8_t *buffer = (uint8_t *)malloc(base_chunk.chunkSize);
+    memcpy(buffer, base_chunk.chunkPtr, base_chunk.chunkSize);
+    size_t buffer_size = base_chunk.chunkSize;
+
+    if (base_chunk.loadFromDisk)
+    {
+        free(base_chunk.chunkPtr);
+    }
 
     for (int i = chunkChain.size() - 2; i >= 0; i--)
     {
         SetTime(startIO);
-        chunkChain[i] = dataWrite_->Get_Chunk_Info(chunkChain[i].chunkID);
+        Chunk_t delta_chunk = dataWrite_->Get_Chunk_Info(chunkChain[i].chunkID);
         SetTime(endIO);
         SetTime(startIO, endIO, IOTime);
 
-        uint8_t *basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
-                                            basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
+        size_t restored_size = 0;
+        uint8_t *restored_ptr = xd3_decode(delta_chunk.chunkPtr, delta_chunk.saveSize, buffer, buffer_size, &restored_size);
 
-        if (chunkChain[i].chunkSize != basechunk_size)
+        if (delta_chunk.loadFromDisk)
         {
-            cout << "xd3 recursive restore error, chunk size mismatch" << endl;
-            cout << "id " << chunkChain[i].chunkID << " chunkChain[i].chunkSize : " << chunkChain[i].chunkSize << "chunkChain[i].saveSize: " << chunkChain[i].saveSize
-                 << " basechunksize " << basechunk.chunkSize << " restore basechunk_size : " << basechunk_size << endl;
-            basechunk.chunkSize = 0;
-            return basechunk;
+            free(delta_chunk.chunkPtr);
         }
-        if (chunkChain[i].loadFromDisk)
-            free(chunkChain[i].chunkPtr);
-        memcpy(CombinedBuffer, basechunk_ptr, basechunk_size);
-        basechunk.chunkSize = chunkChain[i].chunkSize; // update size
-        basechunk.FirstChildID = chunkChain[i].FirstChildID;
-        basechunk.chunkID = chunkChain[i].chunkID;
-        free(basechunk_ptr);
+        free(buffer);
 
-        basechunk_size = 0;
+        buffer = restored_ptr;
+        buffer_size = restored_size;
     }
 
-    // SetTime(endMiDelta);
-    // MiDeltaTime += endMiDelta - startMiDelta;
-    int hotThreshold = 2;
-    if (dataWrite_->chunklist[BasechunkId].basechunkID > 0 && chunkHotMap[BasechunkId] >= hotThreshold)
-        chunkCache.insert(BasechunkId, std::vector<uint8_t>(basechunk.chunkPtr, basechunk.chunkPtr + basechunk.chunkSize));
-
-    return basechunk;
+    Chunk_t final_chunk;
+    final_chunk.chunkID = chunk_id;
+    final_chunk.chunkPtr = buffer;
+    final_chunk.chunkSize = buffer_size;
+    final_chunk.loadFromDisk = false;
+    return final_chunk;
 }

@@ -265,6 +265,20 @@ uint64_t FeatureIndexTable::Tree_SF_Find(const SuperFeatures &superfeatures)
   // return -1 if not found, uint64_t's MAX value
   return -1;
 }
+uint64_t FeatureIndexTable::Tree_SF_Find(const SuperFeatures &superfeatures, uint64_t &HitSF)
+{
+  for (const super_feature_t &sf : superfeatures)
+  {
+    auto it = Tree_SFIndex.find(sf);
+    if (it != Tree_SFIndex.end())
+    {
+      HitSF = sf;
+      return it->second;
+    }
+  }
+  // return -1 if not found, uint64_t's MAX value
+  return -1;
+}
 void FeatureIndexTable::Tree_SF_ReWrite(const SuperFeatures &superfeatures, const uint64_t newid)
 {
   for (const super_feature_t &sf : superfeatures)
