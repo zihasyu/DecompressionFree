@@ -37,6 +37,15 @@ void TreeCache2::ProcessTrace()
         hashStr.assign(CHUNK_HASH_SIZE, 0);
         if (recieveQueue->done_ && recieveQueue->IsEmpty())
         {
+            // --- 在此处添加命中率打印 ---
+            double hit_rate = 0.0;
+            if (cache2AccessCount > 0)
+            {
+                hit_rate = static_cast<double>(cache2HitCount) / cache2AccessCount * 100.0;
+            }
+            cout << "Cache Hit Rate: " << fixed << setprecision(2) << hit_rate << "% "
+                 << "(" << cache2HitCount << " hits / " << cache2AccessCount << " accesses)" << endl;
+            // --------------------------
 
             // outputMQ_->done_ = true;
             recieveQueue->done_ = false;
@@ -257,45 +266,62 @@ Chunk_t TreeCache2::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, u
         uint64_t tmpFatherID = resultchunk.chunkID;
         uint64_t tmpChildID = resultchunk.chunkID;
 
-        SetTime(startIO);
-        Chunk_t TmpChildChunk = dataWrite_->Get_Chunk_Info(resultchunk.FirstChildID);
-        SetTime(endIO);
-        SetTime(startIO, endIO, IOTime);
-
-        uint8_t *basechunk_ptr = xd3_decode(TmpChildChunk.chunkPtr, TmpChildChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);
-        xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer);
-        if (tmpsaveSize < resultchunk.saveSize)
+        // --- 优化开始: 遍历子节点和兄弟节点，并检查缓存 ---
+        int current_node_id = resultchunk.FirstChildID;
+        while (current_node_id >= 0)
         {
-            resultchunk.saveSize = tmpsaveSize;
-            resultchunk.chunkID = TmpChildChunk.chunkID;
-            resultchunk.chunkSize = TmpChildChunk.chunkSize;
-            resultchunk.FirstChildID = TmpChildChunk.FirstChildID;
-            memcpy(MinBaseBuffer, basechunk_ptr, TmpChildChunk.chunkSize);
-        }
-        if (TmpChildChunk.loadFromDisk)
-            free(TmpChildChunk.chunkPtr); // free child chunk memory
-        free(basechunk_ptr);              // free base chunk memory
+            uint8_t *basechunk_ptr = nullptr;
+            size_t current_basechunk_size = 0;
+            std::vector<uint8_t> cachedData;
 
-        Chunk_t TmpBroChunk = TmpChildChunk;
-        while (TmpBroChunk.FirstBroID >= 0)
-        {
-            SetTime(startIO);
-            TmpBroChunk = dataWrite_->Get_Chunk_Info(TmpBroChunk.FirstBroID);
-            SetTime(endIO);
-            SetTime(startIO, endIO, IOTime);
-            uint8_t *basechunk_ptr = xd3_decode(TmpBroChunk.chunkPtr, TmpBroChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);
-            xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer); //*** resultchunk.saveSize save tmpMinDeltaSize only here
-            if (tmpsaveSize < resultchunk.saveSize)
+            cache2AccessCount++;
+            if (chunk_cache_.tryGet(current_node_id, cachedData))
             {
-                resultchunk.saveSize = tmpsaveSize;
-                resultchunk.chunkID = TmpBroChunk.chunkID;
-                resultchunk.chunkSize = TmpBroChunk.chunkSize;
-                resultchunk.FirstChildID = TmpBroChunk.FirstChildID;
-                memcpy(MinBaseBuffer, basechunk_ptr, TmpBroChunk.chunkSize);
+                // 缓存命中
+                cache2HitCount++;
+                current_basechunk_size = cachedData.size();
+                basechunk_ptr = (uint8_t *)malloc(current_basechunk_size);
+                memcpy(basechunk_ptr, cachedData.data(), current_basechunk_size);
             }
-            if (TmpBroChunk.loadFromDisk)
-                free(TmpBroChunk.chunkPtr); // free bro chunk memory
-            free(basechunk_ptr);
+            else
+            {
+                // 缓存未命中，执行解压
+                SetTime(startIO);
+                Chunk_t TmpNodeChunk = dataWrite_->Get_Chunk_Info(current_node_id);
+                SetTime(endIO);
+                SetTime(startIO, endIO, IOTime);
+
+                // CombinedBuffer 存储的是父节点的内容
+                basechunk_ptr = xd3_decode(TmpNodeChunk.chunkPtr, TmpNodeChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &current_basechunk_size);
+
+                if (TmpNodeChunk.loadFromDisk)
+                {
+                    free(TmpNodeChunk.chunkPtr);
+                }
+            }
+
+            // 使用恢复的 basechunk_ptr 进行比较
+            if (basechunk_ptr != nullptr && current_basechunk_size > 0)
+            {
+                xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, current_basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer);
+                if (tmpsaveSize < resultchunk.saveSize)
+                {
+                    Chunk_t node_meta = dataWrite_->Get_Chunk_MetaInfo(current_node_id);
+                    resultchunk.saveSize = tmpsaveSize;
+                    resultchunk.chunkID = node_meta.chunkID;
+                    resultchunk.chunkSize = node_meta.chunkSize;
+                    resultchunk.FirstChildID = node_meta.FirstChildID;
+                    memcpy(MinBaseBuffer, basechunk_ptr, node_meta.chunkSize);
+                }
+            }
+
+            if (basechunk_ptr != nullptr)
+            {
+                free(basechunk_ptr);
+            }
+
+            // 移动到下一个兄弟节点
+            current_node_id = dataWrite_->Get_Chunk_MetaInfo(current_node_id).FirstBroID;
         }
         StatsFit(tmpFatherID, resultchunk.chunkID, sfs);
         if (resultchunk.chunkID == tmpChildID)
