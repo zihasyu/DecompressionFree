@@ -20,6 +20,8 @@ private:
     uint8_t *MinBaseBuffer = nullptr;
     uint8_t *tmpDeltaBuffer = nullptr;
     size_t cache2HitCount = 0;
+    size_t flag1 = 0, flag2 = 0;
+
     size_t cache2AccessCount = 0;
     std::unordered_map<uint64_t, int> chunkHotMap;
 
@@ -36,7 +38,7 @@ private:
     const double IMPORTANCE_THRESHOLD = 5; // 可调参数：访问超过5次才考虑缓存
     const size_t CACHE_MAX_SIZE = 1024;    // 缓存中最大chunk数量
     const double EVICTION_RATIO = 0.1;     // 每次淘汰10%
-
+    unordered_set<uint64_t> just_inserted_chunks_;
     // --- FI-Cache 私有方法 ---
     void update_feature_stats(uint64_t feature_hash, bool hit);
     bool should_cache_feature(uint64_t feature_hash);

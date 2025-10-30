@@ -3,7 +3,7 @@
 TreeCache2::TreeCache2()
     : chunk_cache_(CACHE_MAX_SIZE)
 {
-    // ... 您的构造函数现有代码 ...
+
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
     mdCtx = EVP_MD_CTX_new();
     hashBuf = (uint8_t *)malloc(CHUNK_HASH_SIZE * sizeof(uint8_t));
@@ -15,7 +15,7 @@ TreeCache2::TreeCache2()
 
 TreeCache2::~TreeCache2()
 {
-    // ... 您的析构函数现有代码 ...
+
     free(lz4ChunkBuffer);
     free(deltaMaxChunkBuffer);
     EVP_MD_CTX_free(mdCtx);
@@ -43,8 +43,9 @@ void TreeCache2::ProcessTrace()
             {
                 hit_rate = static_cast<double>(cache2HitCount) / cache2AccessCount * 100.0;
             }
-            cout << "Cache Hit Rate: " << fixed << setprecision(2) << hit_rate << "% "
+            cout << "Cache Hit Rate: " << hit_rate << "% "
                  << "(" << cache2HitCount << " hits / " << cache2AccessCount << " accesses)" << endl;
+            cout << "Flag1 count: " << flag1 << ", Flag2 count: " << flag2 << endl;
             // --------------------------
 
             // outputMQ_->done_ = true;
@@ -87,6 +88,7 @@ void TreeCache2::ProcessTrace()
                 {
                     auto basechunkInfo = dataWrite_->Get_Chunk_MetaInfo(basechunkid);
                     auto RestoreBasechunk = CutGreedy(basechunkid, tmpChunk, HitSF, superfeature);
+                    // cout << "flag 0" << endl;
                     uint8_t *deltachunk = xd3_encode_buffer(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
                     if (RestoreBasechunk.loadFromDisk)
                         free(RestoreBasechunk.chunkPtr);
@@ -115,7 +117,7 @@ void TreeCache2::ProcessTrace()
                         basechunkNum++;
                         basechunkSize += tmpChunk.saveSize;
                         LocalReduct += tmpChunk.chunkSize - tmpChunk.saveSize;
-                        free(deltachunk);
+                        // free(deltachunk);
                         if (tmpChunk.deltaFlag == NO_LZ4)
                             // base chunk & Lz4 error
                             dataWrite_->Chunk_Insert(tmpChunk);
@@ -149,7 +151,7 @@ void TreeCache2::ProcessTrace()
                         }
                         memcpy(tmpChunk.chunkPtr, deltachunk, tmpChunk.saveSize);
                         StatsDelta(tmpChunk);
-                        free(deltachunk);
+                        // free(deltachunk);
                         // if (RestoreBasechunk.loadFromDisk)
                         //     free(RestoreBasechunk.chunkPtr);
                         dataWrite_->Chunk_Insert(tmpChunk);
@@ -253,7 +255,7 @@ Chunk_t TreeCache2::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, u
     resultchunk.loadFromDisk = false;
     resultchunk.chunkID = basechunk.chunkID;
     resultchunk.FirstChildID = basechunk.FirstChildID;
-
+    // cout << "flag 1" << endl;
     xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk.chunkPtr, basechunk.chunkSize, &resultchunk.saveSize, deltaMaxChunkBuffer); //*** resultchunk.saveSize save tmpMinDeltaSize only here
 
     if (basechunk.loadFromDisk)
@@ -266,7 +268,6 @@ Chunk_t TreeCache2::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, u
         uint64_t tmpFatherID = resultchunk.chunkID;
         uint64_t tmpChildID = resultchunk.chunkID;
 
-        // --- 优化开始: 遍历子节点和兄弟节点，并检查缓存 ---
         int current_node_id = resultchunk.FirstChildID;
         while (current_node_id >= 0)
         {
@@ -277,8 +278,19 @@ Chunk_t TreeCache2::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, u
             cache2AccessCount++;
             if (chunk_cache_.tryGet(current_node_id, cachedData))
             {
-                // 缓存命中
-                cache2HitCount++;
+
+                // --- 修改命中逻辑 ---
+                if (just_inserted_chunks_.count(current_node_id)) // <-- 修正: 使用 current_node_id
+                {
+                    // 这是首次加载后的必然命中，不计入命中率，并移除标记
+                    just_inserted_chunks_.erase(current_node_id); // <-- 修正: 使用 current_node_id
+                    flag1++;
+                }
+                else
+                {
+                    // 这是真实的缓存命中
+                    cache2HitCount++;
+                }
                 current_basechunk_size = cachedData.size();
                 basechunk_ptr = (uint8_t *)malloc(current_basechunk_size);
                 memcpy(basechunk_ptr, cachedData.data(), current_basechunk_size);
@@ -303,6 +315,7 @@ Chunk_t TreeCache2::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, u
             // 使用恢复的 basechunk_ptr 进行比较
             if (basechunk_ptr != nullptr && current_basechunk_size > 0)
             {
+                // cout << "flag 2" << endl;
                 xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, current_basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer);
                 if (tmpsaveSize < resultchunk.saveSize)
                 {
@@ -339,7 +352,6 @@ Chunk_t TreeCache2::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, u
     return resultchunk;
 }
 
-// ... 您的 xd3_encode_buffer 和 StatsFit 现有代码 ...
 uint8_t *TreeCache2::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer)
 {
     SetTime(startMiEncode);
@@ -387,11 +399,23 @@ Chunk_t TreeCache2::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
     cache2AccessCount++;
     if (chunk_cache_.tryGet(BasechunkId, cachedData))
     {
-        cache2HitCount++;
+        // --- 修改命中逻辑 ---
+        if (just_inserted_chunks_.count(BasechunkId))
+        {
+            // 这是首次加载后的必然命中，不计入命中率，并移除标记
+            just_inserted_chunks_.erase(BasechunkId);
+            flag1++;
+        }
+        else
+        {
+            // 这是真实的缓存命中
+            cache2HitCount++;
+        }
         Chunk_t cachedChunk;
         cachedChunk.chunkID = BasechunkId;
         cachedChunk.chunkSize = cachedData.size();
         cachedChunk.chunkPtr = (uint8_t *)malloc(cachedData.size());
+        cachedChunk.FirstChildID = dataWrite_->chunklist[BasechunkId].FirstChildID;
         memcpy(cachedChunk.chunkPtr, cachedData.data(), cachedData.size());
         cachedChunk.loadFromDisk = false;
         return cachedChunk;
@@ -454,6 +478,9 @@ void TreeCache2::load_feature_tree_to_cache(uint64_t root_chunk_id, uint64_t fea
             if (chunk_data.chunkPtr != nullptr && chunk_data.chunkSize > 0)
             {
                 chunk_cache_.insert(chunk_id, std::vector<uint8_t>(chunk_data.chunkPtr, chunk_data.chunkPtr + chunk_data.chunkSize));
+                // --- 新增代码：标记这个chunk是新插入的 ---
+                just_inserted_chunks_.insert(chunk_id);
+                flag2++;
             }
             free(chunk_data.chunkPtr);
         }
@@ -556,5 +583,6 @@ Chunk_t TreeCache2::decompress_on_demand(uint64_t chunk_id)
     final_chunk.chunkPtr = buffer;
     final_chunk.chunkSize = buffer_size;
     final_chunk.loadFromDisk = false;
+    final_chunk.FirstChildID = dataWrite_->chunklist[chunk_id].FirstChildID;
     return final_chunk;
 }
