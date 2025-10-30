@@ -122,6 +122,11 @@ public:
     static void chunkprint(const Chunk_t chunk);
     dataWrite();
     ~dataWrite();
+
+    uint64_t ioTime = 0;
+    uint64_t ioFrequency = 0;
+    uint64_t lz4Time = 0;
+    uint64_t lz4Frequency = 0;
 };
 
 #endif

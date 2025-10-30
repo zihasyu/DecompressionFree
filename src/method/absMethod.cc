@@ -381,8 +381,13 @@ Chunk_t AbsMethod::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
         SetTime(endIO);
         SetTime(startIO, endIO, IOTime);
 
+        auto start = std::chrono::high_resolution_clock::now();
         uint8_t *basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
                                             basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+        deltaTime += duration;
+        deltaFrequency++;
 
         if (chunkChain[i].chunkSize != basechunk_size)
         {

@@ -175,5 +175,8 @@ public:
         }
         cout << endl; // 最后添加一个换行符，确保后续输出正常
     }
+
+    uint64_t deltaTime = 0;
+    uint64_t deltaFrequency = 0;
 };
 #endif

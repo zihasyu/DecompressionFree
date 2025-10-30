@@ -35,21 +35,21 @@ methods=(
 )
 
 selected_datasets=(
-  # "automake"
+  "automake"
   # "bash"
   # "coreutils"
   # "fdisk"
-  # "glibc"
+  "glibc"
   # "smalltalk"
   # "gcc"
   # "chromium"
   "linux"
   # "cassandra"
   # "vmdk"
-  # "WEB"
+  "WEB"
   "WindowsLog"
-  "ThunderbirdLog"
-  "Wiki"
+  # "ThunderbirdLog"
+  # "Wiki"
 )
 
 for method_name in "${!methods[@]}"; do

@@ -805,7 +805,13 @@ Chunk_t dataWrite::Get_Chunk_Info(int id)
         else if (chunklist[id].deltaFlag == NO_DELTA)
         {
             // base chunk & lz4 compress
+            auto start = std::chrono::high_resolution_clock::now();
             int decompressedSize = LZ4_decompress_safe((char *)(tmpContainerData + chunklist[id].offset), (char *)lz4SafeChunkBuffer, chunklist[id].saveSize, CONTAINER_MAX_SIZE);
+            auto end = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+            lz4Time += duration;
+            lz4Frequency++;
+
             chunklist[id].chunkPtr = (uint8_t *)malloc(chunklist[id].chunkSize);
             memcpy(chunklist[id].chunkPtr, lz4SafeChunkBuffer, chunklist[id].chunkSize);
             chunklist[id].loadFromDisk = true;
@@ -833,6 +839,7 @@ Chunk_t dataWrite::Get_Chunk_Info(int id)
         startTime = std::chrono::high_resolution_clock::now();
         string fileName = "./Containers/" + tmpContainerIDcontainerID;
         // cout << fileName << endl;
+        auto startIo = std::chrono::high_resolution_clock::now();
         ifstream infile(fileName, ios::binary);
         if (infile.is_open())
         {
@@ -844,13 +851,24 @@ Chunk_t dataWrite::Get_Chunk_Info(int id)
 
             // Read the entire container
             infile.read((char *)container.c_str(), size);
+            
+            auto endIo = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endIo - startIo).count();
+            ioTime += duration;
+            ioFrequency++;
 
             if (chunklist[id].deltaFlag == NO_LZ4)
                 memcpy(chunklist[id].chunkPtr, (uint8_t *)(container.c_str() + chunklist[id].offset), chunklist[id].chunkSize);
             else if (chunklist[id].deltaFlag == NO_DELTA)
             {
                 // base chunk & lz4 compress
+                auto start = std::chrono::high_resolution_clock::now();
                 int decompressedSize = LZ4_decompress_safe((char *)(container.c_str() + chunklist[id].offset), (char *)lz4SafeChunkBuffer, chunklist[id].saveSize, CONTAINER_MAX_SIZE);
+                auto end = std::chrono::high_resolution_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endIo - startIo).count();
+                lz4Time += duration;
+                lz4Frequency++;
+
                 memcpy(chunklist[id].chunkPtr, lz4SafeChunkBuffer, chunklist[id].chunkSize);
             }
             else
@@ -884,7 +902,13 @@ Chunk_t dataWrite::Get_Chunk_Info(int id)
             else
             {
                 // base chunk & lz4 compress
+                auto start = std::chrono::high_resolution_clock::now();
                 int decompressedSize = LZ4_decompress_safe((char *)(curContainer.data + chunklist[id].offset), (char *)lz4SafeChunkBuffer, chunklist[id].saveSize, CONTAINER_MAX_SIZE);
+                auto end = std::chrono::high_resolution_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+                lz4Time += duration;
+                lz4Frequency++;
+
                 chunklist[id].chunkPtr = (uint8_t *)malloc(chunklist[id].chunkSize);
                 memcpy(chunklist[id].chunkPtr, lz4SafeChunkBuffer, chunklist[id].chunkSize);
                 chunklist[id].loadFromDisk = true;

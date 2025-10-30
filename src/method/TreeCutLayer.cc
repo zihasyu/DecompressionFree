@@ -247,7 +247,12 @@ Chunk_t TreeCutLayer::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk,
         SetTime(endIO);
         SetTime(startIO, endIO, IOTime);
 
+        auto startDelta = std::chrono::high_resolution_clock::now();
         uint8_t *basechunk_ptr = xd3_decode(TmpChildChunk.chunkPtr, TmpChildChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);
+        auto endDelta = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endDelta - startDelta).count();
+        deltaTime += duration;
+        deltaFrequency++;
         xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer);
         if (tmpsaveSize < resultchunk.saveSize)
         {
@@ -268,7 +273,12 @@ Chunk_t TreeCutLayer::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk,
             TmpBroChunk = dataWrite_->Get_Chunk_Info(TmpBroChunk.FirstBroID);
             SetTime(endIO);
             SetTime(startIO, endIO, IOTime);
+            auto startDelta = std::chrono::high_resolution_clock::now();
             uint8_t *basechunk_ptr = xd3_decode(TmpBroChunk.chunkPtr, TmpBroChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);
+            auto endDelta = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endDelta - startDelta).count();
+            deltaTime += duration;
+            deltaFrequency++;
             xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer); //*** resultchunk.saveSize save tmpMinDeltaSize only here
             if (tmpsaveSize < resultchunk.saveSize)
             {
