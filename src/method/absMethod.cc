@@ -954,6 +954,17 @@ void AbsMethod::Version_log(double time)
     cout << "SF Overhead: " << (double)(basechunkNum * 120) / 1024 / 1024 << "MiB" << endl; //(3*(8+32)=120B)
     cout << "Recipe Overhead: " << (double)logicalchunkNum * 8 / 1024 / 1024 << "MiB" << endl;
     cout << "SF number: " << SFnum << endl;
+    cout << "-----------------action time--------------------------" << endl;
+    cout << "解增量压缩总时间：" << deltaTime << endl;
+    cout << "解增量压缩总次数：" << deltaFrequency << endl;
+    cout << "IO总时间: " << dataWrite_->ioTime << endl;
+    cout << "IO总次数: " << dataWrite_->ioFrequency << endl;
+    cout << "解lz4总时间: " << dataWrite_->lz4Time << endl;
+    cout << "解lz4z总次数: " << dataWrite_->lz4Frequency << endl;
+    cout << fixed << setprecision(6); // 设置小数点后6位
+    cout << "增量压缩平均时间: " << (double)deltaTime/deltaFrequency << endl;
+    cout << "IO平均时间: " <<  (double)dataWrite_->ioTime/dataWrite_->ioFrequency << endl;
+    cout << "解lz4平均时间: " << (double)dataWrite_->lz4Time/dataWrite_->lz4Frequency << endl;
     cout << "-----------------END-------------------------------" << endl;
 
     preLogicalchunkiSize = logicalchunkSize;

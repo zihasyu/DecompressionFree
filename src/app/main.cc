@@ -243,17 +243,6 @@ int main(int argc, char **argv)
             absMethodObj->Version_log(TimeTmp, chunkerObj->ChunkTime.count());
     }
 
-    cout << "解增量压缩总时间：" << absMethodObj->deltaTime << endl;
-    cout << "解增量压缩总次数：" << absMethodObj->deltaFrequency << endl;
-    cout << "IO总时间: " << absMethodObj->dataWrite_->ioTime << endl;
-    cout << "IO总次数: " << absMethodObj->dataWrite_->ioFrequency << endl;
-    cout << "解lz4总时间: " << absMethodObj->dataWrite_->lz4Time << endl;
-    cout << "解lz4z总次数: " << absMethodObj->dataWrite_->lz4Frequency << endl;
-    cout << fixed << setprecision(6); // 设置小数点后6位
-    cout << "增量压缩平均时间: " << (double)absMethodObj->deltaTime/absMethodObj->deltaFrequency << endl;
-    cout << "IO平均时间: " <<  (double)absMethodObj->dataWrite_->ioTime/absMethodObj->dataWrite_->ioFrequency << endl;
-    cout << "解lz4平均时间: " << (double)absMethodObj->dataWrite_->lz4Time/absMethodObj->dataWrite_->lz4Frequency << endl;
-
     auto endsum = std::chrono::high_resolution_clock::now();
     auto sumTime = (endsum - startsum);
     auto sumTimeInSeconds = std::chrono::duration_cast<std::chrono::seconds>(endsum - startsum).count();
