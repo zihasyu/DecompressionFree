@@ -290,7 +290,10 @@ void FeatureIndexTable::Tree_SF_ReWrite(const SuperFeatures &superfeatures, cons
       return;
     }
   }
-  // return -1 if not found, uint64_t's MAX value
+}
+void FeatureIndexTable::Tree_SF_ReWrite(const uint64_t &superfeature, const uint64_t newid)
+{
+  Tree_SFIndex[superfeature] = newid;
   return;
 }
 void FeatureIndexTable::Tree_SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid)
@@ -338,15 +341,15 @@ void FeatureIndexTable::Log2_SF_Insert(const SuperFeatures &superfeatures, const
 {
   for (int i = 0; i < ODESS_SF_NUM; i++)
   {
-    int n = Log2_SFIndex[superfeatures[i]].fitCount;
+    int n = Log2_SFIndex[superfeatures[i]].HitCount;
     if ((n & (n - 1)) == 0)
     {
       Log2_SFIndex[superfeatures[i]].id = chunkid;
-      Log2_SFIndex[superfeatures[i]].fitCount++;
+      Log2_SFIndex[superfeatures[i]].HitCount++;
     }
     else
     {
-      Log2_SFIndex[superfeatures[i]].fitCount++;
+      Log2_SFIndex[superfeatures[i]].HitCount++;
     }
   }
   return;
@@ -355,16 +358,16 @@ void FeatureIndexTable::Less4_SF_Insert(const SuperFeatures &superfeatures, cons
 {
   for (int i = 0; i < ODESS_SF_NUM; i++)
   {
-    int n = Log2_SFIndex[superfeatures[i]].fitCount;
+    int n = Log2_SFIndex[superfeatures[i]].HitCount;
     // if ((n & (n - 1)) == 0)
     if (n <= 4)
     {
       Log2_SFIndex[superfeatures[i]].id = chunkid;
-      Log2_SFIndex[superfeatures[i]].fitCount++;
+      Log2_SFIndex[superfeatures[i]].HitCount++;
     }
     else
     {
-      Log2_SFIndex[superfeatures[i]].fitCount++;
+      Log2_SFIndex[superfeatures[i]].HitCount++;
     }
   }
   return;

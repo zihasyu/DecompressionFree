@@ -355,6 +355,7 @@ enum METHOD_TYPE
     Tree_Cut_Layer,
     Tree_Cache,
     Tree_Cache2,
+    SUBTREE_REDUCTION
 };
 
 enum DELTA_TYPE

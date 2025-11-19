@@ -1,7 +1,6 @@
-#include "../../include/Tree/TreeCache.h"
+#include "../../include/Tree/SubTreeReduction.h"
 
-TreeCache::TreeCache()
-    : chunkCache(1024, 64)
+SubTreeReduction::SubTreeReduction()
 {
     // cout << " Chunk_t is " << sizeof(Chunk_t) << " Chunk_t_ori is " << sizeof(Chunk_t_odess) << " <super_feature_t, unordered_set<string>> is " << sizeof(super_feature_t);
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
@@ -13,7 +12,7 @@ TreeCache::TreeCache()
     MinBaseBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
 }
 
-TreeCache::~TreeCache()
+SubTreeReduction::~SubTreeReduction()
 {
     free(lz4ChunkBuffer);
     free(deltaMaxChunkBuffer);
@@ -23,28 +22,18 @@ TreeCache::~TreeCache()
     free(MinBaseBuffer);
 }
 
-void TreeCache::ProcessTrace()
+void SubTreeReduction::ProcessTrace()
 {
     string tmpChunkHash;
     string tmpChunkContent;
     SuperFeatures superfeature;
+    uint64_t HitSF = 0;
     while (true)
     {
         string hashStr;
         hashStr.assign(CHUNK_HASH_SIZE, 0);
         if (recieveQueue->done_ && recieveQueue->IsEmpty())
         {
-            cout << "Version " << ads_Version
-                 << " Cache Stats - Hits: " << cacheHitCount
-                 << " Accesses: " << cacheAccessCount
-                 << " Hit Rate: " << (float)cacheHitCount / cacheAccessCount * 100 << "%"
-                 << endl;
-
-            // chunkCache.clear();
-
-            cacheHitCount = 0;
-            cacheAccessCount = 0;
-
             // outputMQ_->done_ = true;
             recieveQueue->done_ = false;
             ads_Version++;
@@ -66,7 +55,7 @@ void TreeCache::ProcessTrace()
                 FP_Insert(hashStr, tmpChunk.chunkID);
                 tmpChunkContent.assign((char *)tmpChunk.chunkPtr, tmpChunk.chunkSize);
                 tmpChunkHash.assign((char *)hashBuf, CHUNK_HASH_SIZE);
-                // TreeCutLayer get superfeature & get time
+                // SubTreeReduction get superfeature & get time
                 uint64_t basechunkid = -1;
                 // compute SF
                 if (tmpChunk.chunkSize > 60)
@@ -76,7 +65,7 @@ void TreeCache::ProcessTrace()
                     endSF = std::chrono::high_resolution_clock::now();
                     SFTime += (endSF - startSF);
 
-                    basechunkid = table.Tree_SF_Find(superfeature);
+                    basechunkid = table.Tree_SF_Find(superfeature, HitSF);
                     // auto ret = table.GetSimilarRecordsKeys(tmpChunkHash);
                 }
 
@@ -84,7 +73,7 @@ void TreeCache::ProcessTrace()
                 // unique chunk & delta chunk
                 {
                     auto basechunkInfo = dataWrite_->Get_Chunk_MetaInfo(basechunkid);
-                    auto RestoreBasechunk = CutGreedy(basechunkid, tmpChunk, superfeature);
+                    auto RestoreBasechunk = CutGreedy(basechunkid, tmpChunk, HitSF);
                     uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
                     if (RestoreBasechunk.loadFromDisk)
                         free(RestoreBasechunk.chunkPtr);
@@ -208,7 +197,7 @@ void TreeCache::ProcessTrace()
     return;
 }
 
-Chunk_t TreeCache::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, SuperFeatures sfs)
+Chunk_t SubTreeReduction::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, uint64_t HitSF)
 {
     SetTime(startMiDelta);
     Chunk_t resultchunk;
@@ -294,7 +283,11 @@ Chunk_t TreeCache::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, Su
                 free(TmpBroChunk.chunkPtr); // free bro chunk memory
             free(basechunk_ptr);
         }
-        StatsHit(tmpFatherID, resultchunk.chunkID, sfs);
+
+        if (tmpFatherID == BasechunkId)
+        {
+            SubTree(HitSF, resultchunk.chunkID);
+        }
         if (resultchunk.chunkID == tmpChildID)
         {
             end = true; // no more child or bro
@@ -305,12 +298,13 @@ Chunk_t TreeCache::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, Su
             memcpy(CombinedBuffer, resultchunk.chunkPtr, resultchunk.chunkSize); // CombineBuffer is FatherNode
         }
     }
+    StatsHit(resultchunk.chunkID);
     SetTime(endMiDelta);
     SetTime(startMiDelta, endMiDelta, MiDeltaTime);
     return resultchunk;
 }
 
-uint8_t *TreeCache::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer)
+uint8_t *SubTreeReduction::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer)
 {
     SetTime(startMiEncode);
     size_t deltachunkSize;
@@ -331,110 +325,26 @@ uint8_t *TreeCache::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t t
     return tmpDeltaBuffer;
 }
 
-void TreeCache::StatsHit(uint64_t FatherID, uint64_t HitID, SuperFeatures sfs)
+void SubTreeReduction::StatsHit(uint64_t HitID)
 {
-    if (dataWrite_->chunklist[FatherID].BeforeFit == HitID)
+
+    dataWrite_->chunklist[HitID].HitCount++;
+    uint64_t tmpChildID = HitID;
+    while (dataWrite_->chunklist[tmpChildID].basechunkID >= 0)
     {
-        dataWrite_->chunklist[FatherID].HitCount++;
+        tmpChildID = dataWrite_->chunklist[tmpChildID].basechunkID;
+        dataWrite_->chunklist[tmpChildID].HitCount++;
     }
-    else
-    {
-        dataWrite_->chunklist[FatherID].BeforeFit = HitID;
-        dataWrite_->chunklist[FatherID].HitCount = 1;
-    }
-    if (dataWrite_->chunklist[FatherID].HitCount > 4)
-    {
-        if (table.Tree_SF_Find(sfs) == FatherID)
-            table.Tree_SF_ReWrite(sfs, HitID);
-    }
+    return;
 }
 
-Chunk_t TreeCache::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
+void SubTreeReduction::SubTree(uint64_t HitSF, uint64_t HitFirstLayerID)
 {
-    std::vector<uint8_t> cachedData;
-    cacheAccessCount++;
-    if (chunkCache.tryGet(BasechunkId, cachedData))
+    if (dataWrite_->chunklist[HitFirstLayerID].HitCount >= 15)
     {
-        cacheHitCount++;
-        Chunk_t cachedChunk;
-        cachedChunk.chunkID = BasechunkId;
-        cachedChunk.chunkSize = cachedData.size();
-        cachedChunk.chunkPtr = (uint8_t *)malloc(cachedData.size());
-        cachedChunk.FirstChildID = dataWrite_->chunklist[BasechunkId].FirstChildID;
-        memcpy(cachedChunk.chunkPtr, cachedData.data(), cachedData.size());
-        cachedChunk.loadFromDisk = false;
-        return cachedChunk;
-    }
-
-    chunkHotMap[BasechunkId]++;
-
-    // SetTime(startMiDelta);
-    std::vector<Chunk_t> chunkChain;
-    Chunk_t basechunk;
-    size_t basechunk_size = 0;
-    chunkChain.push_back(dataWrite_->Get_Chunk_MetaInfo(BasechunkId));
-    // if only one layer
-    if (chunkChain.back().basechunkID < 0)
-    {
-        SetTime(startIO);
-        chunkChain.back() = dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);
-        SetTime(endIO);
-        SetTime(startIO, endIO, IOTime);
-
-        return chunkChain.back();
-    }
-
-    // collect all delta chain blocks
-    while (chunkChain.back().basechunkID >= 0)
-        chunkChain.push_back(dataWrite_->Get_Chunk_MetaInfo(chunkChain.back().basechunkID));
-    // push the last chunk
-    SetTime(startIO);
-    chunkChain.back() = dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);
-    SetTime(endIO);
-    SetTime(startIO, endIO, IOTime);
-
-    memcpy(CombinedBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
-    basechunk.loadFromDisk = false;
-    basechunk.chunkSize = chunkChain.back().chunkSize;
-    basechunk.chunkPtr = CombinedBuffer;
-    basechunk.chunkID = chunkChain.back().chunkID;
-    if (chunkChain.back().loadFromDisk)
-        free(chunkChain.back().chunkPtr); // free base chunk memory
-
-    for (int i = chunkChain.size() - 2; i >= 0; i--)
-    {
-        SetTime(startIO);
-        chunkChain[i] = dataWrite_->Get_Chunk_Info(chunkChain[i].chunkID);
-        SetTime(endIO);
-        SetTime(startIO, endIO, IOTime);
-
-        uint8_t *basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
-                                            basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
-
-        if (chunkChain[i].chunkSize != basechunk_size)
         {
-            cout << "xd3 recursive restore error, chunk size mismatch" << endl;
-            cout << "id " << chunkChain[i].chunkID << " chunkChain[i].chunkSize : " << chunkChain[i].chunkSize << "chunkChain[i].saveSize: " << chunkChain[i].saveSize
-                 << " basechunksize " << basechunk.chunkSize << " restore basechunk_size : " << basechunk_size << endl;
-            basechunk.chunkSize = 0;
-            return basechunk;
+            table.Tree_SF_ReWrite(HitSF, HitFirstLayerID);
         }
-        if (chunkChain[i].loadFromDisk)
-            free(chunkChain[i].chunkPtr);
-        memcpy(CombinedBuffer, basechunk_ptr, basechunk_size);
-        basechunk.chunkSize = chunkChain[i].chunkSize; // update size
-        basechunk.FirstChildID = chunkChain[i].FirstChildID;
-        basechunk.chunkID = chunkChain[i].chunkID;
-        free(basechunk_ptr);
-
-        basechunk_size = 0;
     }
-
-    // SetTime(endMiDelta);
-    // MiDeltaTime += endMiDelta - startMiDelta;
-    int hotThreshold = 2;
-    if (dataWrite_->chunklist[BasechunkId].basechunkID > 0 && chunkHotMap[BasechunkId] >= hotThreshold)
-        chunkCache.insert(BasechunkId, std::vector<uint8_t>(basechunk.chunkPtr, basechunk.chunkPtr + basechunk.chunkSize));
-
-    return basechunk;
+    return;
 }

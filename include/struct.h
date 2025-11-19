@@ -27,7 +27,7 @@ typedef struct
     int FirstChildID = -1; // 4 bytes
     int FirstBroID = -1;   // 4 bytes
     int BeforeFit = -1;
-    int FitCount = 0;
+    int HitCount = 0;
     uint8_t deltaFlag = NO_DELTA; // 1 byte
     bool loadFromDisk = false;    // 1 byte
     bool HeaderFlag = false;      // 1 byte

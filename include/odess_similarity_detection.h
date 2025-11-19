@@ -18,7 +18,7 @@ typedef vector<super_feature_t> SuperFeatures;
 typedef struct Log2Entry
 {
   uint64_t id = -1;
-  uint32_t fitCount = 0;
+  uint32_t HitCount = 0;
   uint32_t otherInfo;
 } Log2Entry;
 // The Mask has X bits of 1's, so the sample rate is 1/(2^X). It means the
@@ -138,7 +138,7 @@ public:
   uint64_t SF_Find(const SuperFeatures &superfeatures);
   std::vector<uint64_t> SF_Find_Mi(const SuperFeatures &superfeatures);
   void SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid);
-  // log2 feature -> <Id, FitCount, otherInfo>
+  // log2 feature -> <Id, HitCount, otherInfo>
   unordered_map<super_feature_t, Log2Entry> Log2_SFIndex;
   uint64_t Log2_SF_Find(const SuperFeatures &superfeatures);
   void Log2_SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid);
@@ -149,6 +149,7 @@ public:
   uint64_t Tree_SF_Find(const SuperFeatures &superfeatures, uint64_t &HitSF);
   void Tree_SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid);
   void Tree_SF_ReWrite(const SuperFeatures &superfeatures, const uint64_t newid);
+  void Tree_SF_ReWrite(const uint64_t &superfeature, const uint64_t newid);
 
 private:
   // unordered_map<super_feature_t, unordered_set<string>> feature_key_table_;

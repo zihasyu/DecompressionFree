@@ -175,6 +175,11 @@ int main(int argc, char **argv)
         absMethodObj = new TreeCache2();
         break;
     }
+    case SUBTREE_REDUCTION:
+    {
+        absMethodObj = new SubTreeReduction();
+        break;
+    }
     default:
         break;
     }

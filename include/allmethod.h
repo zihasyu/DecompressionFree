@@ -21,5 +21,6 @@
 #include "AllGreedy.h"
 #include "Tree/TreeCache.h"
 #include "Tree/TreeCache2.h"
+#include "Tree/SubTreeReduction.h"
 
 #endif
