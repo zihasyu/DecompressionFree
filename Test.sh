@@ -24,10 +24,11 @@ methods=(
   # ["Odess"]="-c 1 -m 3"
   # ["TreeCut"]="-c 1 -m 12"
   # ["Greedy"]="-c 1 -m 13"
-  ["TreeCutLayer"]="-c 1 -m 15"
+  # ["TreeCutLayer"]="-c 1 -m 15"
   #  ["TreeCache"]="-c 1 -m 16"
   # ["TreeCache2"]="-c 1 -m 17"
     ["SubTree"]="-c 1 -m 18"
+    # ["SubTreePre"]="-c 1 -m 19"
   # ["OdessMiBL"]="-c 1 -m 6"
   # ["OdessMiBL2"]="-c 1 -m 8"
   # ["OdessMiBL3"]="-c 1 -m 9"
@@ -37,7 +38,7 @@ methods=(
 )
 
 selected_datasets=(
-  # "automake"
+  "automake"
   # "bash"
   # "coreutils"
   "WindowsLog"

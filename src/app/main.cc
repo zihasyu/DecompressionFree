@@ -180,6 +180,11 @@ int main(int argc, char **argv)
         absMethodObj = new SubTreeReduction();
         break;
     }
+    case SUBTREE_PRE:
+    {
+        absMethodObj = new SubTreePre();
+        break;
+    }
     default:
         break;
     }
