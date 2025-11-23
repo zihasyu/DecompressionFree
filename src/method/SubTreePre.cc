@@ -399,6 +399,8 @@ Chunk_t SubTreePre::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
         SetTime(endIO);
         SetTime(startIO, endIO, IOTime);
 
+        // 加入缓存
+        chunkCache.Put(chunkChain.back().chunkID, std::vector<uint8_t>(chunkChain.back().chunkPtr, chunkChain.back().chunkPtr + chunkChain.back().chunkSize));
         return chunkChain.back();
     }
 
@@ -418,6 +420,9 @@ Chunk_t SubTreePre::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
     basechunk.chunkID = chunkChain.back().chunkID;
     if (chunkChain.back().loadFromDisk)
         free(chunkChain.back().chunkPtr); // free base chunk memory
+
+    // 将依赖链上的最后一个 chunk 加入缓存
+    chunkCache.Put(basechunk.chunkID, std::vector<uint8_t>(basechunk.chunkPtr, basechunk.chunkPtr + basechunk.chunkSize));
 
     for (int i = chunkChain.size() - 2; i >= 0; i--)
     {
@@ -446,10 +451,14 @@ Chunk_t SubTreePre::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
         free(basechunk_ptr);
 
         basechunk_size = 0;
+
+        // 将依赖链上的每个 chunk 加入缓存
+        chunkCache.Put(basechunk.chunkID, std::vector<uint8_t>(basechunk.chunkPtr, basechunk.chunkPtr + basechunk.chunkSize));
     }
 
-    if (dataWrite_->chunklist[BasechunkId].basechunkID > 0)
-        chunkCache.Put(BasechunkId, std::vector<uint8_t>(basechunk.chunkPtr, basechunk.chunkPtr + basechunk.chunkSize));
+    // 只要有依赖链就全部加入缓存
+    // if (dataWrite_->chunklist[BasechunkId].basechunkID > 0)
+    //     chunkCache.Put(BasechunkId, std::vector<uint8_t>(basechunk.chunkPtr, basechunk.chunkPtr + basechunk.chunkSize));
 
     return basechunk;
 }
