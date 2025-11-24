@@ -296,7 +296,7 @@ Chunk_t SubTreePre::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, u
             free(basechunk_ptr);
         }
 
-        if (tmpFatherID == BasechunkId)
+        if (tmpFatherID == BasechunkId && resultchunk.chunkID != BasechunkId)
         {
             SubTree(HitSF, resultchunk.chunkID);
         }
@@ -356,6 +356,18 @@ void SubTreePre::SubTree(uint64_t HitSF, uint64_t HitFirstLayerID)
     {
         {
             table.Tree_SF_ReWrite(HitSF, HitFirstLayerID);
+
+            //从cache中移除旧根
+            uint64_t oldRootID = dataWrite_->chunklist[HitFirstLayerID].basechunkID;
+            if(chunkCache.Cached(oldRootID)){
+                chunkCache.Remove(oldRootID);
+            }
+
+            //向cache中加入新根
+            if(!chunkCache.Cached(HitFirstLayerID)){
+                Chunk_t newRootChunk = dataWrite_->chunklist[HitFirstLayerID];
+                chunkCache.Put(HitFirstLayerID, std::vector<uint8_t>(newRootChunk.chunkPtr, newRootChunk.chunkPtr + newRootChunk.chunkSize));
+            }
         }
     }
     return;
