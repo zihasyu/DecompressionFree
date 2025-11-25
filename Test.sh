@@ -2,19 +2,19 @@ cd bin
 
 declare -A datasets
 datasets=(
-  ["automake"]="/mnt/dataset2/automake_tarballs 100"
+  ["automake"]="/home/public/Dataset/automake_tarballs 100"
   ["bash"]="/mnt/dataset2/bash_tarballs 44"
   ["coreutils"]="/mnt/dataset2/coreutils_tarballs 28"
   ["fdisk"]="/mnt/dataset2/fdisk_tarballs 22"
-  ["glibc"]="/mnt/dataset2/glibc_tarballs 100"
+  ["glibc"]="/home/public/Dataset/glibc_tarballs 100"
   ["smalltalk"]="/mnt/dataset2/smalltalk_tarballs 40"
   ["gcc"]="/mnt/dataset2/GNU_GCC/gcc-packed/tar 117"
   ["chromium"]="/mnt/dataset2/chromium 107"
-  ["linux"]="/mnt/dataset2/linux 270"
+  ["linux"]="/home/public/Dataset/linux 270"
   ["cassandra"]="/mnt/dataset2/cassandra 97"
   ["vmdk"]="/mnt/dataset2/vmdk 8"
-  ["WEB"]="/mnt/dataset2/WEB 20"
-  ["WindowsLog"]="/mnt/dataset2/WindowsLog 1"
+  ["WEB"]="/home/public/Dataset/WEB 20"
+  ["WindowsLog"]="/home/public/Dataset/WindowsLog 1"
   ["ThunderbirdLog"]="/mnt/dataset2/ThunderbirdLog 1"
   ["Wiki"]="/mnt/dataset2/wiki2025 7"
 )
