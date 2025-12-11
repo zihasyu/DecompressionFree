@@ -31,10 +31,9 @@ void TreeCache::ProcessTrace()
 
     //std::unordered_map<super_feature_t, int> superFeatureHitMap;
     std::vector<std::pair<int, int>> sf_access_seq;
-    //std::unordered_map<super_feature_t, int> sf_id_map;
-    //int sf_id_counter = 1;
+    std::unordered_map<super_feature_t, int> sf_id_map;
+    int sf_id_counter = 1;
     int access_counter = 0;
-    cout << "sf_id_map.size() before version1: " << sf_id_map.size() << endl;
 
     while (true)
     {
@@ -42,7 +41,7 @@ void TreeCache::ProcessTrace()
         hashStr.assign(CHUNK_HASH_SIZE, 0);
         if (recieveQueue->done_ && recieveQueue->IsEmpty())
         {
-            if(ads_Version > 0){
+            if(ads_Version >= 0){
                 cout << "Version " << ads_Version
                 << " Cache Stats - Hits: " << cacheHitCount
                 << " Accesses: " << cacheAccessCount 
@@ -60,8 +59,8 @@ void TreeCache::ProcessTrace()
                 outFile.close();
 
                 sf_access_seq.clear();
-                //sf_id_map.clear();
-                //sf_id_counter = 1;
+                sf_id_map.clear();
+                sf_id_counter = 1;
                 access_counter = 0;
             }
 

@@ -11,32 +11,47 @@ datasets=(
   ["gcc"]="/mnt/dataset2/GNU_GCC/gcc-packed/tar 117"
   ["chromium"]="/mnt/dataset2/chromium 107"
   ["linux"]="/mnt/dataset2/linux 270"
+  ["cassandra"]="/mnt/dataset2/cassandra 97"
+  ["vmdk"]="/mnt/dataset2/vmdk 8"
+  ["WEB"]="/mnt/dataset2/WEB 20"
+  ["WindowsLog"]="/mnt/dataset2/WindowsLog 1"
+  ["ThunderbirdLog"]="/mnt/dataset2/ThunderbirdLog 1"
+  ["Wiki"]="/mnt/dataset2/wiki2025 7"
 )
 
 declare -A methods
 methods=(
   # ["Odess"]="-c 1 -m 3"
   # ["TreeCut"]="-c 1 -m 12"
-  # ["TreeGreedy"]="-c 1 -m 13"
-  # ["AllGreedy"]="-c 1 -m 14"
-    ["TreeCutLayer"]="-c 1 -m 15"
+  # ["Greedy"]="-c 1 -m 13"
+  # ["TreeCutLayer"]="-c 1 -m 15"
+   ["TreeCache"]="-c 1 -m 16"
+  # ["TreeCache2"]="-c 1 -m 17"
+    # ["SubTree"]="-c 1 -m 18"
   # ["OdessMiBL"]="-c 1 -m 6"
   # ["OdessMiBL2"]="-c 1 -m 8"
   # ["OdessMiBL3"]="-c 1 -m 9"
   # ["OdessMiLess4"]="-c 1 -m 11"
   # ["OdessMiLog2"]="-c 1 -m 10"
+    # ["AllGreedy"]="-c 1 -m 14"
 )
 
 selected_datasets=(
-  "automake"
+  # "automake"
   # "bash"
   # "coreutils"
+  "WindowsLog"
   # "fdisk"
-  "glibc"
-  "smalltalk"
-  "gcc"
+  # "glibc"
+  # "smalltalk"
+  # "gcc"
   # "chromium"
-  "linux"
+  # "linux"
+  # "cassandra"
+  # "vmdk"
+  # "WEB"
+  # "ThunderbirdLog"
+  # "Wiki"
 )
 
 for method_name in "${!methods[@]}"; do
