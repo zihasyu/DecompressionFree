@@ -46,6 +46,7 @@ cd ..
 cd ./bin
 # rm *.txt
 mkdir -p Containers
+mkdir -p OfflineContainers
 mkdir -p restoreFile
 mkdir -p mTarFile
 # Check if "./bin/Containers" directory exists and clear its content

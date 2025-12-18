@@ -74,6 +74,11 @@ private:
     uint8_t *lz4SafeChunkBuffer;
 
 public:
+    string containerName = "./Containers/";
+    void setContainerPath(string path)
+    {
+        containerName = path;
+    }
     void SetFilename(string name);
     vector<Chunk_t> chunklist;
     void writing();

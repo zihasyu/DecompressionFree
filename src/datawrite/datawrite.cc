@@ -62,7 +62,7 @@ void dataWrite::writing()
                 // cout << "push container " << containerNum << " into MQ" << endl;
                 // cout << "cur container size is " << curContainer.size << endl;
                 // MQ->Push(curContainer);
-                string fileName = "./Containers/" + to_string(curContainer.containerID);
+                string fileName = containerName + to_string(curContainer.containerID);
                 ofstream outfile(fileName);
                 if (outfile.is_open())
                 {
@@ -129,7 +129,7 @@ bool dataWrite::Chunk_Insert(Chunk_t chunk)
         // cout << "push container " << containerNum << " into MQ" << endl;
         // cout << "cur container size is " << curContainer.size << endl;
         // MQ->Push(curContainer);
-        string fileName = "./Containers/" + to_string(curContainer.containerID);
+        string fileName = containerName + to_string(curContainer.containerID);
         ofstream outfile(fileName, std::ios::binary);
         if (outfile.is_open())
         {
@@ -188,10 +188,8 @@ bool dataWrite::Chunk_Insert(Chunk_t chunk, uint8_t *lz4Buffer)
         // TODO put into MQ
         // cout << " curContainer.chunkNum is" << curContainer.chunkNum << " curContainer.containerId is " << curContainer.containerID << endl;
         startTime = std::chrono::high_resolution_clock::now();
-        // cout << "push container " << containerNum << " into MQ" << endl;
-        // cout << "cur container size is " << curContainer.size << endl;
-        // MQ->Push(curContainer);
-        string fileName = "./Containers/" + to_string(curContainer.containerID);
+
+        string fileName = containerName + to_string(curContainer.containerID);
         ofstream outfile(fileName, std::ios::binary);
         if (outfile.is_open())
         {
@@ -224,23 +222,8 @@ bool dataWrite::Chunk_Insert(Chunk_t chunk, uint8_t *lz4Buffer)
     chunk.offset = curOffset;
     // cout << " curContainer.size is " << curContainer.size << " tmpSize is " << tmpSize << " offset is " << curOffset << endl;
     curContainer.size += tmpSize;
-    // cout<< "tmp size is " << tmpSize << " curoffset is " << curOffset<<endl;
-    // if (chunk.chunkID == 1149)
-    // {
-    //     cout << "1149 is here and is base" << endl;
-    //     tool::PrintBinaryArray(lz4Buffer, chunk.saveSize);
-    // }
 
     memcpy(curContainer.data + curOffset, lz4Buffer, tmpSize);
-
-    // **compare diff**
-    // uint8_t *lz4SafeChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
-    // int decompressedSize = LZ4_decompress_safe((char *)curContainer.data + curOffset, (char *)lz4SafeChunkBuffer, tmpSize, CONTAINER_MAX_SIZE);
-    // if (decompressedSize != chunk.chunkSize)
-    //     cout << "decompress error" << endl;
-    // // cout << "cmp is " << std::memcmp(chunk.chunkPtr, lz4SafeChunkBuffer, chunk.chunkSize) << endl;
-    // free(lz4SafeChunkBuffer);
-
     curOffset += tmpSize;
     // cout << "free chunk " << endl;
     free(chunk.chunkPtr);
@@ -831,7 +814,7 @@ Chunk_t dataWrite::Get_Chunk_Info(int id)
             chunklist[id].chunkPtr = (uint8_t *)malloc(chunklist[id].saveSize);
         }
         startTime = std::chrono::high_resolution_clock::now();
-        string fileName = "./Containers/" + tmpContainerIDcontainerID;
+        string fileName = containerName + tmpContainerIDcontainerID;
         // cout << fileName << endl;
         ifstream infile(fileName, ios::binary);
         if (infile.is_open())
@@ -1072,7 +1055,7 @@ void dataWrite::writeContainers()
         {
             //  write a container
             // cout << "write a container " << tmpContainer.containerID << endl;
-            string fileName = "./Containers/" + to_string(tmpContainer.containerID);
+            string fileName = containerName + to_string(tmpContainer.containerID);
             ofstream outfile(fileName);
             if (outfile.is_open())
             {
@@ -1110,7 +1093,7 @@ void dataWrite::ProcessLastContainer()
     // MQ->done_ = true;
     if (curContainer.size != 0)
     {
-        string fileName = "./Containers/" + to_string(curContainer.containerID);
+        string fileName = containerName + to_string(curContainer.containerID);
         ofstream outfile(fileName);
         if (outfile.is_open())
         {
