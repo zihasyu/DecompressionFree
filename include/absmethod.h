@@ -35,6 +35,7 @@ public:
     int ads_Version = 0;
     // util
     string filename;
+    dataWrite *offline_dataWrite_;
     dataWrite *dataWrite_;
     uint8_t *lz4ChunkBuffer;
     uint8_t *hashBuf;
