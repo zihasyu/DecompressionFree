@@ -357,7 +357,13 @@ enum METHOD_TYPE
     Tree_Cache2,
     SUBTREE_REDUCTION
 };
-
+enum OFFLINE_TYPE
+{
+    Offline_Tree_Cut,
+    Offline_Tree_Cut_Layer,
+    Offline_Tree_Cache,
+    Offline_Tree_Feature
+};
 enum DELTA_TYPE
 {
     NO_DELTA = 0,

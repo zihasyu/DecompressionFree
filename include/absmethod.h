@@ -154,6 +154,7 @@ public:
     virtual void PrintChunkInfo(string inputDirpath, int chunkingMethod, int method, int fileNum, int64_t time, double ratio, double chunktime, double AcceptThreshold, bool IsFalseFilter);
     virtual void PrintChunkInfo(int64_t time, CommandLine_t CmdLine);
     virtual void PrintChunkInfo(int64_t time, CommandLine_t CmdLine, double chunktime);
+    virtual void PrintOffline(int64_t time, CommandLine_t CmdLine);
 
     void StatsDelta(Chunk_t &tmpChunk);
     void StatsDeltaFeature(Chunk_t &tmpChunk);

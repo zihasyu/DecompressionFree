@@ -766,7 +766,7 @@ void AbsMethod::PrintChunkInfo(int64_t time, CommandLine_t CmdLine)
         out.open(fileName, ios::app);
     }
     out << "-----------------INSTRUCTION----------------------" << endl;
-    out << "./DFree -i " << CmdLine.dirName << " -c " << CmdLine.chunkingType << " -m " << CmdLine.compressionMethod << " -n " << CmdLine.backupNum << " -r " << CmdLine.ratio << " -a " << CmdLine.AcceptThreshold << " -b " << CmdLine.IsFalseFilter << " -t " << CmdLine.TurnOnNameHash << " -H " << CmdLine.MultiHeaderChunk << endl;
+    out << "./DFree -i " << CmdLine.dirName << " -c " << CmdLine.chunkingType << " -m " << CmdLine.compressionMethod << " -n " << CmdLine.backupNum << " -r " << CmdLine.ratio << " -a " << CmdLine.AcceptThreshold << " -b " << CmdLine.IsFalseFilter << " -t " << CmdLine.TurnOnNameHash << " -H " << CmdLine.MultiHeaderChunk << "-o" << CmdLine.offlineMethod << endl;
     out << "-----------------CHUNK NUM-----------------------" << endl;
     out << "logical chunk num: " << logicalchunkNum << endl;
     out << "unique chunk num: " << uniquechunkNum << endl;
@@ -793,13 +793,13 @@ void AbsMethod::PrintChunkInfo(int64_t time, CommandLine_t CmdLine)
     out << "IO Time: " << IOTime.count() << "s" << endl;
     out << "Decode Time: " << DecodeTime.count() << "s" << endl;
     out << "Encode Time: " << EncodeTime.count() << "s" << endl;
-    // out << "-----------------OverHead--------------------------" << endl;
-    // out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
-    // out << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
-    // out << "FP Overhead: " << (double)(uniquechunkNum * 80 + uniquechunkNum * 32) / 1024 / 1024 << "MiB" << endl;
-    // out << "SF Overhead: " << (double)(basechunkNum * 120) / 1024 / 1024 << "MiB" << endl; //(3*(8+32)=120B)
-    // out << "Recipe Overhead: " << (double)logicalchunkNum * 8 / 1024 / 1024 << "MiB" << endl;
-    // out << "SF number: " << SFnum << endl;
+    out << "-----------------OverHead--------------------------" << endl;
+    out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
+    out << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
+    out << "FP Overhead: " << (double)(uniquechunkNum * 80 + uniquechunkNum * 32) / 1024 / 1024 << "MiB" << endl;
+    out << "SF Overhead: " << (double)(basechunkNum * 120) / 1024 / 1024 << "MiB" << endl; //(3*(8+32)=120B)
+    out << "Recipe Overhead: " << (double)logicalchunkNum * 8 / 1024 / 1024 << "MiB" << endl;
+    out << "SF number: " << SFnum << endl;
     // out << "-----------------Reduct----------------------------" << endl;
     // out << "Dedup ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct) << endl;
     // out << "Lossless ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct - LocalReduct) << endl;
@@ -809,6 +809,61 @@ void AbsMethod::PrintChunkInfo(int64_t time, CommandLine_t CmdLine)
     return;
 }
 
+void AbsMethod::PrintOffline(int64_t time, CommandLine_t CmdLine)
+{
+    ofstream out;
+    string fileName = "./offlineLog.txt";
+    if (!tool::FileExist(fileName))
+    {
+        out.open(fileName, ios::out);
+    }
+    else
+    {
+        out.open(fileName, ios::app);
+    }
+    out << "-----------------INSTRUCTION----------------------" << endl;
+    out << "./DFree -i " << CmdLine.dirName << " -c " << CmdLine.chunkingType << " -m " << CmdLine.compressionMethod << " -n " << CmdLine.backupNum << " -r " << CmdLine.ratio << " -a " << CmdLine.AcceptThreshold << " -b " << CmdLine.IsFalseFilter << " -t " << CmdLine.TurnOnNameHash << " -H " << CmdLine.MultiHeaderChunk << "-o" << CmdLine.offlineMethod << endl;
+    out << "-----------------CHUNK NUM-----------------------" << endl;
+    out << "logical chunk num: " << logicalchunkNum << endl;
+    out << "unique chunk num: " << uniquechunkNum << endl;
+    out << "base chunk num: " << basechunkNum << endl;
+    out << "delta chunk num: " << deltachunkNum << endl;
+    out << "-----------------CHUNK SIZE-----------------------" << endl;
+    out << "logical chunk size: " << logicalchunkSize << endl;
+    out << "unique chunk size: " << uniquechunkSize << endl;
+    out << "base chunk size: " << basechunkSize << endl;
+    out << "delta chunk size: " << deltachunkSize << endl;
+    out << "-----------------METRICS-------------------------" << endl;
+    out << "Overall Compression Ratio: " << (double)logicalchunkSize / (double)uniquechunkSize << endl;
+    out << "DCC: " << (double)deltachunkNum / (double)uniquechunkNum << endl;
+    out << "DCR: " << (double)deltachunkOriSize / (double)deltachunkSize << endl;
+    out << "DCE: " << DCESum / (double)deltachunkNum << endl;
+    out << "-----------------Time------------------------------" << endl;
+    // out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
+    out << "total time: " << time << "s" << endl;
+    out << "Throughput: " << (double)logicalchunkSize / time / 1024 / 1024 << "MiB/s" << endl;
+    out << "Reduce data speed: " << (double)(logicalchunkSize - uniquechunkSize) / time / 1024 / 1024 << "MiB/s" << endl;
+    out << "SF generation time: " << SFTime.count() << "s" << endl;
+    out << "SF generation throughput: " << (double)logicalchunkSize / SFTime.count() / 1024 / 1024 << "MiB/s" << endl;
+    out << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
+    out << "IO Time: " << IOTime.count() << "s" << endl;
+    out << "Decode Time: " << DecodeTime.count() << "s" << endl;
+    out << "Encode Time: " << EncodeTime.count() << "s" << endl;
+    out << "-----------------OverHead--------------------------" << endl;
+    out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
+    out << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
+    out << "FP Overhead: " << (double)(uniquechunkNum * 80 + uniquechunkNum * 32) / 1024 / 1024 << "MiB" << endl;
+    out << "SF Overhead: " << (double)(basechunkNum * 120) / 1024 / 1024 << "MiB" << endl; //(3*(8+32)=120B)
+    out << "Recipe Overhead: " << (double)logicalchunkNum * 8 / 1024 / 1024 << "MiB" << endl;
+    out << "SF number: " << SFnum << endl;
+    // out << "-----------------Reduct----------------------------" << endl;
+    // out << "Dedup ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct) << endl;
+    // out << "Lossless ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct - LocalReduct) << endl;
+    // out << "Delta ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct - LocalReduct - DeltaReduct) << endl;
+    out << "-----------------END-------------------------------" << endl;
+    out.close();
+    return;
+}
 void AbsMethod::PrintChunkInfo(int64_t time, CommandLine_t CmdLine, double chunktime)
 {
     ofstream out;

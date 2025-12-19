@@ -80,6 +80,7 @@ typedef struct
     bool IsFalseFilter;
     bool TurnOnNameHash;
     int MultiHeaderChunk = 16; // num
+    int offlineMethod = -1;
 } CommandLine_t;
 
 #endif

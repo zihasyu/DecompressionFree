@@ -31,8 +31,8 @@ int main(int argc, char **argv)
 
     vector<string> readfileList;
 
-    const char optString[] = "i:m:c:n:r:a:b:t:H:";
-    if (argc != sizeof(optString) && argc != sizeof(optString) - 2 && argc != sizeof(optString) - 4 && argc != sizeof(optString) - 6 && argc != sizeof(optString) - 8 && argc != sizeof(optString) - 10 && argc != sizeof(optString) - 12)
+    const char optString[] = "i:m:c:n:r:a:b:t:H:o:";
+    if (argc != sizeof(optString) && argc != sizeof(optString) - 2 && argc != sizeof(optString) - 4 && argc != sizeof(optString) - 6 && argc != sizeof(optString) - 8 && argc != sizeof(optString) - 10 && argc != sizeof(optString) - 12 && argc != sizeof(optString) - 14)
     {
         cout << "argc is " << argc << endl;
         cout << "Usage: " << argv[0] << " -i <input file> -m <chunking method> -c <compression method> -n <process number> -r <Bisearch fault ratio> -a <False Filter Fixed parameters> -b <0 = fixed parameter> -t <0 = No meta-guided> -H <Multi Header num>" << endl;
@@ -72,12 +72,15 @@ int main(int argc, char **argv)
         case 'H':
             CmdLine.MultiHeaderChunk = atoi(optarg);
             break;
+        case 'o':
+            CmdLine.offlineMethod = atoi(optarg);
+            break;
         default:
             break;
         }
     }
 
-    AbsMethod *absMethodObj;
+    AbsMethod *absMethodObj, *OfflineAbsMethodObj;
     Chunker *chunkerObj = new Chunker(CmdLine.chunkingType);
 
     MessageQueue<Chunk_t> *chunkerMQ = new MessageQueue<Chunk_t>(CHUNK_QUEUE_SIZE);
@@ -198,14 +201,6 @@ int main(int argc, char **argv)
     absMethodObj->TurnOnNameHash = CmdLine.TurnOnNameHash;
     chunkerObj->MULTI_HEADER_CHUNK = CmdLine.MultiHeaderChunk;
 
-    // new design
-    // if (chunkingType == TAR_MultiHeader)
-    // {
-    //     MessageQueue<uint64_t> *MaskMQ = new MessageQueue<uint64_t>(CHUNK_QUEUE_SIZE);
-    //     chunkerObj->SetOutputMaskMQ(MaskMQ);
-    //     absMethodObj->SetInputMaskMQ(MaskMQ);
-    // }
-
     auto startsum = std::chrono::high_resolution_clock::now();
     double MTarTime = 0;
     if (CmdLine.chunkingType == MTAR || CmdLine.chunkingType == MTAROdess || CmdLine.chunkingType == MTARPalantir)
@@ -275,6 +270,46 @@ int main(int argc, char **argv)
 
     string fileName = "C" + to_string(CmdLine.chunkingType) + "_M" + to_string(CmdLine.compressionMethod);
     // absMethodObj->dataWrite_->Save_to_File_unique(fileName);
+
+    // offline processing
+    switch (CmdLine.offlineMethod)
+    {
+    case Offline_Tree_Cut:
+    {
+        OfflineAbsMethodObj = new OfflineTreeCut();
+        break;
+    }
+    case Offline_Tree_Cut_Layer:
+    {
+        OfflineAbsMethodObj = new OfflineTreeCutLayer();
+        break;
+    }
+    case Offline_Tree_Cache:
+    {
+        OfflineAbsMethodObj = new OfflineTreeCache();
+        break;
+    }
+    case Offline_Tree_Feature:
+    {
+        OfflineAbsMethodObj = new OfflineTreeFeature();
+        break;
+    }
+    default:
+        break;
+    }
+    OfflineAbsMethodObj->offline_dataWrite_ = new dataWrite();
+    OfflineAbsMethodObj->dataWrite_ = absMethodObj->dataWrite_;
+
+    auto startTmp = std::chrono::high_resolution_clock::now();
+    OfflineAbsMethodObj->ProcessTrace();
+    auto endTmp = std::chrono::high_resolution_clock::now();
+    auto offlineTimeTmp = std::chrono::duration_cast<std::chrono::duration<double>>(endTmp - startTmp).count();
+    std::cout << "Time taken by for offline: " << offlineTimeTmp << " s " << std::endl;
+    std::cout << "Offline Compression ratio " << (double)absMethodObj->logicalchunkSize / (double)OfflineAbsMethodObj->uniquechunkSize << std::endl;
+    std::cout << "Offline Throughput " << (double)absMethodObj->logicalchunkSize / offlineTimeTmp / 1024 / 1024 << " MiB/s" << std::endl;
+    OfflineAbsMethodObj->PrintOffline(offlineTimeTmp, CmdLine);
+
+    // clear
     delete absMethodObj->dataWrite_;
     delete chunkerObj;
     delete absMethodObj;
