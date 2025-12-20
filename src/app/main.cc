@@ -297,18 +297,21 @@ int main(int argc, char **argv)
     default:
         break;
     }
-    OfflineAbsMethodObj->offline_dataWrite_ = new dataWrite();
-    OfflineAbsMethodObj->dataWrite_ = absMethodObj->dataWrite_;
 
-    auto startTmp = std::chrono::high_resolution_clock::now();
-    OfflineAbsMethodObj->ProcessTrace();
-    auto endTmp = std::chrono::high_resolution_clock::now();
-    auto offlineTimeTmp = std::chrono::duration_cast<std::chrono::duration<double>>(endTmp - startTmp).count();
-    std::cout << "Time taken by for offline: " << offlineTimeTmp << " s " << std::endl;
-    std::cout << "Offline Compression ratio " << (double)absMethodObj->logicalchunkSize / (double)OfflineAbsMethodObj->uniquechunkSize << std::endl;
-    std::cout << "Offline Throughput " << (double)absMethodObj->logicalchunkSize / offlineTimeTmp / 1024 / 1024 << " MiB/s" << std::endl;
-    OfflineAbsMethodObj->PrintOffline(offlineTimeTmp, CmdLine);
-
+    if (CmdLine.offlineMethod >= 0)
+    {
+        OfflineAbsMethodObj->offline_dataWrite_ = new dataWrite();
+        OfflineAbsMethodObj->dataWrite_ = absMethodObj->dataWrite_;
+        OfflineAbsMethodObj->offline_dataWrite_->setContainerPath("./OfflineContainers/");
+        auto startTmp = std::chrono::high_resolution_clock::now();
+        OfflineAbsMethodObj->ProcessTrace();
+        auto endTmp = std::chrono::high_resolution_clock::now();
+        auto offlineTimeTmp = std::chrono::duration_cast<std::chrono::duration<double>>(endTmp - startTmp).count();
+        std::cout << "Time taken by for offline: " << offlineTimeTmp << " s " << std::endl;
+        std::cout << "Offline Compression ratio " << (double)absMethodObj->logicalchunkSize / (double)OfflineAbsMethodObj->uniquechunkSize << std::endl;
+        std::cout << "Offline Throughput " << (double)absMethodObj->logicalchunkSize / offlineTimeTmp / 1024 / 1024 << " MiB/s" << std::endl;
+        OfflineAbsMethodObj->PrintOffline(offlineTimeTmp, CmdLine);
+    }
     // clear
     delete absMethodObj->dataWrite_;
     delete chunkerObj;

@@ -1,11 +1,4 @@
-/*
- * @Author: Helix0503 834991203@qq.com
- * @Date: 2024-01-08 16:42:12
- * @LastEditors: Helix0503 834991203@qq.com
- * @LastEditTime: 2024-01-30 15:58:16
- * @FilePath: /Maplemeo/LocalDedupSim/include/dataWrite.h
- * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
- */
+
 #ifndef DATA_WRITE_H
 #define DATA_WRITE_H
 #include "struct.h"
@@ -23,9 +16,7 @@ extern "C"
 using namespace std;
 
 // static int curContainerIdGlobal = 0;
-static int containerNum = 0;
-static Container_t curContainer;
-static uint64_t curOffset = 0;
+
 class dataWrite
 {
 private:
@@ -74,6 +65,9 @@ private:
     uint8_t *lz4SafeChunkBuffer;
 
 public:
+    int containerNum = 0;
+    Container_t curContainer;
+    uint64_t curOffset = 0;
     string containerName = "./Containers/";
     void setContainerPath(string path)
     {

@@ -51,15 +51,7 @@ void Dedup::ProcessTrace()
                 }
                 tmpChunk.saveSize = lz4Size;
                 FP_Insert(hashStr, tmpChunk.chunkID);
-                if (ContainerSize + tmpChunk.chunkSize > CONTAINER_MAX_SIZE)
-                {
-                    tmpChunk.containerID = ++containerNum;
-                    ContainerSize = 0;
-                }
-                else
-                {
-                    tmpChunk.containerID = containerNum;
-                }
+
                 tmpChunk.offset = ContainerSize;
                 ContainerSize += tmpChunk.chunkSize;
                 if (tmpChunk.deltaFlag == NO_LZ4)

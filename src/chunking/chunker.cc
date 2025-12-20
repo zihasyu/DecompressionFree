@@ -175,6 +175,7 @@ void Chunker::Chunking()
             }
             localOffset += cp;
             chunk.NameExist = true;
+            chunk.loadFromDisk = true;
             if (!outputMQ_->Push(chunk))
             {
                 tool::Logging(myName_.c_str(), "insert chunk to output MQ error.\n");
@@ -467,6 +468,7 @@ uint64_t Chunker::CutPointTarHeader(const uint8_t *src, const uint64_t len)
                 // 记录data边界
                 // boundaries_.push_back({current_offset_ + cpSum, cp, 'D'});
                 // input MQ
+                chunk.loadFromDisk = true;
                 if (!outputMQ_->Push(chunk))
                 {
                     tool::Logging(myName_.c_str(), "insert chunk to output MQ error.\n");
@@ -506,6 +508,7 @@ uint64_t Chunker::CutPointTarHeader(const uint8_t *src, const uint64_t len)
         // reset
         HeaderCp = 0;
         // input chunk MQ
+        chunk.loadFromDisk = true;
         if (!outputMQ_->Push(chunk))
         {
             tool::Logging(myName_.c_str(), "insert chunk to output MQ error.\n");
@@ -541,6 +544,7 @@ uint64_t Chunker::CutPointTarHeader(const uint8_t *src, const uint64_t len)
                 chunk.chunkSize = cp;
                 chunk.NameExist = true;
                 // chunk.name = name;
+                chunk.loadFromDisk = true;
                 if (!outputMQ_->Push(chunk))
                 {
                     tool::Logging(myName_.c_str(), "insert chunk to output MQ error.\n");

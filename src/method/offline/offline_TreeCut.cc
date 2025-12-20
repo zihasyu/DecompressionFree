@@ -24,19 +24,46 @@ OfflineTreeCut::~OfflineTreeCut()
 
 void OfflineTreeCut::ProcessTrace()
 {
-    string tmpChunkHash;
+    // 没关系，dataWrite_和offline_dataWrite_是两个不同的对象，chunklist也是两套不同的，绝不修改dataWrite_就是了。
     string tmpChunkContent;
     SuperFeatures superfeature;
-    // [CHANGE] 获取源数据的引用
+    // 0. get all chunks from dataWrite_
     vector<Chunk_t> &sourceList = dataWrite_->chunklist;
     size_t totalChunks = sourceList.size();
     for (size_t i = 0; i < totalChunks; i++)
     {
-        Chunk_t tmpChunk = dataWrite_->Get_Chunk_Info(i);
+        // 1. restore the chunk content
+        Chunk_t tmpChunk = dataWrite_->Get_Chunk_MetaInfo(i);
+        if (tmpChunk.basechunkID >= 0)
+        {
+            Chunk_t tmpPreChunk = dataWrite_->Get_Chunk_Info(tmpChunk.basechunkID);
+            Chunk_t tmpDeltaChunk = dataWrite_->Get_Chunk_Info(i);
+            uint64_t tmpSize = 0;
+            tmpChunk.chunkPtr = xd3_decode(tmpDeltaChunk.chunkPtr, tmpDeltaChunk.saveSize, tmpPreChunk.chunkPtr, tmpPreChunk.chunkSize, &tmpSize);
+            tmpChunk.loadFromDisk = true;
+            if (tmpPreChunk.loadFromDisk)
+                free(tmpPreChunk.chunkPtr);
+            if (tmpDeltaChunk.loadFromDisk)
+                free(tmpDeltaChunk.chunkPtr);
+        }
+        else
+        {
+            Chunk_t rawChunk = dataWrite_->Get_Chunk_Info(i);
+            tmpChunk = rawChunk;
+            tmpChunk.chunkPtr = (uint8_t *)malloc(tmpChunk.chunkSize);
+            if (tmpChunk.chunkPtr != nullptr && rawChunk.chunkPtr != nullptr)
+            {
+                memcpy(tmpChunk.chunkPtr, rawChunk.chunkPtr, tmpChunk.chunkSize);
+            }
+            tmpChunk.loadFromDisk = true;
+            if (rawChunk.loadFromDisk)
+            {
+                free(rawChunk.chunkPtr);
+            }
+        }
 
+        // 2. compute super feature again
         tmpChunkContent.assign((char *)tmpChunk.chunkPtr, tmpChunk.chunkSize);
-        tmpChunkHash.assign((char *)hashBuf, CHUNK_HASH_SIZE);
-        // OfflineTreeCut get superfeature & get time
         uint64_t basechunkid = -1;
         // compute SF
         if (tmpChunk.chunkSize > 60)
@@ -47,9 +74,8 @@ void OfflineTreeCut::ProcessTrace()
             SFTime += (endSF - startSF);
 
             basechunkid = table.Tree_SF_Find(superfeature);
-            // auto ret = table.GetSimilarRecordsKeys(tmpChunkHash);
         }
-
+        // 3. feature match
         if (basechunkid != -1)
         // unique chunk & delta chunk
         {
@@ -61,6 +87,7 @@ void OfflineTreeCut::ProcessTrace()
 
             if (tmpChunk.saveSize > tmpChunk.chunkSize || tmpChunk.saveSize <= 0 || RestoreBasechunk.chunkSize == 0)
             {
+                // false delta & lz4 compress
                 cout << "delta no effective" << endl;
                 int tmpChunkLz4CompressSize = 0;
                 tmpChunkLz4CompressSize = LZ4_compress_fast((char *)tmpChunk.chunkPtr, (char *)lz4ChunkBuffer, tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
@@ -93,33 +120,27 @@ void OfflineTreeCut::ProcessTrace()
             }
             else
             {
+                // right delta & delta compress
                 tmpChunk.deltaFlag = DELTA;
-                // cout << "RestoreBasechunk.chunkID is " << RestoreBasechunk.chunkID << endl;
                 tmpChunk.basechunkID = RestoreBasechunk.chunkID;
-                // cout << "tmpChunk.savesize is " << tmpChunk.saveSize << endl;
                 if (tmpChunk.chunkSize > 60)
                     table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
-                // cout << "tmpChunk.chunkID is " << tmpChunk.chunkID << endl;
-                // cout << "basechunkid is " << tmpChunk.basechunkID << endl;
 
-                if (dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID < 0)
+                if (offline_dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID < 0)
                 {
-                    // cout << "here 1" << endl;
-                    dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID = tmpChunk.chunkID;
+                    offline_dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID = tmpChunk.chunkID;
                 }
                 else
                 {
-                    // cout << "here 2" << endl;
-                    int broID = dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID;
-                    while (dataWrite_->chunklist[broID].FirstBroID >= 0)
-                        broID = dataWrite_->chunklist[broID].FirstBroID;
-                    dataWrite_->chunklist[broID].FirstBroID = tmpChunk.chunkID;
+                    int broID = offline_dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID;
+                    while (offline_dataWrite_->chunklist[broID].FirstBroID >= 0)
+                        broID = offline_dataWrite_->chunklist[broID].FirstBroID;
+                    offline_dataWrite_->chunklist[broID].FirstBroID = tmpChunk.chunkID;
                 }
                 memcpy(tmpChunk.chunkPtr, deltachunk, tmpChunk.saveSize);
                 StatsDelta(tmpChunk);
                 free(deltachunk);
-                // if (RestoreBasechunk.loadFromDisk)
-                //     free(RestoreBasechunk.chunkPtr);
+
                 offline_dataWrite_->Chunk_Insert(tmpChunk);
             }
         }
@@ -154,8 +175,11 @@ void OfflineTreeCut::ProcessTrace()
                 // base chunk &lz4 compress
                 offline_dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
         }
+        // cout << "Process chunk " << i << "/" << totalChunks << "\r" << "chunkID: " << tmpChunk.chunkID << " basechunkID: " << tmpChunk.basechunkID << " deltaFlag: " << (int)tmpChunk.deltaFlag << " saveSize: " << tmpChunk.saveSize << endl;
         uniquechunkNum++;
         uniquechunkSize += tmpChunk.saveSize;
+        logicalchunkNum++;
+        logicalchunkSize += tmpChunk.chunkSize;
     }
     return;
 }
@@ -166,11 +190,11 @@ Chunk_t OfflineTreeCut::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchun
     Chunk_t resultchunk;
     size_t basechunk_size = 0;
 
-    Chunk_t basechunk = dataWrite_->Get_Chunk_MetaInfo(BasechunkId);
+    Chunk_t basechunk = offline_dataWrite_->Get_Chunk_MetaInfo(BasechunkId);
     if (basechunk.basechunkID < 0)
     {
         SetTime(startIO);
-        basechunk = dataWrite_->Get_Chunk_Info(BasechunkId);
+        basechunk = offline_dataWrite_->Get_Chunk_Info(BasechunkId);
         SetTime(endIO);
         SetTime(startIO, endIO, IOTime);
         if (basechunk.FirstChildID < 0) // if only one layer
@@ -179,7 +203,7 @@ Chunk_t OfflineTreeCut::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchun
     }
     else
     {
-        basechunk = xd3_recursive_restore_BL_time(BasechunkId);
+        basechunk = xd3_recursive_restore_offline_time(BasechunkId);
         // cout << "basechunk.ChunkID is " << basechunk.chunkID << endl;
         if (basechunk.FirstChildID < 0) // if only one layer
             return basechunk;
@@ -206,7 +230,7 @@ Chunk_t OfflineTreeCut::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchun
         uint64_t tmpChildID = resultchunk.chunkID;
 
         SetTime(startIO);
-        Chunk_t TmpChildChunk = dataWrite_->Get_Chunk_Info(resultchunk.FirstChildID);
+        Chunk_t TmpChildChunk = offline_dataWrite_->Get_Chunk_Info(resultchunk.FirstChildID);
         SetTime(endIO);
         SetTime(startIO, endIO, IOTime);
 
@@ -228,7 +252,7 @@ Chunk_t OfflineTreeCut::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchun
         while (TmpBroChunk.FirstBroID >= 0)
         {
             SetTime(startIO);
-            TmpBroChunk = dataWrite_->Get_Chunk_Info(TmpBroChunk.FirstBroID);
+            TmpBroChunk = offline_dataWrite_->Get_Chunk_Info(TmpBroChunk.FirstBroID);
             SetTime(endIO);
             SetTime(startIO, endIO, IOTime);
             uint8_t *basechunk_ptr = xd3_decode(TmpBroChunk.chunkPtr, TmpBroChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);

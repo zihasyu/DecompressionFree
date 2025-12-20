@@ -407,7 +407,74 @@ Chunk_t AbsMethod::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
     // MiDeltaTime += endMiDelta - startMiDelta;
     return basechunk;
 }
+Chunk_t AbsMethod::xd3_recursive_restore_offline_time(uint64_t BasechunkId)
+{
+    // SetTime(startMiDelta);
+    std::vector<Chunk_t> chunkChain;
+    Chunk_t basechunk;
+    size_t basechunk_size = 0;
+    chunkChain.push_back(offline_dataWrite_->Get_Chunk_MetaInfo(BasechunkId));
+    // if only one layer
+    if (chunkChain.back().basechunkID < 0)
+    {
+        SetTime(startIO);
+        chunkChain.back() = offline_dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);
+        SetTime(endIO);
+        SetTime(startIO, endIO, IOTime);
 
+        return chunkChain.back();
+    }
+
+    // collect all delta chain blocks
+    while (chunkChain.back().basechunkID >= 0)
+        chunkChain.push_back(offline_dataWrite_->Get_Chunk_MetaInfo(chunkChain.back().basechunkID));
+    // push the last chunk
+    SetTime(startIO);
+    chunkChain.back() = offline_dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);
+    SetTime(endIO);
+    SetTime(startIO, endIO, IOTime);
+
+    memcpy(CombinedBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
+    basechunk.loadFromDisk = false;
+    basechunk.chunkSize = chunkChain.back().chunkSize;
+    basechunk.chunkPtr = CombinedBuffer;
+    basechunk.chunkID = chunkChain.back().chunkID;
+    if (chunkChain.back().loadFromDisk)
+        free(chunkChain.back().chunkPtr); // free base chunk memory
+
+    for (int i = chunkChain.size() - 2; i >= 0; i--)
+    {
+        SetTime(startIO);
+        chunkChain[i] = offline_dataWrite_->Get_Chunk_Info(chunkChain[i].chunkID);
+        SetTime(endIO);
+        SetTime(startIO, endIO, IOTime);
+
+        uint8_t *basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
+                                            basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
+
+        if (chunkChain[i].chunkSize != basechunk_size)
+        {
+            cout << "xd3 recursive restore error, chunk size mismatch" << endl;
+            cout << "id " << chunkChain[i].chunkID << " chunkChain[i].chunkSize : " << chunkChain[i].chunkSize << "chunkChain[i].saveSize: " << chunkChain[i].saveSize
+                 << " basechunksize " << basechunk.chunkSize << " restore basechunk_size : " << basechunk_size << endl;
+            basechunk.chunkSize = 0;
+            return basechunk;
+        }
+        if (chunkChain[i].loadFromDisk)
+            free(chunkChain[i].chunkPtr);
+        memcpy(CombinedBuffer, basechunk_ptr, basechunk_size);
+        basechunk.chunkSize = chunkChain[i].chunkSize; // update size
+        basechunk.FirstChildID = chunkChain[i].FirstChildID;
+        basechunk.chunkID = chunkChain[i].chunkID;
+        free(basechunk_ptr);
+
+        basechunk_size = 0;
+    }
+
+    // SetTime(endMiDelta);
+    // MiDeltaTime += endMiDelta - startMiDelta;
+    return basechunk;
+}
 Chunk_t AbsMethod::xd3_recursive_restore_DF(uint64_t BasechunkId)
 {
     std::vector<Chunk_t> chunkChain;

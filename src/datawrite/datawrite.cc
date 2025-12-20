@@ -99,9 +99,13 @@ void dataWrite::writing()
             memcpy(curContainer.data + curOffset, chunk.chunkPtr, tmpSize);
             curOffset += tmpSize;
             // cout << "free chunk " << endl;
-            free(chunk.chunkPtr);
+            if (chunk.loadFromDisk)
+            {
+                free(chunk.chunkPtr);
+                chunk.chunkPtr = nullptr;
+            }
             // cout << "free chunk done" << endl;
-            chunk.chunkPtr = nullptr;
+
             // chunkprint(chunk); //debug
             // std::lock_guard<std::mutex> lock(mtx);
             // chunklist.push_back(chunk);
@@ -166,10 +170,18 @@ bool dataWrite::Chunk_Insert(Chunk_t chunk)
     memcpy(curContainer.data + curOffset, chunk.chunkPtr, tmpSize);
     curOffset += tmpSize;
     // cout << "free chunk " << endl;
-    free(chunk.chunkPtr);
-    // cout << "free chunk done" << endl;
-    chunk.chunkPtr = nullptr;
-    chunklist.push_back(chunk);
+    if (chunk.loadFromDisk)
+    {
+        free(chunk.chunkPtr);
+        chunk.chunkPtr = nullptr;
+    } // cout << "free chunk done" << endl;
+
+    // chunklist.push_back(chunk);
+    if (chunk.chunkID >= chunklist.size())
+    {
+        chunklist.resize(chunk.chunkID + 1);
+    }
+    chunklist[chunk.chunkID] = chunk;
     // cout << "chunkset entry id is  " << chunklist[chunk.chunkid].chunkid << endl;
     return true;
 }
@@ -226,10 +238,19 @@ bool dataWrite::Chunk_Insert(Chunk_t chunk, uint8_t *lz4Buffer)
     memcpy(curContainer.data + curOffset, lz4Buffer, tmpSize);
     curOffset += tmpSize;
     // cout << "free chunk " << endl;
-    free(chunk.chunkPtr);
+    if (chunk.loadFromDisk)
+    {
+        free(chunk.chunkPtr);
+        chunk.chunkPtr = nullptr;
+    }
     // cout << "free chunk done" << endl;
-    chunk.chunkPtr = nullptr;
-    chunklist.push_back(chunk);
+
+    // chunklist.push_back(chunk);
+    if (chunk.chunkID >= chunklist.size())
+    {
+        chunklist.resize(chunk.chunkID + 1);
+    }
+    chunklist[chunk.chunkID] = chunk;
     // cout << "chunkset entry id is  " << chunklist[chunk.chunkid].chunkid << endl;
     return true;
 }
