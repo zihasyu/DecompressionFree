@@ -22,10 +22,10 @@ datasets=(
 declare -A methods
 methods=(
   # ["Odess"]="-c 1 -m 3"
-  # ["TreeCut"]="-c 1 -m 12"
+  ["TreeCut"]="-c 1 -m 12"
   # ["Greedy"]="-c 1 -m 13"
   ["TreeCutLayer"]="-c 1 -m 15"
-  #  ["TreeCache"]="-c 1 -m 16"
+   ["TreeCache"]="-c 1 -m 16"
   # ["TreeCache2"]="-c 1 -m 17"
     ["SubTree"]="-c 1 -m 18"
   # ["OdessMiBL"]="-c 1 -m 6"
@@ -63,8 +63,8 @@ for method_name in "${!methods[@]}"; do
       read -r path num <<< "${datasets[$dataset]}"
       echo "Processing dataset: $dataset"
       
-    #   sudo rm -f Containers/*
-    #   sudo echo 3 > /proc/sys/vm/drop_caches
+      sudo rm -f Containers/*
+      sudo echo 3 > /proc/sys/vm/drop_caches
       
       ./DFree -i "$path" $method_params -n "$num" > "${method_name}_${dataset}.txt"
       
