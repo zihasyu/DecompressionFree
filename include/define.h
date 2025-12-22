@@ -359,7 +359,8 @@ enum METHOD_TYPE
 };
 enum OFFLINE_TYPE
 {
-    Offline_Tree_Cut = 0,
+    Offline_Greedy = 0,
+    Offline_Tree_Cut,
     Offline_Tree_Cut_Layer,
     Offline_Tree_Cache,
     Offline_Tree_Feature

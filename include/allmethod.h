@@ -23,6 +23,7 @@
 #include "Tree/TreeCache2.h"
 #include "Tree/SubTreeReduction.h"
 
+#include "Offline/offline_greedy.h"
 #include "Offline/offline_treecut.h"
 #include "Offline/offline_treecutlayer.h"
 #include "Offline/offline_tree_Feature.h"

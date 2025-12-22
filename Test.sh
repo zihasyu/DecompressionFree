@@ -27,14 +27,18 @@ methods=(
   # ["TreeCutLayer"]="-c 1 -m 15"
   #  ["TreeCache"]="-c 1 -m 16"
   # ["TreeCache2"]="-c 1 -m 17"
-    # ["SubTree"]="-c 1 -m 18"
+  # ["SubTree"]="-c 1 -m 18"
   # ["OdessMiBL"]="-c 1 -m 6"
   # ["OdessMiBL2"]="-c 1 -m 8"
   # ["OdessMiBL3"]="-c 1 -m 9"
   # ["OdessMiLess4"]="-c 1 -m 11"
   # ["OdessMiLog2"]="-c 1 -m 10"
-    # ["AllGreedy"]="-c 1 -m 14"
-      ["offlineTreeCut"]="-c 1 -m 3 -o 0"
+  # ["AllGreedy"]="-c 1 -m 14"
+  ["offlineAllGreedy"]="-c 1 -m 3 -o 0"
+  # ["offlineTreeCut"]="-c 1 -m 3 -o 1"
+  # ["offlineTreeCutLayer"]="-c 1 -m 3 -o 2"
+  # ["offlineTreeCache"]="-c 1 -m 3 -o 3"
+  # ["offlineTreeFeature"]="-c 1 -m 3 -o 4"
 )
 
 selected_datasets=(
@@ -43,7 +47,7 @@ selected_datasets=(
   # "coreutils"
   "WindowsLog"
   # "fdisk"
-  # "glibc"
+  "glibc"
   # "smalltalk"
   # "gcc"
   # "chromium"
@@ -66,6 +70,10 @@ for method_name in "${!methods[@]}"; do
       
     #   sudo rm -f Containers/*
     #   sudo echo 3 > /proc/sys/vm/drop_caches
+      if [[ ("$method_name" == "offlineAllGreedy" || "$method_name" == "AllGreedy") && "$dataset" == "WEB" ]]; then
+        echo "Applying special rule for $method_name on WEB: changing num to 3"
+        num=3
+      fi
       
       ./DFree -i "$path" $method_params -n "$num" > "${method_name}_${dataset}.txt"
       

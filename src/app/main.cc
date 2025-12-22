@@ -274,6 +274,11 @@ int main(int argc, char **argv)
     // offline processing
     switch (CmdLine.offlineMethod)
     {
+    case Offline_Greedy:
+    {
+        OfflineAbsMethodObj = new OfflineAllGreedy();
+        break;
+    }
     case Offline_Tree_Cut:
     {
         OfflineAbsMethodObj = new OfflineTreeCut();
