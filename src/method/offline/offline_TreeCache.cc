@@ -1,9 +1,8 @@
 #include "../../../include/Offline/offline_treecache.h"
 
 OfflineTreeCache::OfflineTreeCache()
-    : chunkCache(1024, 64)
+    : chunkCache(1024, 64) // Initialize cache
 {
-    // cout << " Chunk_t is " << sizeof(Chunk_t) << " Chunk_t_ori is " << sizeof(Chunk_t_odess) << " <super_feature_t, unordered_set<string>> is " << sizeof(super_feature_t);
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
     mdCtx = EVP_MD_CTX_new();
     hashBuf = (uint8_t *)malloc(CHUNK_HASH_SIZE * sizeof(uint8_t));
@@ -11,6 +10,7 @@ OfflineTreeCache::OfflineTreeCache()
     SFindex = new unordered_map<string, vector<int>>[FINESSE_SF_NUM];
     tmpDeltaBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
     MinBaseBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
+    CombinedBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
 }
 
 OfflineTreeCache::~OfflineTreeCache()
@@ -21,190 +21,166 @@ OfflineTreeCache::~OfflineTreeCache()
     free(hashBuf);
     free(tmpDeltaBuffer);
     free(MinBaseBuffer);
+    free(CombinedBuffer);
 }
 
 void OfflineTreeCache::ProcessTrace()
 {
-    string tmpChunkHash;
     string tmpChunkContent;
     SuperFeatures superfeature;
-    while (true)
+
+    // [CHANGE] Get all chunks from the source dataWrite_
+    vector<Chunk_t> &sourceList = dataWrite_->chunklist;
+    size_t totalChunks = sourceList.size();
+
+    // [CHANGE] Iterate through all chunks using a for loop
+    for (size_t i = 0; i < totalChunks; i++)
     {
-        string hashStr;
-        hashStr.assign(CHUNK_HASH_SIZE, 0);
-        if (recieveQueue->done_ && recieveQueue->IsEmpty())
-        {
-            cout << "Version " << ads_Version
-                 << " Cache Stats - Hits: " << cacheHitCount
-                 << " Accesses: " << cacheAccessCount
-                 << " Hit Rate: " << (float)cacheHitCount / cacheAccessCount * 100 << "%"
-                 << endl;
-
-            // chunkCache.clear();
-
-            cacheHitCount = 0;
-            cacheAccessCount = 0;
-
-            // outputMQ_->done_ = true;
-            recieveQueue->done_ = false;
-            ads_Version++;
-            SFnum = basechunkNum * 3;
-            break;
-        }
+        // 1. Restore the chunk content to its original form using the cache-aware method
+        Chunk_t tmpChunkMeta = dataWrite_->Get_Chunk_MetaInfo(i);
         Chunk_t tmpChunk;
-        if (recieveQueue->Pop(tmpChunk))
+        bool needFree = false;
+
+        if (tmpChunkMeta.deltaFlag == DELTA && tmpChunkMeta.basechunkID >= 0)
         {
-            GenerateHash(mdCtx, tmpChunk.chunkPtr, tmpChunk.chunkSize, hashBuf);
-            hashStr.assign((char *)hashBuf, CHUNK_HASH_SIZE);
-            int tmpChunkid;
-            int findRes = FP_Find(hashStr);
-            if (findRes == -1)
+            // It's a delta chunk, restore it recursively from the source dataWrite_
+            tmpChunk = xd3_recursive_restore_BL_time(i);
+            needFree = true; // Restored chunk always needs to be freed
+        }
+        else
+        {
+            // It's a base chunk, get its content from the source dataWrite_
+            tmpChunk = dataWrite_->Get_Chunk_Info(i);
+            needFree = tmpChunk.loadFromDisk;
+        }
+
+        // Preserve the original chunk ID
+        tmpChunk.chunkID = tmpChunkMeta.chunkID;
+
+        // 2. Re-compute super features
+        tmpChunkContent.assign((char *)tmpChunk.chunkPtr, tmpChunk.chunkSize);
+        uint64_t basechunkid = -1;
+        if (tmpChunk.chunkSize > 60)
+        {
+            startSF = std::chrono::high_resolution_clock::now();
+            superfeature = table.feature_generator_.GenerateSuperFeatures(tmpChunkContent);
+            endSF = std::chrono::high_resolution_clock::now();
+            SFTime += (endSF - startSF);
+            basechunkid = table.Tree_SF_Find(superfeature);
+        }
+
+        // 3. Re-process the chunk
+        if (basechunkid != -1)
+        {
+            auto RestoreBasechunk = CutGreedy(basechunkid, tmpChunk, superfeature);
+            uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
+
+            if (RestoreBasechunk.loadFromDisk)
+                free(RestoreBasechunk.chunkPtr);
+
+            if (tmpChunk.saveSize > tmpChunk.chunkSize || tmpChunk.saveSize <= 0 || RestoreBasechunk.chunkSize == 0)
             {
-                // Unique chunk found
-                tmpChunk.chunkID = uniquechunkNum;
-                tmpChunk.deltaFlag = NO_DELTA;
-                FP_Insert(hashStr, tmpChunk.chunkID);
-                tmpChunkContent.assign((char *)tmpChunk.chunkPtr, tmpChunk.chunkSize);
-                tmpChunkHash.assign((char *)hashBuf, CHUNK_HASH_SIZE);
-                // TreeCutLayer get superfeature & get time
-                uint64_t basechunkid = -1;
-                // compute SF
-                if (tmpChunk.chunkSize > 60)
+                // Delta failed, fallback to LZ4
+                int tmpChunkLz4CompressSize = LZ4_compress_fast((char *)tmpChunk.chunkPtr, (char *)lz4ChunkBuffer, tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
+                if (tmpChunkLz4CompressSize > 0)
                 {
-                    startSF = std::chrono::high_resolution_clock::now();
-                    superfeature = table.feature_generator_.GenerateSuperFeatures(tmpChunkContent);
-                    endSF = std::chrono::high_resolution_clock::now();
-                    SFTime += (endSF - startSF);
-
-                    basechunkid = table.Tree_SF_Find(superfeature);
-                    // auto ret = table.GetSimilarRecordsKeys(tmpChunkHash);
+                    tmpChunk.deltaFlag = NO_DELTA;
+                    tmpChunk.saveSize = tmpChunkLz4CompressSize;
                 }
-
-                if (basechunkid != -1)
-                // unique chunk & delta chunk
-                {
-                    auto basechunkInfo = dataWrite_->Get_Chunk_MetaInfo(basechunkid);
-                    auto RestoreBasechunk = CutGreedy(basechunkid, tmpChunk, superfeature);
-                    uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
-                    if (RestoreBasechunk.loadFromDisk)
-                        free(RestoreBasechunk.chunkPtr);
-
-                    if (tmpChunk.saveSize > tmpChunk.chunkSize || tmpChunk.saveSize <= 0 || RestoreBasechunk.chunkSize == 0)
-                    {
-                        cout << "delta no effective" << endl;
-                        int tmpChunkLz4CompressSize = 0;
-                        tmpChunkLz4CompressSize = LZ4_compress_fast((char *)tmpChunk.chunkPtr, (char *)lz4ChunkBuffer, tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
-                        if (tmpChunkLz4CompressSize > 0)
-                        {
-                            tmpChunk.deltaFlag = NO_DELTA;
-                            tmpChunk.saveSize = tmpChunkLz4CompressSize;
-                        }
-                        else
-                        {
-                            // cout << "lz4 compress error" << endl;
-                            tmpChunk.deltaFlag = NO_LZ4;
-                            tmpChunk.saveSize = tmpChunk.chunkSize;
-                        }
-
-                        tmpChunk.basechunkID = -1;
-                        tmpChunkid = tmpChunk.chunkID;
-                        if (tmpChunk.chunkSize > 60)
-                            table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
-                        basechunkNum++;
-                        basechunkSize += tmpChunk.saveSize;
-                        LocalReduct += tmpChunk.chunkSize - tmpChunk.saveSize;
-                        free(deltachunk);
-                        if (tmpChunk.deltaFlag == NO_LZ4)
-                            // base chunk & Lz4 error
-                            dataWrite_->Chunk_Insert(tmpChunk);
-                        else
-                            // base chunk &lz4 compress
-                            dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
-                    }
-                    else
-                    {
-                        tmpChunk.deltaFlag = DELTA;
-                        // cout << "RestoreBasechunk.chunkID is " << RestoreBasechunk.chunkID << endl;
-                        tmpChunk.basechunkID = RestoreBasechunk.chunkID;
-                        // cout << "tmpChunk.savesize is " << tmpChunk.saveSize << endl;
-                        if (tmpChunk.chunkSize > 60)
-                            table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
-                        // cout << "tmpChunk.chunkID is " << tmpChunk.chunkID << endl;
-                        // cout << "basechunkid is " << tmpChunk.basechunkID << endl;
-
-                        if (dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID < 0)
-                        {
-                            // cout << "here 1" << endl;
-                            dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID = tmpChunk.chunkID;
-                        }
-                        else
-                        {
-                            // cout << "here 2" << endl;
-                            int broID = dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID;
-                            while (dataWrite_->chunklist[broID].FirstBroID >= 0)
-                                broID = dataWrite_->chunklist[broID].FirstBroID;
-                            dataWrite_->chunklist[broID].FirstBroID = tmpChunk.chunkID;
-                        }
-                        memcpy(tmpChunk.chunkPtr, deltachunk, tmpChunk.saveSize);
-                        StatsDelta(tmpChunk);
-                        free(deltachunk);
-                        // if (RestoreBasechunk.loadFromDisk)
-                        //     free(RestoreBasechunk.chunkPtr);
-                        dataWrite_->Chunk_Insert(tmpChunk);
-                    }
-                }
-                // unique chunk & base chunk
                 else
                 {
-                    int tmpChunkLz4CompressSize = 0;
-                    tmpChunkLz4CompressSize = LZ4_compress_fast((char *)tmpChunk.chunkPtr, (char *)lz4ChunkBuffer, tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
-                    if (tmpChunkLz4CompressSize > 0)
-                    {
-                        tmpChunk.deltaFlag = NO_DELTA;
-                        tmpChunk.saveSize = tmpChunkLz4CompressSize;
-                    }
-                    else
-                    {
-                        // cout << "lz4 compress error" << endl;
-                        tmpChunk.deltaFlag = NO_LZ4;
-                        tmpChunk.saveSize = tmpChunk.chunkSize;
-                    }
-
-                    tmpChunk.basechunkID = -1;
-                    tmpChunkid = tmpChunk.chunkID;
-                    if (tmpChunk.chunkSize > 60)
-                        table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
-                    basechunkNum++;
-                    basechunkSize += tmpChunk.saveSize;
-                    LocalReduct += tmpChunk.chunkSize - tmpChunk.saveSize;
-                    if (tmpChunk.deltaFlag == NO_LZ4)
-                        // base chunk & Lz4 error
-                        dataWrite_->Chunk_Insert(tmpChunk);
-                    else
-                        // base chunk &lz4 compress
-                        dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
+                    tmpChunk.deltaFlag = NO_LZ4;
+                    tmpChunk.saveSize = tmpChunk.chunkSize;
                 }
-                uniquechunkNum++;
-                uniquechunkSize += tmpChunk.saveSize;
+                tmpChunk.basechunkID = -1;
+
+                if (tmpChunk.chunkSize > 60)
+                    table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
+                basechunkNum++;
+                basechunkSize += tmpChunk.saveSize;
+                free(deltachunk);
+
+                if (tmpChunk.deltaFlag == NO_LZ4)
+                    offline_dataWrite_->Chunk_Insert(tmpChunk);
+                else
+                    offline_dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
             }
             else
             {
-                // Dedup chunk found
-                free(tmpChunk.chunkPtr);
-                tmpChunk = dataWrite_->Get_Chunk_MetaInfo(findRes);
-                tmpChunkid = findRes;
-                PrevDedupChunkid = findRes;
-                DedupReduct += tmpChunk.chunkSize;
+                // Delta succeeded
+                tmpChunk.deltaFlag = DELTA;
+                tmpChunk.basechunkID = RestoreBasechunk.chunkID;
+
+                if (tmpChunk.chunkSize > 60)
+                    table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
+
+                if (offline_dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID < 0)
+                {
+                    offline_dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID = tmpChunk.chunkID;
+                }
+                else
+                {
+                    int broID = offline_dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID;
+                    while (offline_dataWrite_->chunklist[broID].FirstBroID >= 0)
+                        broID = offline_dataWrite_->chunklist[broID].FirstBroID;
+                    offline_dataWrite_->chunklist[broID].FirstBroID = tmpChunk.chunkID;
+                }
+
+                memcpy(tmpChunk.chunkPtr, deltachunk, tmpChunk.saveSize);
+                StatsDelta(tmpChunk);
+                free(deltachunk);
+                offline_dataWrite_->Chunk_Insert(tmpChunk);
             }
-            if (tmpChunk.HeaderFlag == 0)
-                dataWrite_->Recipe_Insert(tmpChunk.chunkID);
-            else
-                dataWrite_->Recipe_Header_Insert(tmpChunk.chunkID);
-            logicalchunkNum++;
-            logicalchunkSize += tmpChunk.chunkSize;
         }
+        else
+        {
+            // No base found, treat as a new base chunk
+            int tmpChunkLz4CompressSize = LZ4_compress_fast((char *)tmpChunk.chunkPtr, (char *)lz4ChunkBuffer, tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
+            if (tmpChunkLz4CompressSize > 0)
+            {
+                tmpChunk.deltaFlag = NO_DELTA;
+                tmpChunk.saveSize = tmpChunkLz4CompressSize;
+            }
+            else
+            {
+                tmpChunk.deltaFlag = NO_LZ4;
+                tmpChunk.saveSize = tmpChunk.chunkSize;
+            }
+            tmpChunk.basechunkID = -1;
+
+            if (tmpChunk.chunkSize > 60)
+                table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
+            basechunkNum++;
+            basechunkSize += tmpChunk.saveSize;
+
+            if (tmpChunk.deltaFlag == NO_LZ4)
+                offline_dataWrite_->Chunk_Insert(tmpChunk);
+            else
+                offline_dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
+        }
+
+        // [CHANGE] Free the memory of the restored chunk at the end of the loop
+        if (needFree && tmpChunk.chunkPtr != nullptr)
+        {
+            free(tmpChunk.chunkPtr);
+            tmpChunk.chunkPtr = nullptr;
+        }
+
+        // Update statistics
+        uniquechunkNum++;
+        uniquechunkSize += tmpChunk.saveSize;
+        logicalchunkNum++;
+        logicalchunkSize += tmpChunk.chunkSize;
     }
-    recieveQueue->done_ = false;
+
+    // Finalize
+    cout << "Version " << ads_Version
+         << " Cache Stats - Hits: " << cacheHitCount
+         << " Accesses: " << cacheAccessCount
+         << " Hit Rate: " << (cacheAccessCount > 0 ? (float)cacheHitCount / cacheAccessCount * 100 : 0) << "%"
+         << endl;
+    ads_Version++;
+    SFnum = basechunkNum * 3;
     return;
 }
 
@@ -214,27 +190,23 @@ Chunk_t OfflineTreeCache::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetch
     Chunk_t resultchunk;
     size_t basechunk_size = 0;
 
-    Chunk_t basechunk = dataWrite_->Get_Chunk_MetaInfo(BasechunkId);
+    // [CHANGE] Get base chunk info from the *destination* offline_dataWrite_
+    Chunk_t basechunk = offline_dataWrite_->Get_Chunk_MetaInfo(BasechunkId);
     if (basechunk.basechunkID < 0)
     {
-        SetTime(startIO);
-        basechunk = dataWrite_->Get_Chunk_Info(BasechunkId);
-        SetTime(endIO);
-        SetTime(startIO, endIO, IOTime);
-        if (basechunk.FirstChildID < 0) // if only one layer
+        basechunk = offline_dataWrite_->Get_Chunk_Info(BasechunkId);
+        if (basechunk.FirstChildID < 0)
             return basechunk;
-        // basechunk = xd3_recursive_restore_BL_time(BasechunkId);
     }
     else
     {
-        basechunk = xd3_recursive_restore_BL_time(BasechunkId);
-        // cout << "basechunk.ChunkID is " << basechunk.chunkID << endl;
-        if (basechunk.FirstChildID < 0) // if only one layer
+        // Restore recursively from the destination tree
+        basechunk = xd3_recursive_restore_offline_time(BasechunkId);
+        if (basechunk.FirstChildID < 0)
             return basechunk;
     }
 
     memcpy(CombinedBuffer, basechunk.chunkPtr, basechunk.chunkSize);
-    // greed init
     memcpy(MinBaseBuffer, basechunk.chunkPtr, basechunk.chunkSize);
     resultchunk.chunkSize = basechunk.chunkSize;
     resultchunk.chunkPtr = MinBaseBuffer;
@@ -242,10 +214,10 @@ Chunk_t OfflineTreeCache::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetch
     resultchunk.chunkID = basechunk.chunkID;
     resultchunk.FirstChildID = basechunk.FirstChildID;
 
-    xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk.chunkPtr, basechunk.chunkSize, &resultchunk.saveSize, deltaMaxChunkBuffer); //*** resultchunk.saveSize save tmpMinDeltaSize only here
+    xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk.chunkPtr, basechunk.chunkSize, &resultchunk.saveSize, deltaMaxChunkBuffer);
 
     if (basechunk.loadFromDisk)
-        free(basechunk.chunkPtr); // free base chunk memory
+        free(basechunk.chunkPtr);
 
     bool end = false;
     uint64_t tmpsaveSize = 0;
@@ -254,11 +226,7 @@ Chunk_t OfflineTreeCache::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetch
         uint64_t tmpFatherID = resultchunk.chunkID;
         uint64_t tmpChildID = resultchunk.chunkID;
 
-        SetTime(startIO);
-        Chunk_t TmpChildChunk = dataWrite_->Get_Chunk_Info(resultchunk.FirstChildID);
-        SetTime(endIO);
-        SetTime(startIO, endIO, IOTime);
-
+        Chunk_t TmpChildChunk = offline_dataWrite_->Get_Chunk_Info(resultchunk.FirstChildID);
         uint8_t *basechunk_ptr = xd3_decode(TmpChildChunk.chunkPtr, TmpChildChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);
         xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer);
         if (tmpsaveSize < resultchunk.saveSize)
@@ -270,18 +238,15 @@ Chunk_t OfflineTreeCache::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetch
             memcpy(MinBaseBuffer, basechunk_ptr, TmpChildChunk.chunkSize);
         }
         if (TmpChildChunk.loadFromDisk)
-            free(TmpChildChunk.chunkPtr); // free child chunk memory
-        free(basechunk_ptr);              // free base chunk memory
+            free(TmpChildChunk.chunkPtr);
+        free(basechunk_ptr);
 
         Chunk_t TmpBroChunk = TmpChildChunk;
         while (TmpBroChunk.FirstBroID >= 0)
         {
-            SetTime(startIO);
-            TmpBroChunk = dataWrite_->Get_Chunk_Info(TmpBroChunk.FirstBroID);
-            SetTime(endIO);
-            SetTime(startIO, endIO, IOTime);
+            TmpBroChunk = offline_dataWrite_->Get_Chunk_Info(TmpBroChunk.FirstBroID);
             uint8_t *basechunk_ptr = xd3_decode(TmpBroChunk.chunkPtr, TmpBroChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);
-            xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer); //*** resultchunk.saveSize save tmpMinDeltaSize only here
+            xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer);
             if (tmpsaveSize < resultchunk.saveSize)
             {
                 resultchunk.saveSize = tmpsaveSize;
@@ -291,18 +256,20 @@ Chunk_t OfflineTreeCache::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetch
                 memcpy(MinBaseBuffer, basechunk_ptr, TmpBroChunk.chunkSize);
             }
             if (TmpBroChunk.loadFromDisk)
-                free(TmpBroChunk.chunkPtr); // free bro chunk memory
+                free(TmpBroChunk.chunkPtr);
             free(basechunk_ptr);
         }
+
         StatsHit(tmpFatherID, resultchunk.chunkID, sfs);
+
         if (resultchunk.chunkID == tmpChildID)
         {
-            end = true; // no more child or bro
+            end = true;
         }
         else
         {
             basechunk.chunkSize = resultchunk.chunkSize;
-            memcpy(CombinedBuffer, resultchunk.chunkPtr, resultchunk.chunkSize); // CombineBuffer is FatherNode
+            memcpy(CombinedBuffer, resultchunk.chunkPtr, resultchunk.chunkSize);
         }
     }
     SetTime(endMiDelta);
@@ -317,14 +284,9 @@ uint8_t *OfflineTreeCache::xd3_encode_buffer(const uint8_t *targetChunkbuffer, s
     int ret = xd3_encode_memory(targetChunkbuffer, targetChunkbuffer_size, baseChunkBuffer, baseChunkBuffer_size, tmpbuffer, &deltachunkSize, CONTAINER_MAX_SIZE * 2, 0);
     if (ret != 0)
     {
-        cout << "delta error" << endl;
-        const char *errMsg = xd3_strerror(ret);
-        cout << errMsg << endl;
+        cout << "delta error: " << xd3_strerror(ret) << endl;
     }
-    if (deltachunkSize <= 0)
-        *deltaChunkBuffer_size = INT_MAX;
-    else
-        *deltaChunkBuffer_size = deltachunkSize;
+    *deltaChunkBuffer_size = (deltachunkSize > 0) ? deltachunkSize : INT_MAX;
     memcpy(tmpDeltaBuffer, tmpbuffer, deltachunkSize);
     SetTime(endMiEncode);
     SetTime(startMiEncode, endMiEncode, EncodeTime);
@@ -333,22 +295,24 @@ uint8_t *OfflineTreeCache::xd3_encode_buffer(const uint8_t *targetChunkbuffer, s
 
 void OfflineTreeCache::StatsHit(uint64_t FatherID, uint64_t HitID, SuperFeatures sfs)
 {
-    if (dataWrite_->chunklist[FatherID].BeforeFit == HitID)
+    // [CHANGE] StatsHit should operate on the destination data (offline_dataWrite_)
+    if (offline_dataWrite_->chunklist[FatherID].BeforeFit == HitID)
     {
-        dataWrite_->chunklist[FatherID].HitCount++;
+        offline_dataWrite_->chunklist[FatherID].HitCount++;
     }
     else
     {
-        dataWrite_->chunklist[FatherID].BeforeFit = HitID;
-        dataWrite_->chunklist[FatherID].HitCount = 1;
+        offline_dataWrite_->chunklist[FatherID].BeforeFit = HitID;
+        offline_dataWrite_->chunklist[FatherID].HitCount = 1;
     }
-    if (dataWrite_->chunklist[FatherID].HitCount > 4)
+    if (offline_dataWrite_->chunklist[FatherID].HitCount > 4)
     {
         if (table.Tree_SF_Find(sfs) == FatherID)
             table.Tree_SF_ReWrite(sfs, HitID);
     }
 }
 
+// This function restores from the SOURCE dataWrite_ and uses the cache
 Chunk_t OfflineTreeCache::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
 {
     std::vector<uint8_t> cachedData;
@@ -362,79 +326,81 @@ Chunk_t OfflineTreeCache::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
         cachedChunk.chunkPtr = (uint8_t *)malloc(cachedData.size());
         cachedChunk.FirstChildID = dataWrite_->chunklist[BasechunkId].FirstChildID;
         memcpy(cachedChunk.chunkPtr, cachedData.data(), cachedData.size());
-        cachedChunk.loadFromDisk = false;
+        cachedChunk.loadFromDisk = true; // Mark for freeing
         return cachedChunk;
     }
 
     chunkHotMap[BasechunkId]++;
 
-    // SetTime(startMiDelta);
     std::vector<Chunk_t> chunkChain;
-    Chunk_t basechunk;
-    size_t basechunk_size = 0;
-    chunkChain.push_back(dataWrite_->Get_Chunk_MetaInfo(BasechunkId));
-    // if only one layer
-    if (chunkChain.back().basechunkID < 0)
-    {
-        SetTime(startIO);
-        chunkChain.back() = dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);
-        SetTime(endIO);
-        SetTime(startIO, endIO, IOTime);
+    Chunk_t current = dataWrite_->Get_Chunk_MetaInfo(BasechunkId);
+    chunkChain.push_back(current);
 
-        return chunkChain.back();
+    while (current.basechunkID >= 0)
+    {
+        current = dataWrite_->Get_Chunk_MetaInfo(current.basechunkID);
+        chunkChain.push_back(current);
     }
 
-    // collect all delta chain blocks
-    while (chunkChain.back().basechunkID >= 0)
-        chunkChain.push_back(dataWrite_->Get_Chunk_MetaInfo(chunkChain.back().basechunkID));
-    // push the last chunk
-    SetTime(startIO);
-    chunkChain.back() = dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);
-    SetTime(endIO);
-    SetTime(startIO, endIO, IOTime);
-
-    memcpy(CombinedBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
-    basechunk.loadFromDisk = false;
-    basechunk.chunkSize = chunkChain.back().chunkSize;
-    basechunk.chunkPtr = CombinedBuffer;
-    basechunk.chunkID = chunkChain.back().chunkID;
-    if (chunkChain.back().loadFromDisk)
-        free(chunkChain.back().chunkPtr); // free base chunk memory
+    Chunk_t basechunk = dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);
 
     for (int i = chunkChain.size() - 2; i >= 0; i--)
     {
-        SetTime(startIO);
-        chunkChain[i] = dataWrite_->Get_Chunk_Info(chunkChain[i].chunkID);
-        SetTime(endIO);
-        SetTime(startIO, endIO, IOTime);
+        Chunk_t deltaChunk = dataWrite_->Get_Chunk_Info(chunkChain[i].chunkID);
+        size_t restored_size = 0;
+        uint8_t *restored_ptr = xd3_decode(deltaChunk.chunkPtr, deltaChunk.saveSize, basechunk.chunkPtr, basechunk.chunkSize, &restored_size);
 
-        uint8_t *basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
-                                            basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
+        if (basechunk.loadFromDisk)
+            free(basechunk.chunkPtr);
+        if (deltaChunk.loadFromDisk)
+            free(deltaChunk.chunkPtr);
 
-        if (chunkChain[i].chunkSize != basechunk_size)
-        {
-            cout << "xd3 recursive restore error, chunk size mismatch" << endl;
-            cout << "id " << chunkChain[i].chunkID << " chunkChain[i].chunkSize : " << chunkChain[i].chunkSize << "chunkChain[i].saveSize: " << chunkChain[i].saveSize
-                 << " basechunksize " << basechunk.chunkSize << " restore basechunk_size : " << basechunk_size << endl;
-            basechunk.chunkSize = 0;
-            return basechunk;
-        }
-        if (chunkChain[i].loadFromDisk)
-            free(chunkChain[i].chunkPtr);
-        memcpy(CombinedBuffer, basechunk_ptr, basechunk_size);
-        basechunk.chunkSize = chunkChain[i].chunkSize; // update size
-        basechunk.FirstChildID = chunkChain[i].FirstChildID;
-        basechunk.chunkID = chunkChain[i].chunkID;
-        free(basechunk_ptr);
-
-        basechunk_size = 0;
+        basechunk.chunkPtr = restored_ptr;
+        basechunk.chunkSize = restored_size;
+        basechunk.loadFromDisk = true; // The new base is malloc'd
     }
 
-    // SetTime(endMiDelta);
-    // MiDeltaTime += endMiDelta - startMiDelta;
     int hotThreshold = 2;
     if (dataWrite_->chunklist[BasechunkId].basechunkID > 0 && chunkHotMap[BasechunkId] >= hotThreshold)
+    {
         chunkCache.insert(BasechunkId, std::vector<uint8_t>(basechunk.chunkPtr, basechunk.chunkPtr + basechunk.chunkSize));
+    }
 
+    basechunk.chunkID = BasechunkId; // Ensure final chunk has the correct ID
+    return basechunk;
+}
+
+// [NEW] This function restores from the DESTINATION offline_dataWrite_ and does NOT use the cache
+Chunk_t OfflineTreeCache::xd3_recursive_restore_offline_time(uint64_t BasechunkId)
+{
+    std::vector<Chunk_t> chunkChain;
+    Chunk_t current = offline_dataWrite_->Get_Chunk_MetaInfo(BasechunkId);
+    chunkChain.push_back(current);
+
+    while (current.basechunkID >= 0)
+    {
+        current = offline_dataWrite_->Get_Chunk_MetaInfo(current.basechunkID);
+        chunkChain.push_back(current);
+    }
+
+    Chunk_t basechunk = offline_dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);
+
+    for (int i = chunkChain.size() - 2; i >= 0; i--)
+    {
+        Chunk_t deltaChunk = offline_dataWrite_->Get_Chunk_Info(chunkChain[i].chunkID);
+        size_t restored_size = 0;
+        uint8_t *restored_ptr = xd3_decode(deltaChunk.chunkPtr, deltaChunk.saveSize, basechunk.chunkPtr, basechunk.chunkSize, &restored_size);
+
+        if (basechunk.loadFromDisk)
+            free(basechunk.chunkPtr);
+        if (deltaChunk.loadFromDisk)
+            free(deltaChunk.chunkPtr);
+
+        basechunk.chunkPtr = restored_ptr;
+        basechunk.chunkSize = restored_size;
+        basechunk.loadFromDisk = true;
+    }
+
+    basechunk.chunkID = BasechunkId;
     return basechunk;
 }
