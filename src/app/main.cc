@@ -243,6 +243,32 @@ int main(int argc, char **argv)
             absMethodObj->Version_log(TimeTmp, chunkerObj->ChunkTime.count());
     }
 
+    std::string sf_folder = "sfhit_csv";
+    std::filesystem::create_directory(sf_folder);
+    std::string sf_filename = sf_folder + "/sf_hit_count_total.csv";
+
+    // 收集数据到 vector
+    std::vector<std::tuple<std::string, int, double>> sf_stats;
+    for(const auto& p : absMethodObj->superFeatureHitMap){
+        double ratio = (double)p.second / absMethodObj->uniquechunkNum;
+        sf_stats.emplace_back(std::to_string(p.first), p.second, ratio);
+    }
+
+    // 按命中次数降序排序
+    std::sort(sf_stats.begin(), sf_stats.end(), [](const auto& a, const auto& b){
+        return std::get<1>(a) > std::get<1>(b);
+    });
+
+    // 只保留前100
+    size_t topN = std::min<size_t>(100, sf_stats.size());
+
+    std::ofstream sf_out(sf_filename);
+    sf_out << "SuperFeature,HitCount,HitRatio\n";
+    for(size_t i = 0; i < topN; ++i){
+        sf_out << std::get<0>(sf_stats[i]) << "," << std::get<1>(sf_stats[i]) << "," << std::get<2>(sf_stats[i]) << "\n";
+    }
+    sf_out.close();
+
     auto endsum = std::chrono::high_resolution_clock::now();
     auto sumTime = (endsum - startsum);
     auto sumTimeInSeconds = std::chrono::duration_cast<std::chrono::seconds>(endsum - startsum).count();

@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import os
 import glob
 
-csv_folder = 'bin/sf_csv'
+csv_folder = 'bin/sfhit_csv'
 fig_folder = 'sf_fig'
 os.makedirs(fig_folder, exist_ok=True)
 
@@ -14,6 +14,10 @@ for csv_file in glob.glob(f'{csv_folder}/*.csv'):
     version = base_name.split('_v')[-1].split('.')[0]
 
     df = pd.read_csv(csv_file)
+
+    # 排序并取Top100
+    df = df.sort_values('HitCount', ascending=False).head(100)
+
     plt.figure(figsize=(16, 6))
     plt.bar(df['SuperFeature'].astype(str), df['HitCount'])
     plt.xlabel('super feature')

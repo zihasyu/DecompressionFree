@@ -38,12 +38,14 @@ void TreeCache::ProcessTrace()
         if (recieveQueue->done_ && recieveQueue->IsEmpty())
         {
             if(ads_Version >= 0){
+                //输出cache命中率
                 cout << "Version " << ads_Version
                 << " Cache Stats - Hits: " << cacheHitCount
                 << " Accesses: " << cacheAccessCount 
                 << " Hit Rate: " << (float)cacheHitCount/cacheAccessCount*100 << "%" 
                 << endl;
 
+                //输出locality画图源数据
                 std::string folder = "sf_csv";
                 std::filesystem::create_directory(folder);
                 std::string filename = folder + "/sf_access_seq_v" + std::to_string(ads_Version) + ".csv";
@@ -96,18 +98,9 @@ void TreeCache::ProcessTrace()
                     auto findResult = table.Tree_SF_Find(superfeature);
                     basechunkid = findResult.first;
                     super_feature_t hitSF = findResult.second;
-                    // if(basechunkid != -1){
-                    //     superFeatureHitMap[hitSF]++;
-                    // }
-                    // auto ret = table.GetSimilarRecordsKeys(tmpChunkHash);
-
-                    // if(basechunkid != -1)
-                    //     access_counter++;
-                    // if(sf_id_map.count(hitSF) == 0 && basechunkid != -1){
-                    //     sf_id_map[hitSF] = sf_id_counter++;
-                    // }
-                    // if(basechunkid != -1)
-                    //     sf_access_seq.emplace_back(access_counter, sf_id_map[hitSF]);
+                    if(basechunkid != -1){
+                        superFeatureHitMap[hitSF]++;
+                    }
                 }
 
                 if (basechunkid != -1)
