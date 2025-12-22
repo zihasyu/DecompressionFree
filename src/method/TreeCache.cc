@@ -1,7 +1,7 @@
 #include "../../include/Tree/TreeCache.h"
 
 TreeCache::TreeCache()
-    : chunkCache(1024, 64) , sf_id_counter(1)
+    : chunkCache(1024, 64) 
 {
     // cout << " Chunk_t is " << sizeof(Chunk_t) << " Chunk_t_ori is " << sizeof(Chunk_t_odess) << " <super_feature_t, unordered_set<string>> is " << sizeof(super_feature_t);
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
@@ -29,11 +29,7 @@ void TreeCache::ProcessTrace()
     string tmpChunkContent;
     SuperFeatures superfeature;
 
-    //std::unordered_map<super_feature_t, int> superFeatureHitMap;
-    std::vector<std::pair<int, int>> sf_access_seq;
-    std::unordered_map<super_feature_t, int> sf_id_map;
-    int sf_id_counter = 1;
-    int access_counter = 0;
+    int base_id_counter = 1;
 
     while (true)
     {
@@ -52,15 +48,13 @@ void TreeCache::ProcessTrace()
                 std::filesystem::create_directory(folder);
                 std::string filename = folder + "/sf_access_seq_v" + std::to_string(ads_Version) + ".csv";
                 std::ofstream outFile(filename);
-                outFile << "AccessIndex,SF_ID\n";
-                for(const auto& p : sf_access_seq){
+                outFile << "AccessIndex,base_chunk_ID\n";
+                for(const auto& p : id_access_seq){
                     outFile << p.first << "," << p.second << "\n";
                 }
                 outFile.close();
 
-                sf_access_seq.clear();
-                sf_id_map.clear();
-                sf_id_counter = 1;
+                id_access_seq.clear();
                 access_counter = 0;
             }
 
@@ -106,18 +100,23 @@ void TreeCache::ProcessTrace()
                     // }
                     // auto ret = table.GetSimilarRecordsKeys(tmpChunkHash);
 
-                    if(basechunkid != -1)
-                        access_counter++;
-                    if(sf_id_map.count(hitSF) == 0 && basechunkid != -1){
-                        sf_id_map[hitSF] = sf_id_counter++;
-                    }
-                    if(basechunkid != -1)
-                        sf_access_seq.emplace_back(access_counter, sf_id_map[hitSF]);
+                    // if(basechunkid != -1)
+                    //     access_counter++;
+                    // if(sf_id_map.count(hitSF) == 0 && basechunkid != -1){
+                    //     sf_id_map[hitSF] = sf_id_counter++;
+                    // }
+                    // if(basechunkid != -1)
+                    //     sf_access_seq.emplace_back(access_counter, sf_id_map[hitSF]);
                 }
 
                 if (basechunkid != -1)
                 // unique chunk & delta chunk
                 {
+                    access_counter++;
+                    if(base_id_map.count(basechunkid) == 0)
+                        base_id_map[basechunkid] = base_id_counter++;
+                    id_access_seq.emplace_back(access_counter, base_id_map[basechunkid]);
+
                     auto basechunkInfo = dataWrite_->Get_Chunk_MetaInfo(basechunkid);
                     auto RestoreBasechunk = CutGreedy(basechunkid, tmpChunk, superfeature);
                     uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
