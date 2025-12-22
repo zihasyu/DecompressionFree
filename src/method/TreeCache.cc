@@ -49,13 +49,14 @@ void TreeCache::ProcessTrace()
                 std::string filename = folder + "/sf_access_seq_v" + std::to_string(ads_Version) + ".csv";
                 std::ofstream outFile(filename);
                 outFile << "AccessIndex,base_chunk_ID\n";
-                for(const auto& p : id_access_seq){
-                    outFile << p.first << "," << p.second << "\n";
+                int write_count = std::min((int)id_access_seq.size(), 1000);
+                for(int i = 0; i < write_count; ++i){
+                    outFile << id_access_seq[i].first << "," << id_access_seq[i].second << "\n";
                 }
                 outFile.close();
 
-                id_access_seq.clear();
-                access_counter = 0;
+                //id_access_seq.clear();
+                //access_counter = 0;
             }
 
             cacheHitCount = 0;
@@ -112,10 +113,12 @@ void TreeCache::ProcessTrace()
                 if (basechunkid != -1)
                 // unique chunk & delta chunk
                 {
-                    access_counter++;
-                    if(base_id_map.count(basechunkid) == 0)
-                        base_id_map[basechunkid] = base_id_counter++;
-                    id_access_seq.emplace_back(access_counter, base_id_map[basechunkid]);
+                    if(access_counter < 1000){
+                        access_counter++;
+                        if(base_id_map.count(basechunkid) == 0)
+                            base_id_map[basechunkid] = base_id_counter++;
+                        id_access_seq.emplace_back(access_counter, base_id_map[basechunkid]);
+                    }
 
                     auto basechunkInfo = dataWrite_->Get_Chunk_MetaInfo(basechunkid);
                     auto RestoreBasechunk = CutGreedy(basechunkid, tmpChunk, superfeature);

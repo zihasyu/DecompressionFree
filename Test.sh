@@ -6,7 +6,7 @@ datasets=(
   ["bash"]="/mnt/dataset2/bash_tarballs 44"
   ["coreutils"]="/mnt/dataset2/coreutils_tarballs 28"
   ["fdisk"]="/mnt/dataset2/fdisk_tarballs 22"
-  ["glibc"]="/mnt/dataset2/glibc_tarballs 1"     #100
+  ["glibc"]="/mnt/dataset2/glibc_tarballs 2"     #100
   ["smalltalk"]="/mnt/dataset2/smalltalk_tarballs 40"
   ["gcc"]="/mnt/dataset2/GNU_GCC/gcc-packed/tar 117"
   ["chromium"]="/mnt/dataset2/chromium 107"
@@ -40,9 +40,9 @@ selected_datasets=(
   # "automake"
   # "bash"
   # "coreutils"
-  # "WindowsLog"
+  "WindowsLog"
   # "fdisk"
-  "glibc"
+  # "glibc"
   # "smalltalk"
   # "gcc"
   # "chromium"
