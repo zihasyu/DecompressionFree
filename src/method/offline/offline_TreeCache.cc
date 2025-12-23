@@ -36,28 +36,37 @@ void OfflineTreeCache::ProcessTrace()
     // [CHANGE] Iterate through all chunks using a for loop
     for (size_t i = 0; i < totalChunks; i++)
     {
-        // 1. Restore the chunk content to its original form using the cache-aware method
-        Chunk_t tmpChunkMeta = dataWrite_->Get_Chunk_MetaInfo(i);
-        Chunk_t tmpChunk;
-        bool needFree = false;
-
-        if (tmpChunkMeta.deltaFlag == DELTA && tmpChunkMeta.basechunkID >= 0)
+        // 1. Restore the chunk content to its original form
+        Chunk_t tmpChunk = dataWrite_->Get_Chunk_MetaInfo(i);
+        if (tmpChunk.basechunkID >= 0)
         {
-            // It's a delta chunk, restore it recursively from the source dataWrite_
-            tmpChunk = xd3_recursive_restore_BL_time(i);
-            needFree = true; // Restored chunk always needs to be freed
+            Chunk_t tmpPreChunk = dataWrite_->Get_Chunk_Info(tmpChunk.basechunkID);
+            Chunk_t tmpDeltaChunk = dataWrite_->Get_Chunk_Info(i);
+            uint64_t tmpSize = 0;
+            tmpChunk.chunkPtr = xd3_decode(tmpDeltaChunk.chunkPtr, tmpDeltaChunk.saveSize, tmpPreChunk.chunkPtr, tmpPreChunk.chunkSize, &tmpSize);
+            tmpChunk.loadFromDisk = true;
+            if (tmpPreChunk.loadFromDisk)
+                free(tmpPreChunk.chunkPtr);
+            if (tmpDeltaChunk.loadFromDisk)
+                free(tmpDeltaChunk.chunkPtr);
         }
         else
         {
-            // It's a base chunk, get its content from the source dataWrite_
-            tmpChunk = dataWrite_->Get_Chunk_Info(i);
-            needFree = tmpChunk.loadFromDisk;
+            Chunk_t rawChunk = dataWrite_->Get_Chunk_Info(i);
+            tmpChunk = rawChunk;
+            tmpChunk.chunkPtr = (uint8_t *)malloc(tmpChunk.chunkSize);
+            if (tmpChunk.chunkPtr != nullptr && rawChunk.chunkPtr != nullptr)
+            {
+                memcpy(tmpChunk.chunkPtr, rawChunk.chunkPtr, tmpChunk.chunkSize);
+            }
+            tmpChunk.loadFromDisk = true;
+            if (rawChunk.loadFromDisk)
+            {
+                free(rawChunk.chunkPtr);
+            }
         }
 
-        // Preserve the original chunk ID
-        tmpChunk.chunkID = tmpChunkMeta.chunkID;
-
-        // 2. Re-compute super features
+        // 2. Re-compute super features for the original content
         tmpChunkContent.assign((char *)tmpChunk.chunkPtr, tmpChunk.chunkSize);
         uint64_t basechunkid = -1;
         if (tmpChunk.chunkSize > 60)
@@ -157,13 +166,6 @@ void OfflineTreeCache::ProcessTrace()
                 offline_dataWrite_->Chunk_Insert(tmpChunk);
             else
                 offline_dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
-        }
-
-        // [CHANGE] Free the memory of the restored chunk at the end of the loop
-        if (needFree && tmpChunk.chunkPtr != nullptr)
-        {
-            free(tmpChunk.chunkPtr);
-            tmpChunk.chunkPtr = nullptr;
         }
 
         // Update statistics

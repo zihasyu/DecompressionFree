@@ -2,7 +2,7 @@
 
 OfflineAllGreedy::OfflineAllGreedy()
 {
-    // cout << " Chunk_t is " << sizeof(Chunk_t) << " Chunk_t_ori is " << sizeof(Chunk_t_odess) << " <super_feature_t, unordered_set<string>> is " << sizeof(super_feature_t);
+
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
     mdCtx = EVP_MD_CTX_new();
     hashBuf = (uint8_t *)malloc(CHUNK_HASH_SIZE * sizeof(uint8_t));
@@ -35,25 +35,34 @@ void OfflineAllGreedy::ProcessTrace()
     for (size_t i = 0; i < totalChunks; i++)
     {
         // 1. Restore the chunk content to its original form
-        Chunk_t tmpChunkMeta = dataWrite_->Get_Chunk_MetaInfo(i);
-        Chunk_t tmpChunk;
-        bool needFree = false; // Flag to indicate if tmpChunk.chunkPtr needs to be freed
-
-        if (tmpChunkMeta.deltaFlag == DELTA && tmpChunkMeta.basechunkID >= 0)
+        Chunk_t tmpChunk = dataWrite_->Get_Chunk_MetaInfo(i);
+        if (tmpChunk.basechunkID >= 0)
         {
-            // It's a delta chunk, restore it recursively
-            tmpChunk = xd3_recursive_restore_BL_time(i);
-            needFree = true; // Restored chunk always needs to be freed
+            Chunk_t tmpPreChunk = dataWrite_->Get_Chunk_Info(tmpChunk.basechunkID);
+            Chunk_t tmpDeltaChunk = dataWrite_->Get_Chunk_Info(i);
+            uint64_t tmpSize = 0;
+            tmpChunk.chunkPtr = xd3_decode(tmpDeltaChunk.chunkPtr, tmpDeltaChunk.saveSize, tmpPreChunk.chunkPtr, tmpPreChunk.chunkSize, &tmpSize);
+            tmpChunk.loadFromDisk = true;
+            if (tmpPreChunk.loadFromDisk)
+                free(tmpPreChunk.chunkPtr);
+            if (tmpDeltaChunk.loadFromDisk)
+                free(tmpDeltaChunk.chunkPtr);
         }
         else
         {
-            // It's a base chunk (raw or lz4), just get its content
-            tmpChunk = dataWrite_->Get_Chunk_Info(i);
-            needFree = tmpChunk.loadFromDisk; // Free only if it was loaded from disk
+            Chunk_t rawChunk = dataWrite_->Get_Chunk_Info(i);
+            tmpChunk = rawChunk;
+            tmpChunk.chunkPtr = (uint8_t *)malloc(tmpChunk.chunkSize);
+            if (tmpChunk.chunkPtr != nullptr && rawChunk.chunkPtr != nullptr)
+            {
+                memcpy(tmpChunk.chunkPtr, rawChunk.chunkPtr, tmpChunk.chunkSize);
+            }
+            tmpChunk.loadFromDisk = true;
+            if (rawChunk.loadFromDisk)
+            {
+                free(rawChunk.chunkPtr);
+            }
         }
-
-        // Keep original chunkID
-        tmpChunk.chunkID = tmpChunkMeta.chunkID;
 
         // 2. Re-compute super features for the original content
         tmpChunkContent.assign((char *)tmpChunk.chunkPtr, tmpChunk.chunkSize);
@@ -72,83 +81,17 @@ void OfflineAllGreedy::ProcessTrace()
         // 3. Re-process the chunk (find best base and re-compress)
         if (basechunkid != -1)
         {
-            // Unique chunk found
-            tmpChunk.chunkID = uniquechunkNum;
-            tmpChunk.deltaFlag = NO_DELTA;
-            tmpChunkContent.assign((char *)tmpChunk.chunkPtr, tmpChunk.chunkSize);
-            // TreeCut get superfeature & get time
-            uint64_t basechunkid = -1;
-            // compute SF
-            if (tmpChunk.chunkSize > 60)
+
+            // Find the best base chunk among candidates
+            auto RestoreBasechunk = FindBest(superfeature, tmpChunk);
+            uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
+
+            if (RestoreBasechunk.loadFromDisk)
+                free(RestoreBasechunk.chunkPtr);
+
+            if (tmpChunk.saveSize > tmpChunk.chunkSize || tmpChunk.saveSize <= 0 || RestoreBasechunk.chunkSize == 0)
             {
-                startSF = std::chrono::high_resolution_clock::now();
-                superfeature = table.feature_generator_.GenerateSuperFeatures(tmpChunkContent);
-                endSF = std::chrono::high_resolution_clock::now();
-                SFTime += (endSF - startSF);
-
-                basechunkid = table.SF_Find(superfeature);
-                // auto ret = table.GetSimilarRecordsKeys(tmpChunkHash);
-            }
-
-            // 3. Re-process the chunk (find best base and re-compress)
-            if (basechunkid != -1)
-            // A potential base chunk was found
-            {
-                // Find the best base chunk among candidates
-                auto RestoreBasechunk = FindBest(superfeature, tmpChunk);
-                uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
-
-                if (RestoreBasechunk.loadFromDisk)
-                    free(RestoreBasechunk.chunkPtr);
-
-                if (tmpChunk.saveSize > tmpChunk.chunkSize || tmpChunk.saveSize <= 0 || RestoreBasechunk.chunkSize == 0)
-                {
-                    // Delta compression is not effective, fallback to LZ4
-                    int tmpChunkLz4CompressSize = LZ4_compress_fast((char *)tmpChunk.chunkPtr, (char *)lz4ChunkBuffer, tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
-                    if (tmpChunkLz4CompressSize > 0)
-                    {
-                        tmpChunk.deltaFlag = NO_DELTA;
-                        tmpChunk.saveSize = tmpChunkLz4CompressSize;
-                    }
-                    else
-                    {
-                        tmpChunk.deltaFlag = NO_LZ4;
-                        tmpChunk.saveSize = tmpChunk.chunkSize;
-                    }
-                    tmpChunk.basechunkID = -1;
-
-                    if (tmpChunk.chunkSize > 60)
-                        table.SF_Insert(superfeature, tmpChunk.chunkID);
-                    basechunkNum++;
-                    basechunkSize += tmpChunk.saveSize;
-                    free(deltachunk);
-
-                    // Insert into the destination offline_dataWrite_
-                    if (tmpChunk.deltaFlag == NO_LZ4)
-                        offline_dataWrite_->Chunk_Insert(tmpChunk);
-                    else
-                        offline_dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
-                }
-                else
-                {
-                    // Delta compression is successful
-                    tmpChunk.deltaFlag = DELTA;
-                    tmpChunk.basechunkID = RestoreBasechunk.chunkID;
-
-                    if (tmpChunk.chunkSize > 60)
-                        table.SF_Insert(superfeature, tmpChunk.chunkID);
-
-                    memcpy(tmpChunk.chunkPtr, deltachunk, tmpChunk.saveSize);
-                    StatsDelta(tmpChunk);
-                    free(deltachunk);
-
-                    // Insert into the destination offline_dataWrite_
-                    offline_dataWrite_->Chunk_Insert(tmpChunk);
-                }
-            }
-            // unique chunk & base chunk
-            else
-            {
+                // Delta compression is not effective, fallback to LZ4
                 int tmpChunkLz4CompressSize = LZ4_compress_fast((char *)tmpChunk.chunkPtr, (char *)lz4ChunkBuffer, tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
                 if (tmpChunkLz4CompressSize > 0)
                 {
@@ -166,6 +109,7 @@ void OfflineAllGreedy::ProcessTrace()
                     table.SF_Insert(superfeature, tmpChunk.chunkID);
                 basechunkNum++;
                 basechunkSize += tmpChunk.saveSize;
+                free(deltachunk);
 
                 // Insert into the destination offline_dataWrite_
                 if (tmpChunk.deltaFlag == NO_LZ4)
@@ -173,11 +117,50 @@ void OfflineAllGreedy::ProcessTrace()
                 else
                     offline_dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
             }
+            else
+            {
+                // Delta compression is successful
+                tmpChunk.deltaFlag = DELTA;
+                tmpChunk.basechunkID = RestoreBasechunk.chunkID;
+
+                if (tmpChunk.chunkSize > 60)
+                    table.SF_Insert(superfeature, tmpChunk.chunkID);
+
+                memcpy(tmpChunk.chunkPtr, deltachunk, tmpChunk.saveSize);
+                StatsDelta(tmpChunk);
+                free(deltachunk);
+
+                // Insert into the destination offline_dataWrite_
+                offline_dataWrite_->Chunk_Insert(tmpChunk);
+            }
         }
-        if (needFree && tmpChunk.chunkPtr != nullptr)
+
+        // unique chunk & base chunk
+        else
         {
-            free(tmpChunk.chunkPtr);
-            tmpChunk.chunkPtr = nullptr;
+            int tmpChunkLz4CompressSize = LZ4_compress_fast((char *)tmpChunk.chunkPtr, (char *)lz4ChunkBuffer, tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
+            if (tmpChunkLz4CompressSize > 0)
+            {
+                tmpChunk.deltaFlag = NO_DELTA;
+                tmpChunk.saveSize = tmpChunkLz4CompressSize;
+            }
+            else
+            {
+                tmpChunk.deltaFlag = NO_LZ4;
+                tmpChunk.saveSize = tmpChunk.chunkSize;
+            }
+            tmpChunk.basechunkID = -1;
+
+            if (tmpChunk.chunkSize > 60)
+                table.SF_Insert(superfeature, tmpChunk.chunkID);
+            basechunkNum++;
+            basechunkSize += tmpChunk.saveSize;
+
+            // Insert into the destination offline_dataWrite_
+            if (tmpChunk.deltaFlag == NO_LZ4)
+                offline_dataWrite_->Chunk_Insert(tmpChunk);
+            else
+                offline_dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
         }
         // Update statistics
         uniquechunkNum++; // In offline mode, every chunk is processed as "unique"
@@ -185,6 +168,7 @@ void OfflineAllGreedy::ProcessTrace()
         logicalchunkNum++;
         logicalchunkSize += tmpChunk.chunkSize;
     }
+
     return;
 }
 
@@ -202,7 +186,7 @@ Chunk_t OfflineAllGreedy::FindBest(SuperFeatures SF, const Chunk_t &Targetchunk)
 
     for (auto currentID : toVisit)
     {
-        // [CHANGE] Get chunks from the *destination* offline_dataWrite_
+
         // because that's where the new base chunks are being stored
         Chunk_t current = xd3_recursive_restore_offline_time(currentID);
         size_t deltaSize = 0;
