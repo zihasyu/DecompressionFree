@@ -170,6 +170,18 @@ void OfflineAllGreedy::ProcessTrace()
         if ((i + 1) == dataWrite_->versionEndPoints[nextVersionEndPointIndex])
         {
             // log
+            nextVersionEndPointIndex++;
+            cout << "----------------------offline compression-------------------------" << std::endl;
+            cout << "version " << nextVersionEndPointIndex << " processed" << std::endl;
+            cout << " process chunks: " << (i + 1) << std::endl;
+            cout << "  unique chunk count: " << uniquechunkNum << ", size: " << uniquechunkSize << std::endl;
+            cout << "  base chunk count: " << basechunkNum << ", size: " << basechunkSize << std::endl;
+            cout << "  logical chunk count: " << logicalchunkNum << ", size: " << logicalchunkSize << std::endl;
+            cout << "  unique ratio: " << (double)uniquechunkSize / logicalchunkSize << std::endl;
+            cout << "  base ratio: " << (double)basechunkSize / logicalchunkSize << std::endl;
+            cout << "  SFTime: " << SFTime.count() << "s" << std::endl;
+            cout << "  MiDeltaTime: " << MiDeltaTime.count() << "s" << std::endl;
+            cout << "  EncodeTime: " << EncodeTime.count() << "s" << std::endl;
         }
     }
 

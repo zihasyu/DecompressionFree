@@ -340,24 +340,37 @@ int main(int argc, char **argv)
             auto endTmp = std::chrono::high_resolution_clock::now();
             auto TimeTmp = std::chrono::duration_cast<std::chrono::duration<double>>(endTmp - startTmp).count();
             RestoreTimeSum += TimeTmp;
+            cout << "----------------------restore-------------------------" << std::endl;
             cout << "Version " << i << endl;
             cout << "Restore time: " << TimeTmp << " s" << endl;
+            if (CmdLine.offlineMethod >= 0)
+            {
+                cout << "before visit container: " << OfflineAbsMethodObj->offline_dataWrite_->single << std::endl;
+                cout << "after visit container: " << OfflineAbsMethodObj->offline_dataWrite_->multi << std::endl;
+                cout << "total visit container: " << OfflineAbsMethodObj->offline_dataWrite_->single + OfflineAbsMethodObj->offline_dataWrite_->multi << std::endl;
+            }
+            else
+            {
+                cout << "before visit container: " << absMethodObj->dataWrite_->single << std::endl;
+                cout << "after visit container: " << absMethodObj->dataWrite_->multi << std::endl;
+                cout << "total visit container: " << absMethodObj->dataWrite_->single + absMethodObj->dataWrite_->multi << std::endl;
+            }
         }
         cout << "Time taken by restoreFile: " << RestoreTimeSum << " s " << std::endl;
         cout << "Avg Restore throughput: " << (double)absMethodObj->logicalchunkSize / RestoreTimeSum / 1024 / 1024 << " MiB/s" << endl;
 
-        if (CmdLine.offlineMethod >= 0)
-        {
-            cout << "before visit container: " << OfflineAbsMethodObj->offline_dataWrite_->single << std::endl;
-            cout << "after visit container: " << OfflineAbsMethodObj->offline_dataWrite_->multi << std::endl;
-            cout << "total visit container: " << OfflineAbsMethodObj->offline_dataWrite_->single + absMethodObj->dataWrite_->multi << std::endl;
-        }
-        else
-        {
-            cout << "before visit container: " << absMethodObj->dataWrite_->single << std::endl;
-            cout << "after visit container: " << absMethodObj->dataWrite_->multi << std::endl;
-            cout << "total visit container: " << absMethodObj->dataWrite_->single + absMethodObj->dataWrite_->multi << std::endl;
-        }
+        // if (CmdLine.offlineMethod >= 0)
+        // {
+        //     cout << "before visit container: " << OfflineAbsMethodObj->offline_dataWrite_->single << std::endl;
+        //     cout << "after visit container: " << OfflineAbsMethodObj->offline_dataWrite_->multi << std::endl;
+        //     cout << "total visit container: " << OfflineAbsMethodObj->offline_dataWrite_->single + OfflineAbsMethodObj->offline_dataWrite_->multi << std::endl;
+        // }
+        // else
+        // {
+        //     cout << "before visit container: " << absMethodObj->dataWrite_->single << std::endl;
+        //     cout << "after visit container: " << absMethodObj->dataWrite_->multi << std::endl;
+        //     cout << "total visit container: " << absMethodObj->dataWrite_->single + absMethodObj->dataWrite_->multi << std::endl;
+        // }
     }
     // clear
     delete absMethodObj->dataWrite_;

@@ -430,7 +430,6 @@ void dataWrite::restoreFile(string fileName)
             // uint64_t recSize = 0;
             // auto chunk_ptr = xd3_decode(tmpChunkInfo.chunkPtr, tmpChunkInfo.saveSize, baseChunkInfo.chunkPtr, baseChunkInfo.chunkSize, &recSize);
 
-            cout << "!!!!!!!!!!" << std::endl;
             auto chunk = xd3_recursive_restore_offline_time(tmpChunkInfo.chunkID);
             outFile.write((char *)chunk.chunkPtr, tmpChunkInfo.chunkSize);
 
