@@ -30,6 +30,7 @@ void Odess::ProcessTrace()
         if (recieveQueue->done_ && recieveQueue->IsEmpty())
         {
             // outputMQ_->done_ = true;
+            dataWrite_->versionEndPoints.push_back(uniquechunkNum);
             recieveQueue->done_ = false;
             ads_Version++;
             SFnum = basechunkNum * 3;

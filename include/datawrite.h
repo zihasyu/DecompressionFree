@@ -63,6 +63,7 @@ private:
     uint32_t maskS;
     uint32_t maskL;
     uint8_t *lz4SafeChunkBuffer;
+    uint8_t *CombinedBuffer;
 
 public:
     int containerNum = 0;
@@ -75,6 +76,7 @@ public:
     }
     void SetFilename(string name);
     vector<Chunk_t> chunklist;
+    vector<size_t> versionEndPoints;
     void writing();
     MessageQueue<Chunk_t> *recieveQueue;
     void SetInputMQ(MessageQueue<Chunk_t> *mq)
@@ -115,7 +117,7 @@ public:
     inline uint32_t DivCeil(uint32_t a, uint32_t b);
     uint32_t GenerateFastCDCMask(uint32_t bits);
     inline uint32_t CompareLimit(uint32_t input, uint32_t lower, uint32_t upper);
-
+    Chunk_t xd3_recursive_restore_offline_time(uint64_t BasechunkId);
     Chunk_t Get_Chunk_MetaInfo(int id);
     void PrintMetrics();
     static void chunkprint(const Chunk_t chunk);

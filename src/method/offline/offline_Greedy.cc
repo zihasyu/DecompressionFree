@@ -28,7 +28,7 @@ void OfflineAllGreedy::ProcessTrace()
 {
     string tmpChunkContent;
     SuperFeatures superfeature;
-
+    size_t nextVersionEndPointIndex = 0;
     vector<Chunk_t> &sourceList = dataWrite_->chunklist;
     size_t totalChunks = sourceList.size();
 
@@ -167,6 +167,10 @@ void OfflineAllGreedy::ProcessTrace()
         uniquechunkSize += tmpChunk.saveSize;
         logicalchunkNum++;
         logicalchunkSize += tmpChunk.chunkSize;
+        if ((i + 1) == dataWrite_->versionEndPoints[nextVersionEndPointIndex])
+        {
+            // log
+        }
     }
 
     return;

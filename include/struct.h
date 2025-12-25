@@ -81,6 +81,7 @@ typedef struct
     bool TurnOnNameHash;
     int MultiHeaderChunk = 16; // num
     int offlineMethod = -1;
+    bool enableRestore = false;
 } CommandLine_t;
 
 #endif

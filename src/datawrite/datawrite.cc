@@ -14,12 +14,14 @@ dataWrite::dataWrite()
     maskS = GenerateFastCDCMask(bits + 1);
     maskL = GenerateFastCDCMask(bits - 1);
     lz4SafeChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
+    CombinedBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
 }
 dataWrite::~dataWrite()
 {
     free(MultiHeaderBuffer);
     delete containerCache;
     free(lz4SafeChunkBuffer);
+    free(CombinedBuffer);
 }
 void dataWrite::PrintBinaryArray(const uint8_t *buffer, size_t buffer_size)
 {
@@ -408,197 +410,35 @@ void dataWrite::restoreFile(string fileName)
     auto tmpRecipe = RecipeMap[fileName];
     for (auto recipe : tmpRecipe)
     {
-        Chunk_t tmpChunkInfo = Get_Chunk_Info(recipe);
+        Chunk_t tmpChunkInfo = Get_Chunk_MetaInfo(recipe);
+        // Chunk_t tmpChunkInfo = Get_Chunk_Info(recipe);
         if (tmpChunkInfo.deltaFlag == NO_DELTA || tmpChunkInfo.deltaFlag == NO_LZ4)
         {
+            Chunk_t tmpChunkInfo = Get_Chunk_Info(recipe);
             outFile.write((char *)tmpChunkInfo.chunkPtr, tmpChunkInfo.chunkSize);
+            if (tmpChunkInfo.loadFromDisk)
+                free(tmpChunkInfo.chunkPtr);
         }
         else
         {
-            // auto tmpLocalChunkInfo = xd3_recursive_restore(tmpChunkInfo);
-            auto baseChunkInfo = Get_Chunk_Info(tmpChunkInfo.basechunkID);
-            uint64_t recSize = 0;
-            auto chunk_ptr = xd3_decode(tmpChunkInfo.chunkPtr, tmpChunkInfo.saveSize, baseChunkInfo.chunkPtr, baseChunkInfo.chunkSize, &recSize);
-            // cout << "rec size is " << recSize << endl;
-            //  memcpy(tmpChunkInfo.chunkptr, chunk_ptr, recSize);
-            outFile.write((char *)chunk_ptr, tmpChunkInfo.chunkSize);
+            // auto baseChunkInfo = Get_Chunk_Info(tmpChunkInfo.basechunkID);
+            // uint64_t recSize = 0;
+            // auto chunk_ptr = xd3_decode(tmpChunkInfo.chunkPtr, tmpChunkInfo.saveSize, baseChunkInfo.chunkPtr, baseChunkInfo.chunkSize, &recSize);
 
-            if (baseChunkInfo.loadFromDisk)
-                free(baseChunkInfo.chunkPtr);
-            if (chunk_ptr != nullptr)
+            auto chunk = xd3_recursive_restore_offline_time(tmpChunkInfo.chunkID);
+            outFile.write((char *)chunk.chunkPtr, tmpChunkInfo.chunkSize);
+
+            if (chunk.chunkPtr != nullptr)
             {
-                free(chunk_ptr);
-                chunk_ptr = nullptr;
+                free(chunk.chunkPtr);
+                chunk.chunkPtr = nullptr;
             }
         }
-        if (tmpChunkInfo.loadFromDisk)
-            free(tmpChunkInfo.chunkPtr);
     }
 
     outFile.close();
     return;
 }
-
-// in-memory version
-// void dataWrite::MTar2Tar(string fileName)
-// {
-//     // Setup paths
-//     string name = fileName.substr(fileName.find_last_of('/') + 1); // 提取文件名
-//     string mTarPath = "./mTarFile/" + name ;                 // 保留 .m 后缀
-
-//     // 生成 tarPath，去掉 .m 后缀
-//     string tarPath = "./mtarRestore/" + name.substr(0, name.size() - 2);
-
-//     std::ifstream mTarFile(mTarPath, std::ios::binary);
-//     if (!mTarFile.is_open())
-//     {
-//         std::cerr << "无法打开MTar文件: " << mTarPath << std::endl;
-//         return;
-//     }
-
-//     // 读取 data blocks 聚合体的长度（使用 uint64_t 类型）
-//     uint64_t dataBlocksSize;
-//     mTarFile.read(reinterpret_cast<char *>(&dataBlocksSize), sizeof(dataBlocksSize));
-//     if (!mTarFile.good())
-//     {
-//         std::cerr << "读取 data blocks 聚合体长度失败" << std::endl;
-//         mTarFile.close();
-//         return;
-//     }
-
-//     // 读取 data blocks 聚合体
-//     std::vector<char> dataBlocks(dataBlocksSize, 0);
-//     mTarFile.read(dataBlocks.data(), dataBlocksSize);
-//     if (!mTarFile.good())
-//     {
-//         std::cerr << "读取 data blocks 聚合体失败" << std::endl;
-//         mTarFile.close();
-//         return;
-//     }
-
-//     // 读取 header blocks 聚合体
-//     mTarFile.seekg(0, std::ios::end);
-//     uint64_t fileSize = static_cast<uint64_t>(mTarFile.tellg());                    // 获取文件总大小
-//     uint64_t headerBlocksSize = fileSize - sizeof(dataBlocksSize) - dataBlocksSize; // 计算 header blocks 聚合体长度
-//     std::vector<char> headerBlocks(headerBlocksSize, 0);
-//     mTarFile.seekg(sizeof(dataBlocksSize) + dataBlocksSize, std::ios::beg); // 定位到 header blocks 聚合体的起始位置
-//     mTarFile.read(headerBlocks.data(), headerBlocksSize);
-//     if (!mTarFile.good())
-//     {
-//         std::cerr << "读取 header blocks 聚合体失败" << std::endl;
-//         mTarFile.close();
-//         return;
-//     }
-//     mTarFile.close();
-
-//     // 写入新的 Tar 文件
-//     std::ofstream tarFile(tarPath, std::ios::binary);
-//     if (!tarFile.is_open())
-//     {
-//         std::cerr << "无法创建 Tar 文件: " << tarPath << std::endl;
-//         return;
-//     }
-
-//     // Add buffer for long filename
-//     char longFilename[512] = {0};
-//     bool hasLongFilename = false;
-//     // 遍历 header blocks 聚合体
-//     size_t dataOffset = 0;
-//     // cout << "headerBlocksSize is " << headerBlocksSize << endl;
-//     for (size_t i = 0; i < headerBlocksSize; i += 512)
-//     {
-//         // 检查是否还有足够的 header block
-//         if (i + 512 > headerBlocksSize)
-//         {
-//             cout << "wrong" << endl;
-//             break;
-//         }
-
-//         // 写入 header block
-//         tarFile.write(&headerBlocks[i], 512);
-//         // 检查文件类型
-//         char fileType = headerBlocks[i + 156];
-//         // printf("fileType hex: %02x, char: %c\n", (unsigned char)fileType, fileType);
-//         // cout << "file type is " << fileType << " and i is " << i << endl;
-//         // Handle long filename header
-//         if (fileType == GNUTYPE_LONGNAME || fileType == 'x')
-//         {
-//             // Parse size of long filename
-//             cout << "long filename" << endl;
-//             char sizeStr[12];
-//             memcpy(sizeStr, &headerBlocks[i + 124], 12);
-//             sizeStr[11] = '\0';
-
-//             uint64_t nameSize = 0;
-//             for (int j = 0; j < 11; ++j)
-//             {
-//                 if (sizeStr[j] == ' ')
-//                     break;
-//                 nameSize = nameSize * 8 + (sizeStr[j] - '0');
-//             }
-
-//             // Read long filename from data blocks
-//             if (nameSize > 0 && nameSize < 512)
-//             {
-//                 memcpy(longFilename, &dataBlocks[dataOffset], nameSize);
-//                 longFilename[nameSize] = '\0';
-//                 hasLongFilename = true;
-
-//                 // Move data offset past filename block
-//                 size_t nameBlocksNeeded = (nameSize + 511) / 512;
-//                 tarFile.write(&dataBlocks[dataOffset], nameBlocksNeeded * 512);
-//                 dataOffset += nameBlocksNeeded * 512;
-//             }
-//             continue;
-//         }
-
-//         // 只处理常规文件的数据块 || fileType == AREGTYPE
-//         if (fileType == REGTYPE)
-//         {
-//             // Parse file size
-//             char sizeStr[12];
-//             memcpy(sizeStr, &headerBlocks[i + 124], 12);
-//             sizeStr[11] = '\0';
-
-//             uint64_t fileSize = 0;
-//             for (int j = 0; j < 11; ++j)
-//             {
-//                 if (sizeStr[j] == ' ')
-//                     break;
-//                 cout << "sizeStr[j] is " << sizeStr[j] << endl;
-//                 fileSize = fileSize * 8 + (sizeStr[j] - '0');
-//             }
-
-//             // Check if enough data remains
-//             if (dataOffset + fileSize > dataBlocksSize)
-//             {
-//                 std::cerr << "数据不足，文件可能损坏" << std::endl;
-//                 break;
-//             }
-
-//             // Write exact file data
-//             tarFile.write(&dataBlocks[dataOffset], fileSize);
-
-//             // Add padding to maintain 512-byte alignment
-//             uint64_t padding = (512 - (fileSize % 512)) % 512;
-//             if (padding > 0)
-//             {
-//                 char padBuffer[512] = {0};
-//                 tarFile.write(padBuffer, padding);
-//             }
-
-//             dataOffset += (fileSize + padding);
-//         }
-//         // 对于目录、符号链接等其他类型，不需要处理数据块
-//     }
-
-//     // // 写入 Tar 文件结束标志（两个零填充块）
-//     // std::vector<char> zeroBlock(1024, 0);
-//     // tarFile.write(zeroBlock.data(), 1024);
-
-//     tarFile.close();
-//     std::cout << "成功将 MTar 文件恢复为 Tar 文件: " << tarPath << std::endl;
-// }
 
 // persistent version
 void dataWrite::MTar2Tar(string fileName)
@@ -1465,4 +1305,62 @@ void dataWrite::Save_to_File_unique(string methodname)
     }
     outfile.close();
     return;
+}
+
+Chunk_t dataWrite::xd3_recursive_restore_offline_time(uint64_t BasechunkId)
+{
+    // SetTime(startMiDelta);
+    std::vector<Chunk_t> chunkChain;
+    Chunk_t basechunk;
+    size_t basechunk_size = 0;
+    chunkChain.push_back(Get_Chunk_MetaInfo(BasechunkId));
+    // if only one layer
+    if (chunkChain.back().basechunkID < 0)
+    {
+        chunkChain.back() = Get_Chunk_Info(chunkChain.back().chunkID);
+
+        return chunkChain.back();
+    }
+
+    // collect all delta chain blocks
+    while (chunkChain.back().basechunkID >= 0)
+        chunkChain.push_back(Get_Chunk_MetaInfo(chunkChain.back().basechunkID));
+    // push the last chunk
+    chunkChain.back() = Get_Chunk_Info(chunkChain.back().chunkID);
+
+    memcpy(CombinedBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
+    basechunk.loadFromDisk = false;
+    basechunk.chunkSize = chunkChain.back().chunkSize;
+    basechunk.chunkPtr = CombinedBuffer;
+    basechunk.chunkID = chunkChain.back().chunkID;
+    if (chunkChain.back().loadFromDisk)
+        free(chunkChain.back().chunkPtr); // free base chunk memory
+
+    for (int i = chunkChain.size() - 2; i >= 0; i--)
+    {
+        chunkChain[i] = Get_Chunk_Info(chunkChain[i].chunkID);
+
+        uint8_t *basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
+                                            basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
+
+        if (chunkChain[i].chunkSize != basechunk_size)
+        {
+            cout << "xd3 recursive restore error, chunk size mismatch" << endl;
+            cout << "id " << chunkChain[i].chunkID << " chunkChain[i].chunkSize : " << chunkChain[i].chunkSize << "chunkChain[i].saveSize: " << chunkChain[i].saveSize
+                 << " basechunksize " << basechunk.chunkSize << " restore basechunk_size : " << basechunk_size << endl;
+            basechunk.chunkSize = 0;
+            return basechunk;
+        }
+        if (chunkChain[i].loadFromDisk)
+            free(chunkChain[i].chunkPtr);
+        memcpy(CombinedBuffer, basechunk_ptr, basechunk_size);
+        basechunk.chunkSize = chunkChain[i].chunkSize; // update size
+        basechunk.FirstChildID = chunkChain[i].FirstChildID;
+        basechunk.chunkID = chunkChain[i].chunkID;
+        free(basechunk_ptr);
+
+        basechunk_size = 0;
+    }
+
+    return basechunk;
 }

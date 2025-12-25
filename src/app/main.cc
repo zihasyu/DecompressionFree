@@ -22,7 +22,7 @@ int main(int argc, char **argv)
     // uint32_t compressionMethod;
     // uint32_t backupNum;
     // string dirName;
-    string myName = "BiSearchSystem";
+    string myName = "DFree";
     CmdLine.ratio = 10;
     CmdLine.IsFalseFilter = true;
     CmdLine.AcceptThreshold = 0;
@@ -31,8 +31,8 @@ int main(int argc, char **argv)
 
     vector<string> readfileList;
 
-    const char optString[] = "i:m:c:n:r:a:b:t:H:o:";
-    if (argc != sizeof(optString) && argc != sizeof(optString) - 2 && argc != sizeof(optString) - 4 && argc != sizeof(optString) - 6 && argc != sizeof(optString) - 8 && argc != sizeof(optString) - 10 && argc != sizeof(optString) - 12 && argc != sizeof(optString) - 14)
+    const char optString[] = "i:m:c:n:r:a:b:t:H:o:R:";
+    if (argc != sizeof(optString) && argc != sizeof(optString) - 2 && argc != sizeof(optString) - 4 && argc != sizeof(optString) - 6 && argc != sizeof(optString) - 8 && argc != sizeof(optString) - 10 && argc != sizeof(optString) - 12 && argc != sizeof(optString) - 14 && argc != sizeof(optString) - 16)
     {
         cout << "argc is " << argc << endl;
         cout << "Usage: " << argv[0] << " -i <input file> -m <chunking method> -c <compression method> -n <process number> -r <Bisearch fault ratio> -a <False Filter Fixed parameters> -b <0 = fixed parameter> -t <0 = No meta-guided> -H <Multi Header num>" << endl;
@@ -74,6 +74,9 @@ int main(int argc, char **argv)
             break;
         case 'o':
             CmdLine.offlineMethod = atoi(optarg);
+            break;
+        case 'R': // for restore
+            CmdLine.enableRestore = atoi(optarg);
             break;
         default:
             break;
@@ -316,6 +319,27 @@ int main(int argc, char **argv)
         std::cout << "Offline Compression ratio " << (double)absMethodObj->logicalchunkSize / (double)OfflineAbsMethodObj->uniquechunkSize << std::endl;
         std::cout << "Offline Throughput " << (double)absMethodObj->logicalchunkSize / offlineTimeTmp / 1024 / 1024 << " MiB/s" << std::endl;
         OfflineAbsMethodObj->PrintOffline(offlineTimeTmp, CmdLine);
+    }
+
+    if (CmdLine.enableRestore)
+    {
+        double RestoreTimeSum = 0;
+
+        for (auto i = 0; i < CmdLine.backupNum; i++)
+        {
+            auto startTmp = std::chrono::high_resolution_clock::now();
+            if (CmdLine.offlineMethod >= 0)
+                OfflineAbsMethodObj->offline_dataWrite_->restoreFile(readfileList[i]);
+            else
+                absMethodObj->dataWrite_->restoreFile(readfileList[i]);
+            auto endTmp = std::chrono::high_resolution_clock::now();
+            auto TimeTmp = std::chrono::duration_cast<std::chrono::duration<double>>(endTmp - startTmp).count();
+            RestoreTimeSum += TimeTmp;
+            cout << "Version " << i << endl;
+            cout << "Restore time: " << TimeTmp << " s" << endl;
+        }
+        cout << "Time taken by restoreFile: " << RestoreTimeSum << " s " << std::endl;
+        cout << "Avg Restore throughput: " << (double)absMethodObj->logicalchunkSize / RestoreTimeSum / 1024 / 1024 << " MiB/s" << endl;
     }
     // clear
     delete absMethodObj->dataWrite_;
