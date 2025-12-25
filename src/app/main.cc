@@ -23,21 +23,16 @@ int main(int argc, char **argv)
     // uint32_t backupNum;
     // string dirName;
     string myName = "DFree";
-    CmdLine.ratio = 10;
-    CmdLine.IsFalseFilter = true;
-    CmdLine.AcceptThreshold = 0;
-    CmdLine.TurnOnNameHash = true;
-    CmdLine.MultiHeaderChunk = 16;
 
     vector<string> readfileList;
 
     const char optString[] = "i:m:c:n:r:a:b:t:H:o:R:";
-    if (argc != sizeof(optString) && argc != sizeof(optString) - 2 && argc != sizeof(optString) - 4 && argc != sizeof(optString) - 6 && argc != sizeof(optString) - 8 && argc != sizeof(optString) - 10 && argc != sizeof(optString) - 12 && argc != sizeof(optString) - 14 && argc != sizeof(optString) - 16)
-    {
-        cout << "argc is " << argc << endl;
-        cout << "Usage: " << argv[0] << " -i <input file> -m <chunking method> -c <compression method> -n <process number> -r <Bisearch fault ratio> -a <False Filter Fixed parameters> -b <0 = fixed parameter> -t <0 = No meta-guided> -H <Multi Header num>" << endl;
-        return 0;
-    }
+    // if (argc != sizeof(optString) && argc != sizeof(optString) - 2 && argc != sizeof(optString) - 4 && argc != sizeof(optString) - 6 && argc != sizeof(optString) - 8 && argc != sizeof(optString) - 10 && argc != sizeof(optString) - 12 && argc != sizeof(optString) - 14 && argc != sizeof(optString) - 16)
+    // {
+    //     cout << "argc is " << argc << endl;
+    //     cout << "Usage: " << argv[0] << " -i <input file> -m <chunking method> -c <compression method> -n <process number> -r <Bisearch fault ratio> -a <False Filter Fixed parameters> -b <0 = fixed parameter> -t <0 = No meta-guided> -H <Multi Header num>" << endl;
+    //     return 0;
+    // }
 
     // Grab command-line instructions
     int option = 0;
@@ -81,6 +76,16 @@ int main(int argc, char **argv)
         default:
             break;
         }
+    }
+    if (CmdLine.dirName.empty() || CmdLine.chunkingType == -1 || CmdLine.compressionMethod == -1 || CmdLine.backupNum == -1)
+    {
+        cout << "Usage: " << argv[0] << " -i <input file> -c <chunking method> -m <compression method> -n <process number> [OPTIONS...]" << endl;
+        cout << "Mandatory arguments:" << endl;
+        cout << "  -i: Input directory" << endl;
+        cout << "  -c: Chunking type (integer)" << endl;
+        cout << "  -m: Compression method (integer)" << endl;
+        cout << "  -n: Number of versions/backups to process" << endl;
+        return 1;
     }
 
     AbsMethod *absMethodObj, *OfflineAbsMethodObj;
@@ -262,10 +267,7 @@ int main(int argc, char **argv)
     tool::Logging(myName.c_str(), "Total logical size is %lu\n", absMethodObj->logicalchunkSize);
     tool::Logging(myName.c_str(), "Total compressed size is %lu\n", absMethodObj->uniquechunkSize);
     tool::Logging(myName.c_str(), "Compression ratio is %.4f\n", (double)absMethodObj->logicalchunkSize / (double)absMethodObj->uniquechunkSize);
-    // if (compressionMethod != 5)
-    //     absMethodObj->PrintChunkInfo(dirName, chunkingType, compressionMethod, backupNum, sumTimeInSeconds, ratio, AcceptThreshold, IsFalseFilter);
-    // else
-    //     absMethodObj->PrintChunkInfo(dirName, chunkingType, compressionMethod, backupNum, sumTimeInSeconds, ratio, chunkerObj->ChunkTime.count(), AcceptThreshold, IsFalseFilter);
+
     if (CmdLine.compressionMethod != 5)
         absMethodObj->PrintChunkInfo(sumTimeInSeconds, CmdLine);
     else
@@ -329,7 +331,10 @@ int main(int argc, char **argv)
         {
             auto startTmp = std::chrono::high_resolution_clock::now();
             if (CmdLine.offlineMethod >= 0)
+            {
+                OfflineAbsMethodObj->offline_dataWrite_->RecipeMap = absMethodObj->dataWrite_->RecipeMap;
                 OfflineAbsMethodObj->offline_dataWrite_->restoreFile(readfileList[i]);
+            }
             else
                 absMethodObj->dataWrite_->restoreFile(readfileList[i]);
             auto endTmp = std::chrono::high_resolution_clock::now();
@@ -341,11 +346,14 @@ int main(int argc, char **argv)
         cout << "Time taken by restoreFile: " << RestoreTimeSum << " s " << std::endl;
         cout << "Avg Restore throughput: " << (double)absMethodObj->logicalchunkSize / RestoreTimeSum / 1024 / 1024 << " MiB/s" << endl;
 
-        if(CmdLine.offlineMethod >= 0){
+        if (CmdLine.offlineMethod >= 0)
+        {
             cout << "before visit container: " << OfflineAbsMethodObj->offline_dataWrite_->single << std::endl;
             cout << "after visit container: " << OfflineAbsMethodObj->offline_dataWrite_->multi << std::endl;
             cout << "total visit container: " << OfflineAbsMethodObj->offline_dataWrite_->single + absMethodObj->dataWrite_->multi << std::endl;
-        }else{
+        }
+        else
+        {
             cout << "before visit container: " << absMethodObj->dataWrite_->single << std::endl;
             cout << "after visit container: " << absMethodObj->dataWrite_->multi << std::endl;
             cout << "total visit container: " << absMethodObj->dataWrite_->single + absMethodObj->dataWrite_->multi << std::endl;

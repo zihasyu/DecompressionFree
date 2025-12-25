@@ -72,13 +72,13 @@ typedef uint64_t Recipe_Header_t;
 typedef struct
 {
     std::string dirName;
-    int chunkingType;
-    int compressionMethod;
-    int backupNum;
-    double ratio;
-    double AcceptThreshold;
-    bool IsFalseFilter;
-    bool TurnOnNameHash;
+    int chunkingType = -1;
+    int compressionMethod = -1;
+    int backupNum = -1;
+    double ratio = 10;
+    double AcceptThreshold = 0;
+    bool IsFalseFilter = false;
+    bool TurnOnNameHash = true;
     int MultiHeaderChunk = 16; // num
     int offlineMethod = -1;
     bool enableRestore = false;

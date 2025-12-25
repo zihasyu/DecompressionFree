@@ -416,7 +416,7 @@ void dataWrite::restoreFile(string fileName)
         {
             Chunk_t tmpChunkInfo = Get_Chunk_Info(recipe);
 
-            if(chunklist[recipe].containerID != prevContainerID)
+            if (chunklist[recipe].containerID != prevContainerID)
                 single++;
             prevContainerID = chunklist[recipe].containerID;
 
@@ -434,11 +434,11 @@ void dataWrite::restoreFile(string fileName)
             auto chunk = xd3_recursive_restore_offline_time(tmpChunkInfo.chunkID);
             outFile.write((char *)chunk.chunkPtr, tmpChunkInfo.chunkSize);
 
-            if (chunk.chunkPtr != nullptr)
-            {
-                free(chunk.chunkPtr);
-                chunk.chunkPtr = nullptr;
-            }
+            // if (chunk.chunkPtr != nullptr)
+            // {
+            //     free(chunk.chunkPtr);
+            //     chunk.chunkPtr = nullptr;
+            // }
         }
     }
 
@@ -1335,7 +1335,7 @@ Chunk_t dataWrite::xd3_recursive_restore_offline_time(uint64_t BasechunkId)
     // push the last chunk
     chunkChain.back() = Get_Chunk_Info(chunkChain.back().chunkID);
 
-    if(chunkChain.back().containerID != prevContainerID)
+    if (chunkChain.back().containerID != prevContainerID)
         multi++;
     prevContainerID = chunkChain.back().containerID;
 
@@ -1351,12 +1351,15 @@ Chunk_t dataWrite::xd3_recursive_restore_offline_time(uint64_t BasechunkId)
     {
         chunkChain[i] = Get_Chunk_Info(chunkChain[i].chunkID);
 
-        if(i == 0){
-            if(chunkChain[i].containerID != prevContainerID)
+        if (i == 0)
+        {
+            if (chunkChain[i].containerID != prevContainerID)
                 single++;
             prevContainerID = chunkChain[i].containerID;
-        }else{
-            if(chunkChain[i].containerID != prevContainerID)
+        }
+        else
+        {
+            if (chunkChain[i].containerID != prevContainerID)
                 multi++;
             prevContainerID = chunkChain[i].containerID;
         }

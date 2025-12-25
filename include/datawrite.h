@@ -32,7 +32,7 @@ private:
     //  unordered_map<uint32_t, vector<int>> ObjectIndex;
     // unordered_map<string, vector<int>> ObjectIndex;
     vector<Chunk_t> recipelist;
-    unordered_map<string, vector<Recipe_t>> RecipeMap;
+
     unordered_map<string, vector<Recipe_Header_t>> RecipeMap_header;
     // unordered_map<string, vector<int>> *SFindex;
     //  static Container_t curContainer;
@@ -70,6 +70,7 @@ public:
     Container_t curContainer;
     uint64_t curOffset = 0;
     string containerName = "./Containers/";
+    unordered_map<string, vector<Recipe_t>> RecipeMap;
     void setContainerPath(string path)
     {
         containerName = path;
