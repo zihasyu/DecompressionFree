@@ -21,7 +21,7 @@ datasets=(
 
 declare -A methods
 methods=(
-  # ["Odess"]="-c 1 -m 3"
+  ["Odess"]="-c 1 -m 3"
   # ["TreeCut"]="-c 1 -m 12"
   # ["Greedy"]="-c 1 -m 13"
   # ["TreeCutLayer"]="-c 1 -m 15"
@@ -34,7 +34,7 @@ methods=(
   # ["OdessMiLess4"]="-c 1 -m 11"
   # ["OdessMiLog2"]="-c 1 -m 10"
   # ["AllGreedy"]="-c 1 -m 14"
-  ["offlineAllGreedy"]="-c 1 -m 3 -o 0"
+  # ["offlineAllGreedy"]="-c 1 -m 3 -o 0"
   # ["offlineTreeCut"]="-c 1 -m 3 -o 1"
   # ["offlineTreeCutLayer"]="-c 1 -m 3 -o 2"
   # ["offlineTreeCache"]="-c 1 -m 3 -o 3"
@@ -45,9 +45,9 @@ selected_datasets=(
   # "automake"
   # "bash"
   # "coreutils"
-  "WindowsLog"
+  # "WindowsLog"
   # "fdisk"
-  # "glibc"
+  "glibc"
   # "smalltalk"
   # "gcc"
   # "chromium"

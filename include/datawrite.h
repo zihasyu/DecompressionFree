@@ -123,6 +123,10 @@ public:
     static void chunkprint(const Chunk_t chunk);
     dataWrite();
     ~dataWrite();
+
+    uint64_t prevContainerID = -1;
+    int single = 0;
+    int multi = 0;
 };
 
 #endif

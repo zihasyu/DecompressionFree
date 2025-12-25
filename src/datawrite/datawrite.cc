@@ -415,6 +415,11 @@ void dataWrite::restoreFile(string fileName)
         if (tmpChunkInfo.deltaFlag == NO_DELTA || tmpChunkInfo.deltaFlag == NO_LZ4)
         {
             Chunk_t tmpChunkInfo = Get_Chunk_Info(recipe);
+
+            if(chunklist[recipe].containerID != prevContainerID)
+                single++;
+            prevContainerID = chunklist[recipe].containerID;
+
             outFile.write((char *)tmpChunkInfo.chunkPtr, tmpChunkInfo.chunkSize);
             if (tmpChunkInfo.loadFromDisk)
                 free(tmpChunkInfo.chunkPtr);
@@ -425,6 +430,7 @@ void dataWrite::restoreFile(string fileName)
             // uint64_t recSize = 0;
             // auto chunk_ptr = xd3_decode(tmpChunkInfo.chunkPtr, tmpChunkInfo.saveSize, baseChunkInfo.chunkPtr, baseChunkInfo.chunkSize, &recSize);
 
+            cout << "!!!!!!!!!!" << std::endl;
             auto chunk = xd3_recursive_restore_offline_time(tmpChunkInfo.chunkID);
             outFile.write((char *)chunk.chunkPtr, tmpChunkInfo.chunkSize);
 
@@ -1318,6 +1324,7 @@ Chunk_t dataWrite::xd3_recursive_restore_offline_time(uint64_t BasechunkId)
     if (chunkChain.back().basechunkID < 0)
     {
         chunkChain.back() = Get_Chunk_Info(chunkChain.back().chunkID);
+        cout << "?????" << std::endl;
 
         return chunkChain.back();
     }
@@ -1327,6 +1334,10 @@ Chunk_t dataWrite::xd3_recursive_restore_offline_time(uint64_t BasechunkId)
         chunkChain.push_back(Get_Chunk_MetaInfo(chunkChain.back().basechunkID));
     // push the last chunk
     chunkChain.back() = Get_Chunk_Info(chunkChain.back().chunkID);
+
+    if(chunkChain.back().containerID != prevContainerID)
+        multi++;
+    prevContainerID = chunkChain.back().containerID;
 
     memcpy(CombinedBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
     basechunk.loadFromDisk = false;
@@ -1339,6 +1350,16 @@ Chunk_t dataWrite::xd3_recursive_restore_offline_time(uint64_t BasechunkId)
     for (int i = chunkChain.size() - 2; i >= 0; i--)
     {
         chunkChain[i] = Get_Chunk_Info(chunkChain[i].chunkID);
+
+        if(i == 0){
+            if(chunkChain[i].containerID != prevContainerID)
+                single++;
+            prevContainerID = chunkChain[i].containerID;
+        }else{
+            if(chunkChain[i].containerID != prevContainerID)
+                multi++;
+            prevContainerID = chunkChain[i].containerID;
+        }
 
         uint8_t *basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
                                             basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
