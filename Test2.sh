@@ -35,6 +35,9 @@ for dataset in "${!datasets[@]}"; do
           # 清空 restoreFile 文件夹内容
           rm -rf restoreFile/*
 
+          # 输出实验开始时间
+          echo "实验开始时间：$(date)"
+
           offline_arg=""
           outname=""
           if [[ $offline -ge 0 ]]; then
