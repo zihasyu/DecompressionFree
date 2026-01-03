@@ -26,7 +26,8 @@ datasets=(
 experiments=(
   # "glibc 1 3 -1 1"
   # "glibc 1 3 0 1"
-  "glibc 1 19 -1 0"
+  # "glibc 1 19 -1 0"
+  "glibc 1 20 -1 0"
   # "linux 1 3 -1 1"
   # "linux 1 3 0 1"
   # "linux 1 3 0 0"
