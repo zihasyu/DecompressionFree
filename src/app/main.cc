@@ -361,9 +361,17 @@ int main(int argc, char **argv)
     }
 
     cout << "----------------------inline container-------------------------" << std::endl;
-    absMethodObj->dataWrite_->PrintMetrics();
+    if (absMethodObj && absMethodObj->dataWrite_) {
+        absMethodObj->dataWrite_->PrintMetrics();
+    } else {
+        cout << "inline container dataWrite_ is nullptr!" << std::endl;
+    }
     cout << "----------------------offline container-------------------------" << std::endl;
-    OfflineAbsMethodObj->offline_dataWrite_->PrintMetrics();
+    if (OfflineAbsMethodObj && OfflineAbsMethodObj->offline_dataWrite_) {
+        OfflineAbsMethodObj->offline_dataWrite_->PrintMetrics();
+    } else {
+        cout << "offline container offline_dataWrite_ is nullptr!" << std::endl;
+    }
 
     // clear
     delete absMethodObj->dataWrite_;
