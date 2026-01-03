@@ -22,6 +22,8 @@
 #include "Tree/TreeCache.h"
 #include "Tree/TreeCache2.h"
 #include "Tree/SubTreeReduction.h"
+#include "AllGreedyLRU.h"
+#include "AllGreedyLFU.h"
 
 #include "Offline/offline_greedy.h"
 #include "Offline/offline_treecut.h"

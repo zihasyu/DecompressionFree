@@ -88,7 +88,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    AbsMethod *absMethodObj, *OfflineAbsMethodObj;
+    AbsMethod *absMethodObj = nullptr, *OfflineAbsMethodObj = nullptr;
     Chunker *chunkerObj = new Chunker(CmdLine.chunkingType);
 
     MessageQueue<Chunk_t> *chunkerMQ = new MessageQueue<Chunk_t>(CHUNK_QUEUE_SIZE);
@@ -188,7 +188,17 @@ int main(int argc, char **argv)
     }
     case SUBTREE_REDUCTION:
     {
-        absMethodObj = new SubTreeReduction();
+        absMethodObj = new SubTreeReduction();   //18
+        break;
+    }
+    case All_Greedy_LRU:
+    {
+        absMethodObj = new AllGreedyLRU();
+        break;
+    }
+    case ALL_Greddy_LFU:
+    {
+        absMethodObj = new AllGreedyLFU();
         break;
     }
     default:

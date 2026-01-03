@@ -26,16 +26,16 @@ datasets=(
 experiments=(
   # "glibc 1 3 -1 1"
   # "glibc 1 3 0 1"
-  "glibc 1 3 0 0"
+  "glibc 1 19 -1 0"
   # "linux 1 3 -1 1"
   # "linux 1 3 0 1"
-  "linux 1 3 0 0"
+  # "linux 1 3 0 0"
   # "WEB-3 1 3 -1 1"
   # "WEB-3 1 3 0 1"
-  "WEB-3 1 3 0 0"
+  # "WEB-3 1 3 0 0"
   # "WindowsLog 1 3 -1 1"
   # "WindowsLog 1 3 0 1"
-  "WindowsLog 1 3 0 0"
+  # "WindowsLog 1 3 0 0"
   # ...
 )
 

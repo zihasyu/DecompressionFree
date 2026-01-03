@@ -355,7 +355,9 @@ enum METHOD_TYPE
     Tree_Cut_Layer,
     Tree_Cache,
     Tree_Cache2,
-    SUBTREE_REDUCTION
+    SUBTREE_REDUCTION,
+    All_Greedy_LRU,
+    ALL_Greddy_LFU
 };
 enum OFFLINE_TYPE
 {
