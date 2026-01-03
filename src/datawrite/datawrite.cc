@@ -1006,6 +1006,15 @@ void dataWrite::PrintMetrics()
     cout << "load container times: " << loadContainerTimes << endl;
     cout << "cache hit times: " << cacheHitTimes << endl;
 
+    //计算cache命中率
+    uint64_t totalAccess = loadContainerTimes + cacheHitTimes;
+    double hitRate = 0.0;
+    if (totalAccess > 0)
+    {
+        hitRate = static_cast<double>(cacheHitTimes) / totalAccess * 100.0;
+    }
+    cout << "Cache hit rate: " << hitRate << "%" << endl;
+
     auto readIOTimeMin = std::chrono::duration_cast<std::chrono::seconds>(readIOTime);
     cout << "Read IO time: " << readIOTimeMin.count() << " seconds" << endl;
     auto writeIOTimeMin = std::chrono::duration_cast<std::chrono::seconds>(writeIOTime);
