@@ -22,40 +22,49 @@ datasets=(
   # ["Wiki"]="/mnt/dataset2/wiki2025 7"
 )
 
-# 实验组合列表：数据集 分块方法 在线方法 离线方法 是否恢复
-# 注意不用连续处理同一数据集，以免缓存影响结果
+# 所有实验使用相同的分块方法
+chunking=1
+
+# 增加/修改方法组合时只改这里
+# 实验方法组合（只写方法相关，不包含分块）
+# 格式：在线 离线 恢复
 experiments=(
-  # "glibc 1 3 -1 1"
-  # "glibc 1 3 0 1"
-  "glibc 1 19 -1 0"
-  "glibc 1 20 -1 0"
-  # "linux 1 3 -1 1"
-  "linux 1 19 -1 0"
-  "linux 1 20 -1 0"
-  # "WEB-3 1 3 -1 1"
-  "WEB-3 1 19 -1 0"
-  "WEB-3 1 20 -1 0"
-  # "WindowsLog 1 3 -1 1"
-  "WindowsLog 1 19 -1 0"
-  "WindowsLog 1 20 -1 0"
-  # ...
+  "19 -1 0"
+  "20 -1 0"
 )
 
+# 生成数据集列表（由 datasets 自动提供）
+dataset_names=()
+for k in "${!datasets[@]}"; do
+  dataset_names+=("$k")
+done
+
+# 构建按方法组交错运行的数据顺序：对每个方法组合，依次对所有数据集运行
+runs=()
 for exp in "${experiments[@]}"; do
+  for dataset in "${dataset_names[@]}"; do
+    runs+=("$dataset $exp")
+  done
+done
+
+# 运行所有任务（相邻两项不会处理同一数据集，除非只有一个数据集）
+for task in "${runs[@]}"; do
   # 清空 restoreFile 文件夹内容
   rm -rf restoreFile/*
 
   # 输出实验开始时间
-   echo "实验开始时间：$(date)"
+  echo "实验开始时间：$(date)"
 
-  read -r dataset chunking online offline restore <<< "$exp"
+  read -r dataset online offline restore <<< "$task"
   read -r path num <<< "${datasets[$dataset]}"
+
   offline_arg=""
   outname=""
   if [[ $offline -ge 0 ]]; then
     offline_arg="-o $offline"
     outname="offline${offline}_"
   fi
+
   ./DFree -i "$path" -c "$chunking" -m "$online" -n "$num" $offline_arg -R "$restore" > "${outname}C${chunking}_M${online}_${dataset}_R${restore}.txt"
   echo "完成：$dataset 分块$chunking 在线$online 离线$offline 恢复$restore"
 done

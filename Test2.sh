@@ -24,6 +24,7 @@ datasets=(
 # 固定分块方法为单一值
 chunking=1
 
+# 只用修改这里
 online_methods=(3 12)          # 在线方法编号列表
 offline_methods=(-1 0 1)       # -1表示不做离线，其他为离线方法编号
 restore_options=(0 1)          # 是否恢复
