@@ -17,26 +17,27 @@ datasets=(
   # ["vmdk"]="/mnt/dataset2/vmdk 8"
   # ["WEB"]="/mnt/dataset2/WEB 20"
   ["WEB-3"]="/home/public/Dataset/WEB 3"
-  ["WindowsLog"]="/mnt/dataset2/WindowsLog 1"
+  ["WindowsLog"]="/home/public/Dataset/WindowsLog 1"
   # ["ThunderbirdLog"]="/mnt/dataset2/ThunderbirdLog 1"
   # ["Wiki"]="/mnt/dataset2/wiki2025 7"
 )
 
 # 实验组合列表：数据集 分块方法 在线方法 离线方法 是否恢复
+# 注意不用连续处理同一数据集，以免缓存影响结果
 experiments=(
   # "glibc 1 3 -1 1"
   # "glibc 1 3 0 1"
-  # "glibc 1 19 -1 0"
+  "glibc 1 19 -1 0"
   "glibc 1 20 -1 0"
   # "linux 1 3 -1 1"
-  # "linux 1 3 0 1"
-  # "linux 1 3 0 0"
+  "linux 1 19 -1 0"
+  "linux 1 20 -1 0"
   # "WEB-3 1 3 -1 1"
-  # "WEB-3 1 3 0 1"
-  # "WEB-3 1 3 0 0"
+  "WEB-3 1 19 -1 0"
+  "WEB-3 1 20 -1 0"
   # "WindowsLog 1 3 -1 1"
-  # "WindowsLog 1 3 0 1"
-  # "WindowsLog 1 3 0 0"
+  "WindowsLog 1 19 -1 0"
+  "WindowsLog 1 20 -1 0"
   # ...
 )
 

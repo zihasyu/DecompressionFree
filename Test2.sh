@@ -21,32 +21,32 @@ datasets=(
   # ["Wiki"]="/mnt/dataset2/wiki2025 7"
 )
 
-chunking_methods=(1)           # 分块方法列表
+# 固定分块方法为单一值
+chunking=1
+
 online_methods=(3 12)          # 在线方法编号列表
 offline_methods=(-1 0 1)       # -1表示不做离线，其他为离线方法编号
 restore_options=(0 1)          # 是否恢复
 
 for dataset in "${!datasets[@]}"; do
   read -r path num <<< "${datasets[$dataset]}"
-  for chunking in "${chunking_methods[@]}"; do
-    for online in "${online_methods[@]}"; do
-      for offline in "${offline_methods[@]}"; do
-        for restore in "${restore_options[@]}"; do
-          # 清空 restoreFile 文件夹内容
-          rm -rf restoreFile/*
+  for online in "${online_methods[@]}"; do
+    for offline in "${offline_methods[@]}"; do
+      for restore in "${restore_options[@]}"; do
+        # 清空 restoreFile 文件夹内容
+        rm -rf restoreFile/*
 
-          # 输出实验开始时间
-          echo "实验开始时间：$(date)"
+        # 输出实验开始时间
+        echo "实验开始时间：$(date)"
 
-          offline_arg=""
-          outname=""
-          if [[ $offline -ge 0 ]]; then
-            offline_arg="-o $offline"
-            outname="offline${offline}_"
-          fi
-          ./DFree -i "$path" -c "$chunking" -m "$online" -n "$num" $offline_arg -R "$restore" > "${outname}C${chunking}_M${online}_${dataset}_R${restore}.txt"
-          echo "完成：$dataset 分块$chunking 在线$online 离线$offline 恢复$restore"
-        done
+        offline_arg=""
+        outname=""
+        if [[ $offline -ge 0 ]]; then
+          offline_arg="-o $offline"
+          outname="offline${offline}_"
+        fi
+        ./DFree -i "$path" -c "$chunking" -m "$online" -n "$num" $offline_arg -R "$restore" > "${outname}C${chunking}_M${online}_${dataset}_R${restore}.txt"
+        echo "完成：$dataset 分块$chunking 在线$online 离线$offline 恢复$restore"
       done
     done
   done
