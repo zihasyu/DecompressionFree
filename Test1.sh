@@ -52,11 +52,13 @@ for task in "${runs[@]}"; do
   # 清空 restoreFile 文件夹内容
   rm -rf restoreFile/*
 
-  # 输出实验开始时间
-  echo "实验开始时间：$(date)"
-
+  # 先解析任务信息
   read -r dataset online offline restore <<< "$task"
   read -r path num <<< "${datasets[$dataset]}"
+
+  # 输出实验开始时间及当前实验信息
+  experiment_desc="dataset=${dataset} path=${path} n=${num} C${chunking} M${online} offline${offline} R${restore}"
+  echo "实验开始时间：$(date) - 正在执行：${experiment_desc}"
 
   offline_arg=""
   outname=""
@@ -64,6 +66,8 @@ for task in "${runs[@]}"; do
     offline_arg="-o $offline"
     outname="offline${offline}_"
   fi
+
+  sudo echo 3 > /proc/sys/vm/drop_caches
 
   ./DFree -i "$path" -c "$chunking" -m "$online" -n "$num" $offline_arg -R "$restore" > "${outname}C${chunking}_M${online}_${dataset}_R${restore}.txt"
   echo "完成：$dataset 分块$chunking 在线$online 离线$offline 恢复$restore"

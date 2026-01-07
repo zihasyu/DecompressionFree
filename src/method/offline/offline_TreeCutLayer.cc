@@ -30,7 +30,7 @@ void OfflineTreeCutLayer::ProcessTrace()
 {
     string tmpChunkContent;
     SuperFeatures superfeature;
-
+    size_t nextVersionEndPointIndex = 0;
     // [CHANGE] Get all chunks from the source dataWrite_
     vector<Chunk_t> &sourceList = dataWrite_->chunklist;
     size_t totalChunks = sourceList.size();
@@ -184,6 +184,22 @@ void OfflineTreeCutLayer::ProcessTrace()
         uniquechunkSize += tmpChunk.saveSize;
         logicalchunkNum++;
         logicalchunkSize += tmpChunk.chunkSize;
+        if ((i + 1) == dataWrite_->versionEndPoints[nextVersionEndPointIndex])
+        {
+            // log
+            nextVersionEndPointIndex++;
+            cout << "----------------------offline compression-------------------------" << std::endl;
+            cout << "version " << nextVersionEndPointIndex << " processed" << std::endl;
+            cout << " process chunks: " << (i + 1) << std::endl;
+            cout << "  unique chunk count: " << uniquechunkNum << ", size: " << uniquechunkSize << std::endl;
+            cout << "  base chunk count: " << basechunkNum << ", size: " << basechunkSize << std::endl;
+            cout << "  logical chunk count: " << logicalchunkNum << ", size: " << logicalchunkSize << std::endl;
+            cout << "  unique ratio: " << (double)uniquechunkSize / logicalchunkSize << std::endl;
+            cout << "  base ratio: " << (double)basechunkSize / logicalchunkSize << std::endl;
+            cout << "  SFTime: " << SFTime.count() << "s" << std::endl;
+            cout << "  MiDeltaTime: " << MiDeltaTime.count() << "s" << std::endl;
+            cout << "  EncodeTime: " << EncodeTime.count() << "s" << std::endl;
+        }
     }
 
     // Finalize
@@ -197,11 +213,11 @@ Chunk_t OfflineTreeCutLayer::CutGreedy(uint64_t BasechunkId, const Chunk_t Targe
     Chunk_t resultchunk;
     size_t basechunk_size = 0;
 
-    Chunk_t basechunk = dataWrite_->Get_Chunk_MetaInfo(BasechunkId);
+    Chunk_t basechunk = offline_dataWrite_->Get_Chunk_MetaInfo(BasechunkId);
     if (basechunk.basechunkID < 0)
     {
         SetTime(startIO);
-        basechunk = dataWrite_->Get_Chunk_Info(BasechunkId);
+        basechunk = offline_dataWrite_->Get_Chunk_Info(BasechunkId);
         SetTime(endIO);
         SetTime(startIO, endIO, IOTime);
         if (basechunk.FirstChildID < 0) // if only one layer
@@ -210,7 +226,7 @@ Chunk_t OfflineTreeCutLayer::CutGreedy(uint64_t BasechunkId, const Chunk_t Targe
     }
     else
     {
-        basechunk = xd3_recursive_restore_BL_time(BasechunkId);
+        basechunk = xd3_recursive_restore_offline_time(BasechunkId);
         // cout << "basechunk.ChunkID is " << basechunk.chunkID << endl;
         if (basechunk.FirstChildID < 0) // if only one layer
             return basechunk;
@@ -238,7 +254,7 @@ Chunk_t OfflineTreeCutLayer::CutGreedy(uint64_t BasechunkId, const Chunk_t Targe
         uint64_t tmpChildID = resultchunk.chunkID;
 
         SetTime(startIO);
-        Chunk_t TmpChildChunk = dataWrite_->Get_Chunk_Info(resultchunk.FirstChildID);
+        Chunk_t TmpChildChunk = offline_dataWrite_->Get_Chunk_Info(resultchunk.FirstChildID);
         SetTime(endIO);
         SetTime(startIO, endIO, IOTime);
 
@@ -260,7 +276,7 @@ Chunk_t OfflineTreeCutLayer::CutGreedy(uint64_t BasechunkId, const Chunk_t Targe
         while (TmpBroChunk.FirstBroID >= 0)
         {
             SetTime(startIO);
-            TmpBroChunk = dataWrite_->Get_Chunk_Info(TmpBroChunk.FirstBroID);
+            TmpBroChunk = offline_dataWrite_->Get_Chunk_Info(TmpBroChunk.FirstBroID);
             SetTime(endIO);
             SetTime(startIO, endIO, IOTime);
             uint8_t *basechunk_ptr = xd3_decode(TmpBroChunk.chunkPtr, TmpBroChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);

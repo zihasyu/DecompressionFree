@@ -365,7 +365,8 @@ enum OFFLINE_TYPE
     Offline_Tree_Cut,
     Offline_Tree_Cut_Layer,
     Offline_Tree_Cache,
-    Offline_Tree_Feature
+    Offline_Tree_Feature,
+    Offline_Tree_Cut_Layer_Ignore
 };
 enum DELTA_TYPE
 {

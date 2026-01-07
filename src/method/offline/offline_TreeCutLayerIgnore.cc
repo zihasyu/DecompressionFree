@@ -1,6 +1,8 @@
-#include "../../../include/Offline/offline_treecut.h"
+#include "../../../include/Offline/offline_treecutlayerIgnore.h"
 
-OfflineTreeCut::OfflineTreeCut()
+const size_t TREE_INSERT_SAVE_THRESHOLD = 128;
+
+OfflineTreeCutLayerIgnore::OfflineTreeCutLayerIgnore()
 {
     // cout << " Chunk_t is " << sizeof(Chunk_t) << " Chunk_t_ori is " << sizeof(Chunk_t_odess) << " <super_feature_t, unordered_set<string>> is " << sizeof(super_feature_t);
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
@@ -10,9 +12,11 @@ OfflineTreeCut::OfflineTreeCut()
     SFindex = new unordered_map<string, vector<int>>[FINESSE_SF_NUM];
     tmpDeltaBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
     MinBaseBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
+    // [NEW] Allocate buffer for CutGreedy if needed
+    CombinedBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
 }
 
-OfflineTreeCut::~OfflineTreeCut()
+OfflineTreeCutLayerIgnore::~OfflineTreeCutLayerIgnore()
 {
     free(lz4ChunkBuffer);
     free(deltaMaxChunkBuffer);
@@ -20,20 +24,24 @@ OfflineTreeCut::~OfflineTreeCut()
     free(hashBuf);
     free(tmpDeltaBuffer);
     free(MinBaseBuffer);
+    // [NEW] Free the allocated buffer
+    free(CombinedBuffer);
 }
 
-void OfflineTreeCut::ProcessTrace()
+void OfflineTreeCutLayerIgnore::ProcessTrace()
 {
-    // 没关系，dataWrite_和offline_dataWrite_是两个不同的对象，chunklist也是两套不同的，绝不修改dataWrite_就是了。
     string tmpChunkContent;
     SuperFeatures superfeature;
     size_t nextVersionEndPointIndex = 0;
-    // 0. get all chunks from dataWrite_
+
+    // [CHANGE] Get all chunks from the source dataWrite_
     vector<Chunk_t> &sourceList = dataWrite_->chunklist;
     size_t totalChunks = sourceList.size();
+
+    // [CHANGE] Iterate through all chunks using a for loop
     for (size_t i = 0; i < totalChunks; i++)
     {
-        // 1. restore the chunk content
+        // 1. Restore the chunk content to its original form
         Chunk_t tmpChunk = dataWrite_->Get_Chunk_MetaInfo(i);
         if (tmpChunk.basechunkID >= 0)
         {
@@ -63,10 +71,9 @@ void OfflineTreeCut::ProcessTrace()
             }
         }
 
-        // 2. compute super feature again
+        // 2. Re-compute super features for the original content
         tmpChunkContent.assign((char *)tmpChunk.chunkPtr, tmpChunk.chunkSize);
         uint64_t basechunkid = -1;
-        // compute SF
         if (tmpChunk.chunkSize > 60)
         {
             startSF = std::chrono::high_resolution_clock::now();
@@ -74,24 +81,25 @@ void OfflineTreeCut::ProcessTrace()
             endSF = std::chrono::high_resolution_clock::now();
             SFTime += (endSF - startSF);
 
+            // Find a potential base chunk in the new, evolving feature index
             basechunkid = table.Tree_SF_Find(superfeature);
         }
-        // 3. feature match
+
+        // 3. Re-process the chunk
         if (basechunkid != -1)
-        // unique chunk & delta chunk
+        // A potential base chunk was found
         {
-            auto basechunkInfo = dataWrite_->Get_Chunk_MetaInfo(basechunkid);
-            auto RestoreBasechunk = CutGreedy(basechunkid, tmpChunk);
+            // Use CutGreedy to find the best base within the delta tree
+            auto RestoreBasechunk = CutGreedy(basechunkid, tmpChunk, superfeature);
             uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
+
             if (RestoreBasechunk.loadFromDisk)
                 free(RestoreBasechunk.chunkPtr);
 
             if (tmpChunk.saveSize > tmpChunk.chunkSize || tmpChunk.saveSize <= 0 || RestoreBasechunk.chunkSize == 0)
             {
-                // false delta & lz4 compress
-                cout << "delta no effective" << endl;
-                int tmpChunkLz4CompressSize = 0;
-                tmpChunkLz4CompressSize = LZ4_compress_fast((char *)tmpChunk.chunkPtr, (char *)lz4ChunkBuffer, tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
+                // Delta is not effective, fallback to LZ4
+                int tmpChunkLz4CompressSize = LZ4_compress_fast((char *)tmpChunk.chunkPtr, (char *)lz4ChunkBuffer, tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
                 if (tmpChunkLz4CompressSize > 0)
                 {
                     tmpChunk.deltaFlag = NO_DELTA;
@@ -99,57 +107,60 @@ void OfflineTreeCut::ProcessTrace()
                 }
                 else
                 {
-                    // cout << "lz4 compress error" << endl;
                     tmpChunk.deltaFlag = NO_LZ4;
                     tmpChunk.saveSize = tmpChunk.chunkSize;
                 }
-
                 tmpChunk.basechunkID = -1;
 
                 if (tmpChunk.chunkSize > 60)
                     table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
                 basechunkNum++;
                 basechunkSize += tmpChunk.saveSize;
-                LocalReduct += tmpChunk.chunkSize - tmpChunk.saveSize;
                 free(deltachunk);
+
+                // Insert into the destination offline_dataWrite_
                 if (tmpChunk.deltaFlag == NO_LZ4)
-                    // base chunk & Lz4 error
                     offline_dataWrite_->Chunk_Insert(tmpChunk);
                 else
-                    // base chunk &lz4 compress
                     offline_dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
             }
             else
             {
-                // right delta & delta compress
+                // Delta is successful
                 tmpChunk.deltaFlag = DELTA;
                 tmpChunk.basechunkID = RestoreBasechunk.chunkID;
+
                 if (tmpChunk.chunkSize > 60)
                     table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
 
-                if (offline_dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID < 0)
-                {
-                    offline_dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID = tmpChunk.chunkID;
+                // [CHANGE] Update the tree structure in the *destination* offline_dataWrite_
+                // cout << "Inserting delta chunk " << tmpChunk.chunkID << " with base chunk " << tmpChunk.basechunkID << " and save size " << tmpChunk.saveSize << endl;
+                if(tmpChunk.saveSize >= TREE_INSERT_SAVE_THRESHOLD){
+                    if (offline_dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID < 0)
+                    {
+                        offline_dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID = tmpChunk.chunkID;
+                    }
+                    else
+                    {
+                        int broID = offline_dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID;
+                        while (offline_dataWrite_->chunklist[broID].FirstBroID >= 0)
+                            broID = offline_dataWrite_->chunklist[broID].FirstBroID;
+                        offline_dataWrite_->chunklist[broID].FirstBroID = tmpChunk.chunkID;
+                    }
                 }
-                else
-                {
-                    int broID = offline_dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID;
-                    while (offline_dataWrite_->chunklist[broID].FirstBroID >= 0)
-                        broID = offline_dataWrite_->chunklist[broID].FirstBroID;
-                    offline_dataWrite_->chunklist[broID].FirstBroID = tmpChunk.chunkID;
-                }
+
                 memcpy(tmpChunk.chunkPtr, deltachunk, tmpChunk.saveSize);
                 StatsDelta(tmpChunk);
                 free(deltachunk);
 
+                // Insert into the destination offline_dataWrite_
                 offline_dataWrite_->Chunk_Insert(tmpChunk);
             }
         }
-        // unique chunk & base chunk
         else
+        // No suitable base chunk found, treat as a new base chunk
         {
-            int tmpChunkLz4CompressSize = 0;
-            tmpChunkLz4CompressSize = LZ4_compress_fast((char *)tmpChunk.chunkPtr, (char *)lz4ChunkBuffer, tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
+            int tmpChunkLz4CompressSize = LZ4_compress_fast((char *)tmpChunk.chunkPtr, (char *)lz4ChunkBuffer, tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
             if (tmpChunkLz4CompressSize > 0)
             {
                 tmpChunk.deltaFlag = NO_DELTA;
@@ -157,27 +168,25 @@ void OfflineTreeCut::ProcessTrace()
             }
             else
             {
-                // cout << "lz4 compress error" << endl;
                 tmpChunk.deltaFlag = NO_LZ4;
                 tmpChunk.saveSize = tmpChunk.chunkSize;
             }
-
             tmpChunk.basechunkID = -1;
 
             if (tmpChunk.chunkSize > 60)
                 table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
             basechunkNum++;
             basechunkSize += tmpChunk.saveSize;
-            LocalReduct += tmpChunk.chunkSize - tmpChunk.saveSize;
+
+            // Insert into the destination offline_dataWrite_
             if (tmpChunk.deltaFlag == NO_LZ4)
-                // base chunk & Lz4 error
                 offline_dataWrite_->Chunk_Insert(tmpChunk);
             else
-                // base chunk &lz4 compress
                 offline_dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
         }
-        // cout << "Process chunk " << i << "/" << totalChunks << "\r" << "chunkID: " << tmpChunk.chunkID << " basechunkID: " << tmpChunk.basechunkID << " deltaFlag: " << (int)tmpChunk.deltaFlag << " saveSize: " << tmpChunk.saveSize << endl;
-        uniquechunkNum++;
+
+        // Update statistics
+        uniquechunkNum++; // In offline mode, every chunk is processed as "unique"
         uniquechunkSize += tmpChunk.saveSize;
         logicalchunkNum++;
         logicalchunkSize += tmpChunk.chunkSize;
@@ -198,10 +207,13 @@ void OfflineTreeCut::ProcessTrace()
             cout << "  EncodeTime: " << EncodeTime.count() << "s" << std::endl;
         }
     }
+
+    // Finalize
+    ads_Version++;
+    SFnum = basechunkNum * 3;
     return;
 }
-
-Chunk_t OfflineTreeCut::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
+Chunk_t OfflineTreeCutLayerIgnore::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, SuperFeatures sfs)
 {
     SetTime(startMiDelta);
     Chunk_t resultchunk;
@@ -244,6 +256,7 @@ Chunk_t OfflineTreeCut::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchun
     uint64_t tmpsaveSize = 0;
     while (!end && resultchunk.FirstChildID >= 0)
     {
+        uint64_t tmpFatherID = resultchunk.chunkID;
         uint64_t tmpChildID = resultchunk.chunkID;
 
         SetTime(startIO);
@@ -286,12 +299,15 @@ Chunk_t OfflineTreeCut::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchun
                 free(TmpBroChunk.chunkPtr); // free bro chunk memory
             free(basechunk_ptr);
         }
+        StatsHit(tmpFatherID, resultchunk.chunkID, sfs);
         if (resultchunk.chunkID == tmpChildID)
+        {
             end = true; // no more child or bro
+        }
         else
         {
             basechunk.chunkSize = resultchunk.chunkSize;
-            memcpy(CombinedBuffer, resultchunk.chunkPtr, resultchunk.chunkSize);
+            memcpy(CombinedBuffer, resultchunk.chunkPtr, resultchunk.chunkSize); // CombineBuffer is FatherNode
         }
     }
     SetTime(endMiDelta);
@@ -299,7 +315,7 @@ Chunk_t OfflineTreeCut::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchun
     return resultchunk;
 }
 
-uint8_t *OfflineTreeCut::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer)
+uint8_t *OfflineTreeCutLayerIgnore::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer)
 {
     SetTime(startMiEncode);
     size_t deltachunkSize;
@@ -318,4 +334,23 @@ uint8_t *OfflineTreeCut::xd3_encode_buffer(const uint8_t *targetChunkbuffer, siz
     SetTime(endMiEncode);
     SetTime(startMiEncode, endMiEncode, EncodeTime);
     return tmpDeltaBuffer;
+}
+
+void OfflineTreeCutLayerIgnore::StatsHit(uint64_t FatherID, uint64_t HitID, SuperFeatures sfs)
+{
+    // [CHANGE] StatsHit should operate on the destination data (offline_dataWrite_)
+    if (offline_dataWrite_->chunklist[FatherID].BeforeFit == HitID)
+    {
+        offline_dataWrite_->chunklist[FatherID].HitCount++;
+    }
+    else
+    {
+        offline_dataWrite_->chunklist[FatherID].BeforeFit = HitID;
+        offline_dataWrite_->chunklist[FatherID].HitCount = 1;
+    }
+    if (offline_dataWrite_->chunklist[FatherID].HitCount > 4)
+    {
+        if (table.Tree_SF_Find(sfs) == FatherID)
+            table.Tree_SF_ReWrite(sfs, HitID);
+    }
 }
