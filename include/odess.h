@@ -14,6 +14,8 @@ private:
     int Version = 0;
 
 public:
+    int offlineMethod = -1;
+    Odess(int offlineMethod = -1);
     Odess();
     ~Odess();
     void ProcessTrace();

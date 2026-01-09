@@ -421,3 +421,15 @@ SuperFeatures FeatureGenerator::PalantirMakeSF()
   }
   return super_features;
 }
+
+bool FeatureIndexTable::HasMissingSF(const SuperFeatures &superfeatures)
+{
+  for (const super_feature_t &sf : superfeatures)
+  {
+    auto it = Tree_SFIndex.find(sf);
+    // 判断Tree_SFIndex是否有该sf，且其值有效（比如不为-1）
+    if (it == Tree_SFIndex.end() || it->second == uint64_t(-1))
+      return true;
+  }
+  return false;
+}

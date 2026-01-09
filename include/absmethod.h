@@ -3,6 +3,7 @@
 
 #include <string>
 #include <chrono>
+#include <unordered_map>
 #include "define.h"
 #include "chunker.h"
 #include "lz4.h"
@@ -178,5 +179,6 @@ public:
         cout << endl; // 最后添加一个换行符，确保后续输出正常
     }
     Chunk_t xd3_recursive_restore_offline_time(uint64_t BasechunkId);
+    std::unordered_map<uint64_t, std::vector<uint64_t>>* rootChunkMap;
 };
 #endif

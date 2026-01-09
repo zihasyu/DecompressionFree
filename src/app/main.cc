@@ -112,7 +112,7 @@ int main(int argc, char **argv)
     }
     case ODESS:
     {
-        absMethodObj = new Odess();
+        absMethodObj = new Odess(CmdLine.offlineMethod);
         break;
     }
     case PALANTIR:
@@ -327,6 +327,7 @@ int main(int argc, char **argv)
     {
         OfflineAbsMethodObj->offline_dataWrite_ = new dataWrite();
         OfflineAbsMethodObj->dataWrite_ = absMethodObj->dataWrite_;
+        OfflineAbsMethodObj->rootChunkMap = absMethodObj->rootChunkMap;
         OfflineAbsMethodObj->offline_dataWrite_->setContainerPath("./OfflineContainers/");
         auto startTmp = std::chrono::high_resolution_clock::now();
         OfflineAbsMethodObj->ProcessTrace();
@@ -390,6 +391,7 @@ int main(int argc, char **argv)
 
     // clear
     delete absMethodObj->dataWrite_;
+    delete absMethodObj->rootChunkMap;
     delete chunkerObj;
     delete absMethodObj;
     return 0;

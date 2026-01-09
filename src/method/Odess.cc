@@ -10,6 +10,18 @@ Odess::Odess()
     SFindex = new unordered_map<string, vector<int>>[FINESSE_SF_NUM];
 }
 
+Odess::Odess(int offlineMethod)
+    : offlineMethod(offlineMethod)
+{
+    lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
+    mdCtx = EVP_MD_CTX_new();
+    hashBuf = (uint8_t *)malloc(CHUNK_HASH_SIZE * sizeof(uint8_t));
+    deltaMaxChunkBuffer = (uint8_t *)malloc(2 * CONTAINER_MAX_SIZE * sizeof(uint8_t));
+    SFindex = new unordered_map<string, vector<int>>[FINESSE_SF_NUM];
+
+    rootChunkMap = new std::unordered_map<uint64_t, std::vector<uint64_t>>();
+}
+
 Odess::~Odess()
 {
     free(lz4ChunkBuffer);
@@ -53,6 +65,8 @@ void Odess::ProcessTrace()
                 tmpChunkHash.assign((char *)hashBuf, CHUNK_HASH_SIZE);
                 // Odess get superfeature & get time
                 uint64_t basechunkid = -1;
+                uint64_t treeBaseChunkid = -1;
+                bool insertDelta = false;
                 // compute SF
                 if (tmpChunk.chunkSize > 60)
                 {
@@ -61,6 +75,10 @@ void Odess::ProcessTrace()
                     endSF = std::chrono::high_resolution_clock::now();
                     SFTime += (endSF - startSF);
 
+                    if(offlineMethod >= 0){
+                        insertDelta = table.HasMissingSF(superfeature);
+                        treeBaseChunkid = table.Tree_SF_Find(superfeature);
+                    }
                     basechunkid = table.SF_Find(superfeature);
                     // auto ret = table.GetSimilarRecordsKeys(tmpChunkHash);
                 }
@@ -143,6 +161,8 @@ void Odess::ProcessTrace()
                     tmpChunkid = tmpChunk.chunkID;
                     if (tmpChunk.chunkSize > 60)
                         table.SF_Insert(superfeature, tmpChunk.chunkID);
+                        if(offlineMethod >= 0)
+                            table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
                     basechunkNum++;
                     basechunkSize += tmpChunk.saveSize;
                     LocalReduct += tmpChunk.chunkSize - tmpChunk.saveSize;
@@ -155,6 +175,26 @@ void Odess::ProcessTrace()
                 }
                 uniquechunkNum++;
                 uniquechunkSize += tmpChunk.saveSize;
+
+                if(offlineMethod >= 0){
+                    uint64_t rootId = (treeBaseChunkid != (uint64_t)-1) ? treeBaseChunkid : tmpChunk.chunkID;
+                    if(rootId == tmpChunk.chunkID){
+                        (*rootChunkMap)[rootId].push_back(rootId);
+                    }else{
+                        if(insertDelta){
+                            while((*rootChunkMap)[rootId][0] != rootId){
+                                rootId = (*rootChunkMap)[rootId][0];
+                            }
+                            (*rootChunkMap)[rootId].push_back(tmpChunk.chunkID);
+                            (*rootChunkMap)[tmpChunk.chunkID].push_back(rootId);
+                        }else{
+                            while((*rootChunkMap)[rootId][0] != rootId){
+                                rootId = (*rootChunkMap)[rootId][0];
+                            }
+                            (*rootChunkMap)[rootId].push_back(tmpChunk.chunkID);
+                        }
+                    }
+                }
             }
             else
             {
