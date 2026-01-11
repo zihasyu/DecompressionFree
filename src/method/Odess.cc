@@ -66,7 +66,6 @@ void Odess::ProcessTrace()
                 // Odess get superfeature & get time
                 uint64_t basechunkid = -1;
                 uint64_t treeBaseChunkid = -1;
-                bool insertDelta = false;
                 // compute SF
                 if (tmpChunk.chunkSize > 60)
                 {
@@ -75,12 +74,14 @@ void Odess::ProcessTrace()
                     endSF = std::chrono::high_resolution_clock::now();
                     SFTime += (endSF - startSF);
 
-                    if(offlineMethod >= 0){
-                        insertDelta = table.HasMissingSF(superfeature);
+                    if (offlineMethod >= 0)
+                    {
                         treeBaseChunkid = table.Tree_SF_Find(superfeature);
+                        if (treeBaseChunkid > -1)
+                            if (dataWrite_->chunklist[treeBaseChunkid].deltaFlag == DELTA)
+                                treeBaseChunkid = dataWrite_->chunklist[treeBaseChunkid].basechunkID;
                     }
                     basechunkid = table.SF_Find(superfeature);
-                    // auto ret = table.GetSimilarRecordsKeys(tmpChunkHash);
                 }
 
                 if (basechunkid != -1)
@@ -96,7 +97,7 @@ void Odess::ProcessTrace()
                         cout << "delta error" << endl;
                         return;
                     }
-                    else if (tmpChunk.saveSize > tmpChunk.chunkSize)
+                    else if (tmpChunk.saveSize > tmpChunk.chunkSize) // error
                     {
                         cout << "delta no effective" << endl;
                         int tmpChunkLz4CompressSize = 0;
@@ -135,6 +136,8 @@ void Odess::ProcessTrace()
                         memcpy(tmpChunk.chunkPtr, deltachunk, tmpChunk.saveSize);
                         StatsDelta(tmpChunk);
                         free(deltachunk);
+                        if (offlineMethod >= 0)
+                            table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
                         // if (basechunkInfo.loadFromDisk)
                         //     free(basechunkInfo.chunkPtr);
                         dataWrite_->Chunk_Insert(tmpChunk);
@@ -161,8 +164,6 @@ void Odess::ProcessTrace()
                     tmpChunkid = tmpChunk.chunkID;
                     if (tmpChunk.chunkSize > 60)
                         table.SF_Insert(superfeature, tmpChunk.chunkID);
-                        if(offlineMethod >= 0)
-                            table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
                     basechunkNum++;
                     basechunkSize += tmpChunk.saveSize;
                     LocalReduct += tmpChunk.chunkSize - tmpChunk.saveSize;
@@ -176,23 +177,15 @@ void Odess::ProcessTrace()
                 uniquechunkNum++;
                 uniquechunkSize += tmpChunk.saveSize;
 
-                if(offlineMethod >= 0){
-                    uint64_t rootId = (treeBaseChunkid != (uint64_t)-1) ? treeBaseChunkid : tmpChunk.chunkID;
-                    if(rootId == tmpChunk.chunkID){
-                        (*rootChunkMap)[rootId].push_back(rootId);
-                    }else{
-                        if(insertDelta){
-                            while((*rootChunkMap)[rootId][0] != rootId){
-                                rootId = (*rootChunkMap)[rootId][0];
-                            }
-                            (*rootChunkMap)[rootId].push_back(tmpChunk.chunkID);
-                            (*rootChunkMap)[tmpChunk.chunkID].push_back(rootId);
-                        }else{
-                            while((*rootChunkMap)[rootId][0] != rootId){
-                                rootId = (*rootChunkMap)[rootId][0];
-                            }
-                            (*rootChunkMap)[rootId].push_back(tmpChunk.chunkID);
-                        }
+                if (offlineMethod >= 0)
+                {
+                    if (treeBaseChunkid == -1)
+                    {
+                        (*rootChunkMap)[tmpChunk.chunkID].push_back(tmpChunk.chunkID);
+                    }
+                    else
+                    {
+                        (*rootChunkMap)[treeBaseChunkid].push_back(tmpChunk.chunkID);
                     }
                 }
             }

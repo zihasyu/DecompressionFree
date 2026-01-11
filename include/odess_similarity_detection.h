@@ -151,8 +151,6 @@ public:
   void Tree_SF_ReWrite(const SuperFeatures &superfeatures, const uint64_t newid);
   void Tree_SF_ReWrite(const uint64_t &superfeature, const uint64_t newid);
 
-  bool HasMissingSF(const SuperFeatures &superfeatures);
-
 private:
   // unordered_map<super_feature_t, unordered_set<string>> feature_key_table_;
   // // unordered_map<feature_t, unordered_set<string>> original_feature_key_table;
