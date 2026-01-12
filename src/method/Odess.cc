@@ -18,7 +18,6 @@ Odess::Odess(int offlineMethod)
     hashBuf = (uint8_t *)malloc(CHUNK_HASH_SIZE * sizeof(uint8_t));
     deltaMaxChunkBuffer = (uint8_t *)malloc(2 * CONTAINER_MAX_SIZE * sizeof(uint8_t));
     SFindex = new unordered_map<string, vector<int>>[FINESSE_SF_NUM];
-
     rootChunkMap = new std::unordered_map<uint64_t, std::vector<uint64_t>>();
 }
 
@@ -28,6 +27,10 @@ Odess::~Odess()
     free(deltaMaxChunkBuffer);
     EVP_MD_CTX_free(mdCtx);
     free(hashBuf);
+    if (rootChunkMap != nullptr)
+    {
+        delete rootChunkMap;
+    }
 }
 
 void Odess::ProcessTrace()
@@ -79,7 +82,10 @@ void Odess::ProcessTrace()
                         treeBaseChunkid = table.Tree_SF_Find(superfeature);
                         if (treeBaseChunkid > -1)
                             if (dataWrite_->chunklist[treeBaseChunkid].deltaFlag == DELTA)
-                                treeBaseChunkid = dataWrite_->chunklist[treeBaseChunkid].basechunkID;
+                            {
+                                cout << "treeBaseChunkid is delta " << treeBaseChunkid << endl;
+                                // treeBaseChunkid = dataWrite_->chunklist[treeBaseChunkid].basechunkID;
+                            }
                     }
                     basechunkid = table.SF_Find(superfeature);
                 }
@@ -204,6 +210,41 @@ void Odess::ProcessTrace()
                 dataWrite_->Recipe_Header_Insert(tmpChunk.chunkID);
             logicalchunkNum++;
             logicalchunkSize += tmpChunk.chunkSize;
+        }
+    }
+    if (ads_Version >= 99)
+    {
+        if (offlineMethod >= 0 && rootChunkMap != nullptr)
+        {
+            std::unordered_set<uint64_t> rootNodes;
+            std::unordered_set<uint64_t> allNodes;
+
+            // 遍历map，收集所有的根节点和子节点
+            for (auto const &[rootId, children] : *rootChunkMap)
+            {
+                rootNodes.insert(rootId);
+                for (uint64_t nodeId : children)
+                {
+                    allNodes.insert(nodeId);
+                }
+            }
+
+            uint64_t leafNodeCount = 0;
+            // 遍历所有出现过的节点
+            for (uint64_t nodeId : allNodes)
+            {
+                // 如果一个节点不是根节点，那么它就是叶子节点
+                if (rootNodes.find(nodeId) == rootNodes.end())
+                {
+                    leafNodeCount++;
+                }
+            }
+
+            std::cout << "===== Leaf Node Count for Version " << ads_Version - 1 << " =====" << std::endl;
+            std::cout << "Total unique nodes in map: " << allNodes.size() << std::endl;
+            std::cout << "Root node count: " << rootNodes.size() << std::endl;
+            std::cout << "Calculated leaf node count: " << leafNodeCount << std::endl;
+            std::cout << "==========================================" << std::endl;
         }
     }
     recieveQueue->done_ = false;
