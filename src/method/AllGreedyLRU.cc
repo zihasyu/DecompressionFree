@@ -260,8 +260,10 @@ Chunk_t AllGreedyLRU::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
     std::vector<uint8_t> cachedData;
     for (int i = 0; i < chunkChain.size(); ++i) {
         cacheAccessCount++;    
-        if (chunkCache.tryGet(chunkChain[i].chunkID, cachedData)) {
+        auto res = chunkCache.TryGet(chunkChain[i].chunkID);
+        if (res.second && res.first) {
             cacheHitCount++;
+            cachedData = *res.first;
             cacheIdx = i;
             break;
         }
@@ -323,7 +325,8 @@ Chunk_t AllGreedyLRU::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
     }
 
     // 5. 插入cache
-    chunkCache.insert(BasechunkId, std::vector<uint8_t>(basechunk.chunkPtr, basechunk.chunkPtr + basechunk.chunkSize));
+    // chunkCache.insert(BasechunkId, std::vector<uint8_t>(basechunk.chunkPtr, basechunk.chunkPtr + basechunk.chunkSize));
+    chunkCache.Put(BasechunkId, std::vector<uint8_t>(basechunk.chunkPtr, basechunk.chunkPtr + basechunk.chunkSize));
 
     return basechunk;
 }
