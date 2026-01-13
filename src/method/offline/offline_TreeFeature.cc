@@ -23,6 +23,10 @@ OfflineTreeFeature::~OfflineTreeFeature()
     free(hashBuf);
     free(tmpDeltaBuffer);
     free(MinBaseBuffer);
+    if (rootChunkMap != nullptr)
+    {
+        delete rootChunkMap;
+    }
 }
 
 void OfflineTreeFeature::ProcessTrace()
@@ -31,13 +35,29 @@ void OfflineTreeFeature::ProcessTrace()
     SuperFeatures superfeature;
     size_t nextVersionEndPointIndex = 0;
 
-    for (const auto& pair : *rootChunkMap) {
+    std::map<uint64_t, const std::vector<uint64_t> &> sortedRootChunkMap;
+    for (const auto &pair : *rootChunkMap)
+    {
+        sortedRootChunkMap.insert(pair);
+    }
+
+    // [CHANGE] 遍历新创建的、有序的 sortedRootChunkMap
+    for (const auto &pair : sortedRootChunkMap)
+    {
         uint64_t rootId = pair.first;
-        const std::vector<uint64_t>& chunkIds = pair.second;
+        const std::vector<uint64_t> &chunkIds = pair.second;
 
-        // if (chunkIds.empty() || rootId != chunkIds[0]) continue;
+        // // 子根 (key != vector[0]) 会在遍历主根时被“插队”处理，所以这里直接跳过。
+        // if (chunkIds.empty() || rootId != chunkIds[0])
+        // {
+        //     continue;
+        // }
+        // // --- 栈式遍历实现“插队” ---
+        // std::stack<std::vector<uint64_t>::const_iterator> iterStack;
+        // std::stack<std::vector<uint64_t>::const_iterator> endStack;
 
-        for (uint64_t cid : chunkIds) {
+        for (uint64_t cid : chunkIds)
+        {
             // 1. Restore the chunk content to its original form
             Chunk_t tmpChunk = dataWrite_->Get_Chunk_MetaInfo(cid);
             if (tmpChunk.basechunkID >= 0)
@@ -132,7 +152,8 @@ void OfflineTreeFeature::ProcessTrace()
 
                     // [CHANGE] Update the tree structure in the *destination* offline_dataWrite_
                     // cout << "Inserting delta chunk " << tmpChunk.chunkID << " with base chunk " << tmpChunk.basechunkID << " and save size " << tmpChunk.saveSize << endl;
-                    if(tmpChunk.saveSize >= TREE_INSERT_SAVE_THRESHOLD){
+                    if (tmpChunk.saveSize >= TREE_INSERT_SAVE_THRESHOLD)
+                    {
                         if (offline_dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID < 0)
                         {
                             offline_dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID = tmpChunk.chunkID;

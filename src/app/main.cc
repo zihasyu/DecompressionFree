@@ -188,7 +188,7 @@ int main(int argc, char **argv)
     }
     case SUBTREE_REDUCTION:
     {
-        absMethodObj = new SubTreeReduction();   //18
+        absMethodObj = new SubTreeReduction(); // 18
         break;
     }
     case All_Greedy_LRU:
@@ -316,7 +316,7 @@ int main(int argc, char **argv)
     }
     case Offline_Tree_Cut_Layer_Ignore:
     {
-        OfflineAbsMethodObj = new OfflineTreeCutLayerIgnore();         //5
+        OfflineAbsMethodObj = new OfflineTreeCutLayerIgnore(); // 5
         break;
     }
     default:
@@ -328,6 +328,7 @@ int main(int argc, char **argv)
         OfflineAbsMethodObj->offline_dataWrite_ = new dataWrite();
         OfflineAbsMethodObj->dataWrite_ = absMethodObj->dataWrite_;
         OfflineAbsMethodObj->rootChunkMap = absMethodObj->rootChunkMap;
+        absMethodObj->rootChunkMap = nullptr;
         OfflineAbsMethodObj->offline_dataWrite_->setContainerPath("./OfflineContainers/");
         auto startTmp = std::chrono::high_resolution_clock::now();
         OfflineAbsMethodObj->ProcessTrace();
@@ -377,22 +378,30 @@ int main(int argc, char **argv)
     }
 
     cout << "----------------------inline container-------------------------" << std::endl;
-    if (absMethodObj && absMethodObj->dataWrite_) {
+    if (absMethodObj && absMethodObj->dataWrite_)
+    {
         absMethodObj->dataWrite_->PrintMetrics();
-    } else {
+    }
+    else
+    {
         cout << "inline container dataWrite_ is nullptr!" << std::endl;
     }
     cout << "----------------------offline container-------------------------" << std::endl;
-    if (OfflineAbsMethodObj && OfflineAbsMethodObj->offline_dataWrite_) {
+    if (OfflineAbsMethodObj && OfflineAbsMethodObj->offline_dataWrite_)
+    {
         OfflineAbsMethodObj->offline_dataWrite_->PrintMetrics();
-    } else {
+    }
+    else
+    {
         cout << "offline container offline_dataWrite_ is nullptr!" << std::endl;
     }
 
     // clear
-    delete absMethodObj->dataWrite_;
-    delete absMethodObj->rootChunkMap;
+    // delete absMethodObj->dataWrite_;
+    // delete absMethodObj->rootChunkMap;
     delete chunkerObj;
     delete absMethodObj;
+    if (OfflineAbsMethodObj)
+        delete OfflineAbsMethodObj;
     return 0;
 }
