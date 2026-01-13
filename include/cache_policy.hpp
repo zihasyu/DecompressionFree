@@ -115,6 +115,35 @@ private:
     std::map<int, std::set<Key>> keys_by_freq;
 };
 
+template <typename Key>
+class LRUCachePolicy : public ICachePolicy<Key>
+{
+public:
+    void Insert(const Key &key) override {
+        lru_list.push_front(key);
+        lru_map[key] = lru_list.begin();
+    }
+    void Touch(const Key &key) override {
+        auto it = lru_map.find(key);
+        if (it != lru_map.end()) {
+            lru_list.splice(lru_list.begin(), lru_list, it->second);
+        }
+    }
+    void Erase(const Key &key) override {
+        auto it = lru_map.find(key);
+        if (it != lru_map.end()) {
+            lru_list.erase(it->second);
+            lru_map.erase(it);
+        }
+    }
+    const Key &ReplCandidate() const override {
+        return lru_list.back();
+    }
+private:
+    std::list<Key> lru_list;
+    std::unordered_map<Key, typename std::list<Key>::iterator> lru_map;
+};
+
 } // namespace caches
 
 #endif // CACHE_POLICY_HPP

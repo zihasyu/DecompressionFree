@@ -3,7 +3,8 @@
 
 #include "absmethod.h"
 #include "odess_similarity_detection.h"
-#include "lruCache.h"
+#include "cache.hpp"
+#include "cache_policy.hpp"
 
 using namespace std;
 
@@ -17,7 +18,7 @@ private:
     uint8_t *tmpDeltaBuffer = nullptr;
 
     // LRU cache及统计
-    lru11::Cache<uint64_t, std::vector<uint8_t>, std::mutex> chunkCache{1024, 64};
+    caches::fixed_sized_cache<uint64_t, std::vector<uint8_t>, caches::LRUCachePolicy> chunkCache{1024};
     size_t cacheHitCount = 0;
     size_t cacheAccessCount = 0;
 

@@ -35,7 +35,7 @@ void OfflineTreeFeature::ProcessTrace()
         uint64_t rootId = pair.first;
         const std::vector<uint64_t>& chunkIds = pair.second;
 
-        if (chunkIds.empty() || rootId != chunkIds[0]) continue;
+        // if (chunkIds.empty() || rootId != chunkIds[0]) continue;
 
         for (uint64_t cid : chunkIds) {
             // 1. Restore the chunk content to its original form
