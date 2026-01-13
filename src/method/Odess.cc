@@ -80,12 +80,7 @@ void Odess::ProcessTrace()
                     if (offlineMethod >= 0)
                     {
                         treeBaseChunkid = table.Tree_SF_Find(superfeature);
-                        if (treeBaseChunkid > -1)
-                            if (dataWrite_->chunklist[treeBaseChunkid].deltaFlag == DELTA)
-                            {
-                                cout << "treeBaseChunkid is delta " << treeBaseChunkid << endl;
-                                // treeBaseChunkid = dataWrite_->chunklist[treeBaseChunkid].basechunkID;
-                            }
+                        table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
                     }
                     basechunkid = table.SF_Find(superfeature);
                 }
@@ -142,8 +137,8 @@ void Odess::ProcessTrace()
                         memcpy(tmpChunk.chunkPtr, deltachunk, tmpChunk.saveSize);
                         StatsDelta(tmpChunk);
                         free(deltachunk);
-                        if (offlineMethod >= 0)
-                            table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
+                        // if (offlineMethod >= 0)
+                        //     table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
                         // if (basechunkInfo.loadFromDisk)
                         //     free(basechunkInfo.chunkPtr);
                         dataWrite_->Chunk_Insert(tmpChunk);
@@ -212,7 +207,7 @@ void Odess::ProcessTrace()
             logicalchunkSize += tmpChunk.chunkSize;
         }
     }
-    if (ads_Version >= 99)
+    if (ads_Version >= 100)
     {
         if (offlineMethod >= 0 && rootChunkMap != nullptr)
         {
@@ -244,6 +239,32 @@ void Odess::ProcessTrace()
             std::cout << "Total unique nodes in map: " << allNodes.size() << std::endl;
             std::cout << "Root node count: " << rootNodes.size() << std::endl;
             std::cout << "Calculated leaf node count: " << leafNodeCount << std::endl;
+            std::cout << "==========================================" << std::endl;
+            // [NEW] DCC (Delta Chaining Cohesion) a.k.a. "插队率" 统计
+            double dcc_numerator = 0.0;
+            double dcc_denominator = 0.0;
+
+            for (const auto &pair : *rootChunkMap)
+            {
+                uint64_t key = pair.first;
+                const std::vector<uint64_t> &nodes = pair.second;
+
+                for (uint64_t node : nodes)
+                {
+                    if (key != node)
+                    {
+                        dcc_numerator++;
+                    }
+                    dcc_denominator++;
+                }
+            }
+
+            double dcc_ratio = (dcc_denominator > 0) ? (dcc_numerator / dcc_denominator) : 0.0;
+
+            std::cout << "===== DCC (插队率) for Version " << ads_Version - 1 << " =====" << std::endl;
+            std::cout << "Total nodes compared (分母): " << dcc_denominator << std::endl;
+            std::cout << "Mismatched nodes (分子): " << dcc_numerator << std::endl;
+            std::cout << "DCC Ratio (分子/分母): " << dcc_ratio << std::endl;
             std::cout << "==========================================" << std::endl;
         }
     }

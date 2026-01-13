@@ -31,8 +31,8 @@ OfflineTreeFeature::~OfflineTreeFeature()
 
 void OfflineTreeFeature::ProcessTrace()
 {
-    string tmpChunkContent;
-    SuperFeatures superfeature;
+    // string tmpChunkContent;
+    // SuperFeatures superfeature;
     size_t nextVersionEndPointIndex = 0;
 
     std::map<uint64_t, const std::vector<uint64_t> &> sortedRootChunkMap;
@@ -47,17 +47,45 @@ void OfflineTreeFeature::ProcessTrace()
         uint64_t rootId = pair.first;
         const std::vector<uint64_t> &chunkIds = pair.second;
 
-        // // 子根 (key != vector[0]) 会在遍历主根时被“插队”处理，所以这里直接跳过。
-        // if (chunkIds.empty() || rootId != chunkIds[0])
+        // [DEBUG] Print the current pair being considered
+        // std::stringstream ss;
+        // for (size_t i = 0; i < chunkIds.size(); ++i)
         // {
-        //     continue;
+        //     ss << chunkIds[i] << (i < chunkIds.size() - 1 ? ", " : "");
         // }
-        // // --- 栈式遍历实现“插队” ---
-        // std::stack<std::vector<uint64_t>::const_iterator> iterStack;
-        // std::stack<std::vector<uint64_t>::const_iterator> endStack;
+        // std::cout << "\n--- Examining Pair: key=" << rootId << ", vector=[" << ss.str() << "]" << std::endl;
 
-        for (uint64_t cid : chunkIds)
+        // 子根 (key != vector[0]) 会在遍历主根时被“插队”处理，所以这里直接跳过。
+        if (chunkIds.empty() || rootId != chunkIds[0])
         {
+            continue;
+        }
+        // [FIX] 对主根进行 logicalRootMap 的初始化
+        logicalRootMap[rootId] = rootId;
+        // --- 栈式遍历，现在包含迭代器和逻辑根节点 ---
+        std::stack<std::vector<uint64_t>::const_iterator> iterStack;
+        std::stack<std::vector<uint64_t>::const_iterator> endStack;
+        std::stack<uint64_t> initialRootStack; // [NEW] 用于跟踪每一层的初始根ID
+
+        iterStack.push(chunkIds.begin());
+        endStack.push(chunkIds.end());
+        initialRootStack.push(rootId); // 初始根节点
+        while (!iterStack.empty())
+        {
+            auto &currentIter = iterStack.top();
+            auto &currentEnd = endStack.top();
+            uint64_t currentInitialRootId = initialRootStack.top(); // 获取当前层的初始根ID
+            if (currentIter == currentEnd)
+            {
+                iterStack.pop();
+                endStack.pop();
+                initialRootStack.pop(); // 同步出栈
+                continue;
+            }
+
+            uint64_t cid = *currentIter;
+            currentIter++;
+
             // 1. Restore the chunk content to its original form
             Chunk_t tmpChunk = dataWrite_->Get_Chunk_MetaInfo(cid);
             if (tmpChunk.basechunkID >= 0)
@@ -88,26 +116,47 @@ void OfflineTreeFeature::ProcessTrace()
                 }
             }
 
-            // 2. Re-compute super features for the original content
-            tmpChunkContent.assign((char *)tmpChunk.chunkPtr, tmpChunk.chunkSize);
-            uint64_t basechunkid = -1;
-            if (tmpChunk.chunkSize > 60)
+            // 1.5. 检查并处理“插队”
+            auto subRootIt = sortedRootChunkMap.find(cid);
+            if (subRootIt != sortedRootChunkMap.end() && subRootIt->first != subRootIt->second[0])
             {
-                startSF = std::chrono::high_resolution_clock::now();
-                superfeature = table.feature_generator_.GenerateSuperFeatures(tmpChunkContent);
-                endSF = std::chrono::high_resolution_clock::now();
-                SFTime += (endSF - startSF);
-
-                // Find a potential base chunk in the new, evolving feature index
-                basechunkid = table.Tree_SF_Find(superfeature);
+                const std::vector<uint64_t> &subChunkIds = subRootIt->second;
+                iterStack.push(subChunkIds.begin());
+                endStack.push(subChunkIds.end());
+                initialRootStack.push(cid); // 将子根ID作为新一层的初始根压栈
+                logicalRootMap[cid] = cid;  // 初始化子根的逻辑根为它自己
+                // std::cout << "    !! [DEBUG] Chunk " << cid << " is a Sub-root. Pushing its group to stack. Context switched to " << cid << "." << std::endl;
             }
+
+            // 2. Re-compute super features for the original content
+            // tmpChunkContent.assign((char *)tmpChunk.chunkPtr, tmpChunk.chunkSize);
+            // uint64_t basechunkid = -1;
+            // if (tmpChunk.chunkSize > 60)
+            // {
+            //     startSF = std::chrono::high_resolution_clock::now();
+            //     // superfeature = table.feature_generator_.GenerateSuperFeatures(tmpChunkContent);
+            //     endSF = std::chrono::high_resolution_clock::now();
+            //     SFTime += (endSF - startSF);
+
+            //     // Find a potential base chunk in the new, evolving feature index
+            //     basechunkid = table.Tree_SF_Find(superfeature);
+            // }
+
+            uint64_t basechunkid = logicalRootMap[currentInitialRootId];
+            if (cid == rootId)
+                basechunkid = -1; // 根节点没有基准块
+
+            // [DEBUG] Print cid and the basechunkid to be used
+            // std::cout << "    -> [DEBUG] Processing cid: " << cid
+            //           << " | InitialRoot: " << currentInitialRootId
+            //           << " | BasechunkID for CutGreedy: " << basechunkid << std::endl;
 
             // 3. Re-process the chunk
             if (basechunkid != -1)
             // A potential base chunk was found
             {
                 // Use CutGreedy to find the best base within the delta tree
-                auto RestoreBasechunk = CutGreedy(basechunkid, tmpChunk, superfeature);
+                auto RestoreBasechunk = CutGreedy(basechunkid, tmpChunk);
                 uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
 
                 if (RestoreBasechunk.loadFromDisk)
@@ -129,8 +178,8 @@ void OfflineTreeFeature::ProcessTrace()
                     }
                     tmpChunk.basechunkID = -1;
 
-                    if (tmpChunk.chunkSize > 60)
-                        table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
+                    // if (tmpChunk.chunkSize > 60)
+                    //     table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
                     basechunkNum++;
                     basechunkSize += tmpChunk.saveSize;
                     free(deltachunk);
@@ -147,11 +196,9 @@ void OfflineTreeFeature::ProcessTrace()
                     tmpChunk.deltaFlag = DELTA;
                     tmpChunk.basechunkID = RestoreBasechunk.chunkID;
 
-                    if (tmpChunk.chunkSize > 60)
-                        table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
+                    // if (tmpChunk.chunkSize > 60)
+                    //     table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
 
-                    // [CHANGE] Update the tree structure in the *destination* offline_dataWrite_
-                    // cout << "Inserting delta chunk " << tmpChunk.chunkID << " with base chunk " << tmpChunk.basechunkID << " and save size " << tmpChunk.saveSize << endl;
                     if (tmpChunk.saveSize >= TREE_INSERT_SAVE_THRESHOLD)
                     {
                         if (offline_dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID < 0)
@@ -191,8 +238,8 @@ void OfflineTreeFeature::ProcessTrace()
                 }
                 tmpChunk.basechunkID = -1;
 
-                if (tmpChunk.chunkSize > 60)
-                    table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
+                // if (tmpChunk.chunkSize > 60)
+                //     table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
                 basechunkNum++;
                 basechunkSize += tmpChunk.saveSize;
 
@@ -208,22 +255,6 @@ void OfflineTreeFeature::ProcessTrace()
             uniquechunkSize += tmpChunk.saveSize;
             logicalchunkNum++;
             logicalchunkSize += tmpChunk.chunkSize;
-            if ((cid + 1) == dataWrite_->versionEndPoints[nextVersionEndPointIndex])
-            {
-                // log
-                nextVersionEndPointIndex++;
-                cout << "----------------------offline compression-------------------------" << std::endl;
-                cout << "version " << nextVersionEndPointIndex << " processed" << std::endl;
-                cout << " process chunks: " << (cid + 1) << std::endl;
-                cout << "  unique chunk count: " << uniquechunkNum << ", size: " << uniquechunkSize << std::endl;
-                cout << "  base chunk count: " << basechunkNum << ", size: " << basechunkSize << std::endl;
-                cout << "  logical chunk count: " << logicalchunkNum << ", size: " << logicalchunkSize << std::endl;
-                cout << "  unique ratio: " << (double)uniquechunkSize / logicalchunkSize << std::endl;
-                cout << "  base ratio: " << (double)basechunkSize / logicalchunkSize << std::endl;
-                cout << "  SFTime: " << SFTime.count() << "s" << std::endl;
-                cout << "  MiDeltaTime: " << MiDeltaTime.count() << "s" << std::endl;
-                cout << "  EncodeTime: " << EncodeTime.count() << "s" << std::endl;
-            }
         }
     }
 
@@ -372,4 +403,124 @@ void OfflineTreeFeature::StatsHit(uint64_t FatherID, uint64_t HitID, SuperFeatur
         if (table.Tree_SF_Find(sfs) == FatherID)
             table.Tree_SF_ReWrite(sfs, HitID);
     }
+}
+
+void OfflineTreeFeature::StatsHit(uint64_t FatherID, uint64_t HitID, uint64_t BasechunkID)
+{
+    if (offline_dataWrite_->chunklist[FatherID].BeforeFit == HitID)
+    {
+        offline_dataWrite_->chunklist[FatherID].HitCount++;
+    }
+    else
+    {
+        offline_dataWrite_->chunklist[FatherID].BeforeFit = HitID;
+        offline_dataWrite_->chunklist[FatherID].HitCount = 1;
+    }
+    if (offline_dataWrite_->chunklist[FatherID].HitCount > 4)
+    {
+        if (BasechunkID == FatherID)
+            logicalRootMap[BasechunkID] = HitID;
+    }
+}
+
+Chunk_t OfflineTreeFeature::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
+{
+    SetTime(startMiDelta);
+    Chunk_t resultchunk;
+    size_t basechunk_size = 0;
+
+    Chunk_t basechunk = offline_dataWrite_->Get_Chunk_MetaInfo(BasechunkId);
+    if (basechunk.basechunkID < 0)
+    {
+        SetTime(startIO);
+        basechunk = offline_dataWrite_->Get_Chunk_Info(BasechunkId);
+        SetTime(endIO);
+        SetTime(startIO, endIO, IOTime);
+        if (basechunk.FirstChildID < 0) // if only one layer
+            return basechunk;
+        // basechunk = xd3_recursive_restore_BL_time(BasechunkId);
+    }
+    else
+    {
+        basechunk = xd3_recursive_restore_offline_time(BasechunkId);
+        // cout << "basechunk.ChunkID is " << basechunk.chunkID << endl;
+        if (basechunk.FirstChildID < 0) // if only one layer
+            return basechunk;
+    }
+
+    memcpy(CombinedBuffer, basechunk.chunkPtr, basechunk.chunkSize);
+    // greed init
+    memcpy(MinBaseBuffer, basechunk.chunkPtr, basechunk.chunkSize);
+    resultchunk.chunkSize = basechunk.chunkSize;
+    resultchunk.chunkPtr = MinBaseBuffer;
+    resultchunk.loadFromDisk = false;
+    resultchunk.chunkID = basechunk.chunkID;
+    resultchunk.FirstChildID = basechunk.FirstChildID;
+
+    xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk.chunkPtr, basechunk.chunkSize, &resultchunk.saveSize, deltaMaxChunkBuffer); //*** resultchunk.saveSize save tmpMinDeltaSize only here
+
+    if (basechunk.loadFromDisk)
+        free(basechunk.chunkPtr); // free base chunk memory
+
+    bool end = false;
+    uint64_t tmpsaveSize = 0;
+    while (!end && resultchunk.FirstChildID >= 0)
+    {
+        uint64_t tmpFatherID = resultchunk.chunkID;
+        uint64_t tmpChildID = resultchunk.chunkID;
+
+        SetTime(startIO);
+        Chunk_t TmpChildChunk = offline_dataWrite_->Get_Chunk_Info(resultchunk.FirstChildID);
+        SetTime(endIO);
+        SetTime(startIO, endIO, IOTime);
+
+        uint8_t *basechunk_ptr = xd3_decode(TmpChildChunk.chunkPtr, TmpChildChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);
+        xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer);
+        if (tmpsaveSize < resultchunk.saveSize)
+        {
+            resultchunk.saveSize = tmpsaveSize;
+            resultchunk.chunkID = TmpChildChunk.chunkID;
+            resultchunk.chunkSize = TmpChildChunk.chunkSize;
+            resultchunk.FirstChildID = TmpChildChunk.FirstChildID;
+            memcpy(MinBaseBuffer, basechunk_ptr, TmpChildChunk.chunkSize);
+        }
+        if (TmpChildChunk.loadFromDisk)
+            free(TmpChildChunk.chunkPtr); // free child chunk memory
+        free(basechunk_ptr);              // free base chunk memory
+
+        Chunk_t TmpBroChunk = TmpChildChunk;
+        while (TmpBroChunk.FirstBroID >= 0)
+        {
+            SetTime(startIO);
+            TmpBroChunk = offline_dataWrite_->Get_Chunk_Info(TmpBroChunk.FirstBroID);
+            SetTime(endIO);
+            SetTime(startIO, endIO, IOTime);
+            uint8_t *basechunk_ptr = xd3_decode(TmpBroChunk.chunkPtr, TmpBroChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);
+            xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer); //*** resultchunk.saveSize save tmpMinDeltaSize only here
+            if (tmpsaveSize < resultchunk.saveSize)
+            {
+                resultchunk.saveSize = tmpsaveSize;
+                resultchunk.chunkID = TmpBroChunk.chunkID;
+                resultchunk.chunkSize = TmpBroChunk.chunkSize;
+                resultchunk.FirstChildID = TmpBroChunk.FirstChildID;
+                memcpy(MinBaseBuffer, basechunk_ptr, TmpBroChunk.chunkSize);
+            }
+            if (TmpBroChunk.loadFromDisk)
+                free(TmpBroChunk.chunkPtr); // free bro chunk memory
+            free(basechunk_ptr);
+        }
+        StatsHit(tmpFatherID, resultchunk.chunkID, BasechunkId);
+        if (resultchunk.chunkID == tmpChildID)
+        {
+            end = true; // no more child or bro
+        }
+        else
+        {
+            basechunk.chunkSize = resultchunk.chunkSize;
+            memcpy(CombinedBuffer, resultchunk.chunkPtr, resultchunk.chunkSize); // CombineBuffer is FatherNode
+        }
+    }
+    SetTime(endMiDelta);
+    SetTime(startMiDelta, endMiDelta, MiDeltaTime);
+    return resultchunk;
 }
