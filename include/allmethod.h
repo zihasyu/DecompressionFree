@@ -31,4 +31,5 @@
 #include "Offline/offline_tree_Feature.h"
 #include "Offline/offline_treecache.h"
 #include "Offline/offline_treecutlayerIgnore.h"
+#include "Offline/offline_tree_Feature_lru.h"
 #endif
