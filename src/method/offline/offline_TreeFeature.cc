@@ -3,7 +3,6 @@
 const size_t TREE_INSERT_SAVE_THRESHOLD = 128;
 
 OfflineTreeFeature::OfflineTreeFeature()
-    : chunkCache(1024, 64)
 {
     // cout << " Chunk_t is " << sizeof(Chunk_t) << " Chunk_t_ori is " << sizeof(Chunk_t_odess) << " <super_feature_t, unordered_set<string>> is " << sizeof(super_feature_t);
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
