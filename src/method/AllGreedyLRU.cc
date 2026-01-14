@@ -247,7 +247,8 @@ uint8_t *AllGreedyLRU::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_
 
 Chunk_t AllGreedyLRU::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
 {
-    // cacheAccessCount++;
+    //cacheAccessCount++;
+    bool hit;
 
     // 1. 构造依赖链
     std::vector<Chunk_t> chunkChain;
@@ -284,9 +285,9 @@ Chunk_t AllGreedyLRU::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
         basechunk.chunkPtr = CombinedBuffer;
         basechunk.loadFromDisk = false;
         basechunk_size = cachedData.size();
-    }
-    else
-    {
+
+        hit = true;
+    } else {
         // 最底层base chunk
         SetTime(startIO);
         chunkChain.back() = dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);
@@ -302,6 +303,8 @@ Chunk_t AllGreedyLRU::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
         if (chunkChain.back().loadFromDisk)
             free(chunkChain.back().chunkPtr);
         cacheIdx = chunkChain.size() - 1;
+
+        hit = false;
     }
 
     // 4. 从cacheIdx-1往前递归恢复
@@ -333,8 +336,8 @@ Chunk_t AllGreedyLRU::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
     }
 
     // 5. 插入cache
-    // chunkCache.insert(BasechunkId, std::vector<uint8_t>(basechunk.chunkPtr, basechunk.chunkPtr + basechunk.chunkSize));
-    chunkCache.Put(BasechunkId, std::vector<uint8_t>(basechunk.chunkPtr, basechunk.chunkPtr + basechunk.chunkSize));
+    if(hit == false)
+        chunkCache.Put(BasechunkId, std::vector<uint8_t>(basechunk.chunkPtr, basechunk.chunkPtr + basechunk.chunkSize));
 
     return basechunk;
 }
