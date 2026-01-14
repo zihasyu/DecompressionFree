@@ -159,7 +159,10 @@ public:
     {
         // Case 1: Key is in B1 (ghost list for T1)
         if (b1_map.count(key)) {
-            size_t delta = b2_map.size() >= b1_map.size() ? 1 : b1_map.size() / b2_map.size();
+            size_t delta = 1;
+            if (b2_map.size() > 0 && b1_map.size() < b2_map.size()) {
+                delta = b2_map.size() / b1_map.size();
+            }
             p = std::min(c, p + delta);
             Replace(key);
             b1_list.erase(b1_map[key]);
@@ -169,8 +172,11 @@ public:
         }
         // Case 2: Key is in B2 (ghost list for T2)
         else if (b2_map.count(key)) {
-            size_t delta = b1_map.size() >= b2_map.size() ? 1 : b2_map.size() / b1_map.size();
-            p = p >= delta ? p - delta : 0;
+            size_t delta = 1;
+            if (b1_map.size() > 0 && b2_map.size() < b1_map.size()) {
+                delta = b1_map.size() / b2_map.size();
+            }
+            p = (p >= delta) ? p - delta : 0;
             Replace(key);
             b2_list.erase(b2_map[key]);
             b2_map.erase(key);
@@ -233,20 +239,50 @@ public:
             b2_list.push_front(key);
             b2_map[key] = b2_list.begin();
         }
-        // Ghost lists do not need explicit erase
+        // If key is in ghost lists, remove it completely
+        else if (b1_map.count(key)) {
+            b1_list.erase(b1_map[key]);
+            b1_map.erase(key);
+        } else if (b2_map.count(key)) {
+            b2_list.erase(b2_map[key]);
+            b2_map.erase(key);
+        }
     }
 
     const Key &ReplCandidate() const override
     {
+        // Check if cache has any elements
+        if (t1_list.empty() && t2_list.empty()) {
+            throw std::runtime_error("Cannot get replacement candidate from empty cache");
+        }
+        
         // Replacement candidate is the last element in T1 or T2, depending on p
-        if (!t1_list.empty() && t1_list.size() >= p) {
+        if (!t1_list.empty() && (t1_list.size() > p || t2_list.empty())) {
             return t1_list.back();
         } else if (!t2_list.empty()) {
             return t2_list.back();
         }
-        // Fallback: return any key (should not happen in normal use)
-        static Key dummy{};
-        return dummy;
+        
+        // This should never be reached
+        throw std::runtime_error("Unexpected state in ReplCandidate");
+    }
+
+    // Helper method to check if cache contains a key
+    bool Contains(const Key &key) const
+    {
+        return t1_map.count(key) > 0 || t2_map.count(key) > 0;
+    }
+
+    // Helper method to get current cache size
+    size_t Size() const
+    {
+        return t1_map.size() + t2_map.size();
+    }
+
+    // Helper method to check if cache is empty
+    bool Empty() const
+    {
+        return t1_map.empty() && t2_map.empty();
     }
 
 private:

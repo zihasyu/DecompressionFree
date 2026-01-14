@@ -20,7 +20,7 @@ private:
     uint8_t *tmpDeltaBuffer = nullptr;
 
     // lru11::Cache<uint64_t, std::vector<uint8_t>, std::mutex> chunkCache;
-    caches::fixed_sized_cache<uint64_t, std::vector<uint8_t>, caches::LRUCachePolicy> chunkCache{1024};
+    caches::fixed_sized_cache<uint64_t, std::vector<uint8_t>, caches::ARCCachePolicy> chunkCache{1024};
     size_t cacheHitCount = 0;
     size_t cacheAccessCount = 0;
     // std::unordered_map<uint64_t, int> chunkHotMap;
