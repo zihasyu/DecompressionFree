@@ -259,10 +259,12 @@ Chunk_t AllGreedyLRU::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
     // 2. 从前往后找cache命中点
     int cacheIdx = -1;
     std::vector<uint8_t> cachedData;
-    for (int i = 0; i < chunkChain.size(); ++i) {
-        cacheAccessCount++;    
+    for (int i = 0; i < chunkChain.size(); ++i)
+    {
+        cacheAccessCount++;
         auto res = chunkCache.TryGet(chunkChain[i].chunkID);
-        if (res.second && res.first) {
+        if (res.second && res.first)
+        {
             cacheHitCount++;
             cachedData = *res.first;
             cacheIdx = i;
@@ -274,7 +276,8 @@ Chunk_t AllGreedyLRU::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
     size_t basechunk_size = 0;
 
     // 3. 如果有cache命中，从cache点恢复，否则从最底层恢复
-    if (cacheIdx != -1) {
+    if (cacheIdx != -1)
+    {
         // 用cache内容初始化到 CombinedBuffer
         memcpy(CombinedBuffer, cachedData.data(), cachedData.size());
         basechunk.chunkID = chunkChain[cacheIdx].chunkID;
@@ -305,7 +308,8 @@ Chunk_t AllGreedyLRU::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
     }
 
     // 4. 从cacheIdx-1往前递归恢复
-    for (int i = cacheIdx - 1; i >= 0; --i) {
+    for (int i = cacheIdx - 1; i >= 0; --i)
+    {
         SetTime(startIO);
         chunkChain[i] = dataWrite_->Get_Chunk_Info(chunkChain[i].chunkID);
         SetTime(endIO);
@@ -314,10 +318,12 @@ Chunk_t AllGreedyLRU::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
         uint8_t *basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
                                             basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
 
-        if (chunkChain[i].chunkSize != basechunk_size) {
+        if (chunkChain[i].chunkSize != basechunk_size)
+        {
             cout << "xd3 recursive restore error, chunk size mismatch" << endl;
             basechunk.chunkSize = 0;
-            if (basechunk_ptr) free(basechunk_ptr);
+            if (basechunk_ptr)
+                free(basechunk_ptr);
             return basechunk;
         }
         if (chunkChain[i].loadFromDisk)

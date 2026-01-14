@@ -319,6 +319,11 @@ int main(int argc, char **argv)
         OfflineAbsMethodObj = new OfflineTreeCutLayerIgnore(); // 5
         break;
     }
+    case Offline_Tree_Feature_LRU:
+    {
+        OfflineAbsMethodObj = new OfflineTreeFeatureLru(); // 6
+        break;
+    }
     default:
         break;
     }

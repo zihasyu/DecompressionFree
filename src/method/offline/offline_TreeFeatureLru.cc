@@ -3,7 +3,7 @@
 const size_t TREE_INSERT_SAVE_THRESHOLD = 128;
 
 OfflineTreeFeatureLru::OfflineTreeFeatureLru()
-    : chunkCache(1024, 64)
+    : chunkCache(1024) // 在构造函数初始化列表中初始化缓存容量
 {
     // cout << " Chunk_t is " << sizeof(Chunk_t) << " Chunk_t_ori is " << sizeof(Chunk_t_odess) << " <super_feature_t, unordered_set<string>> is " << sizeof(super_feature_t);
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
@@ -46,16 +46,6 @@ void OfflineTreeFeatureLru::ProcessTrace()
     {
         uint64_t rootId = pair.first;
         const std::vector<uint64_t> &chunkIds = pair.second;
-
-        // [DEBUG] Print the current pair being considered
-        // std::stringstream ss;
-        // for (size_t i = 0; i < chunkIds.size(); ++i)
-        // {
-        //     ss << chunkIds[i] << (i < chunkIds.size() - 1 ? ", " : "");
-        // }
-        // std::cout << "\n--- Examining Pair: key=" << rootId << ", vector=[" << ss.str() << "]" << std::endl;
-
-        // 子根 (key != vector[0]) 会在遍历主根时被“插队”处理，所以这里直接跳过。
         if (chunkIds.empty() || rootId != chunkIds[0])
         {
             continue;
@@ -128,28 +118,9 @@ void OfflineTreeFeatureLru::ProcessTrace()
                 // std::cout << "    !! [DEBUG] Chunk " << cid << " is a Sub-root. Pushing its group to stack. Context switched to " << cid << "." << std::endl;
             }
 
-            // 2. Re-compute super features for the original content
-            // tmpChunkContent.assign((char *)tmpChunk.chunkPtr, tmpChunk.chunkSize);
-            // uint64_t basechunkid = -1;
-            // if (tmpChunk.chunkSize > 60)
-            // {
-            //     startSF = std::chrono::high_resolution_clock::now();
-            //     // superfeature = table.feature_generator_.GenerateSuperFeatures(tmpChunkContent);
-            //     endSF = std::chrono::high_resolution_clock::now();
-            //     SFTime += (endSF - startSF);
-
-            //     // Find a potential base chunk in the new, evolving feature index
-            //     basechunkid = table.Tree_SF_Find(superfeature);
-            // }
-
             uint64_t basechunkid = logicalRootMap[currentInitialRootId];
             if (cid == rootId)
                 basechunkid = -1; // 根节点没有基准块
-
-            // [DEBUG] Print cid and the basechunkid to be used
-            // std::cout << "    -> [DEBUG] Processing cid: " << cid
-            //           << " | InitialRoot: " << currentInitialRootId
-            //           << " | BasechunkID for CutGreedy: " << basechunkid << std::endl;
 
             // 3. Re-process the chunk
             if (basechunkid != -1)
@@ -264,108 +235,6 @@ void OfflineTreeFeatureLru::ProcessTrace()
     return;
 }
 
-Chunk_t OfflineTreeFeatureLru::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, SuperFeatures sfs)
-{
-    SetTime(startMiDelta);
-    Chunk_t resultchunk;
-    size_t basechunk_size = 0;
-
-    Chunk_t basechunk = offline_dataWrite_->Get_Chunk_MetaInfo(BasechunkId);
-    if (basechunk.basechunkID < 0)
-    {
-        SetTime(startIO);
-        basechunk = offline_dataWrite_->Get_Chunk_Info(BasechunkId);
-        SetTime(endIO);
-        SetTime(startIO, endIO, IOTime);
-        if (basechunk.FirstChildID < 0) // if only one layer
-            return basechunk;
-        // basechunk = xd3_recursive_restore_BL_time(BasechunkId);
-    }
-    else
-    {
-        basechunk = xd3_recursive_restore_offline_time(BasechunkId);
-        // cout << "basechunk.ChunkID is " << basechunk.chunkID << endl;
-        if (basechunk.FirstChildID < 0) // if only one layer
-            return basechunk;
-    }
-
-    memcpy(CombinedBuffer, basechunk.chunkPtr, basechunk.chunkSize);
-    // greed init
-    memcpy(MinBaseBuffer, basechunk.chunkPtr, basechunk.chunkSize);
-    resultchunk.chunkSize = basechunk.chunkSize;
-    resultchunk.chunkPtr = MinBaseBuffer;
-    resultchunk.loadFromDisk = false;
-    resultchunk.chunkID = basechunk.chunkID;
-    resultchunk.FirstChildID = basechunk.FirstChildID;
-
-    xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk.chunkPtr, basechunk.chunkSize, &resultchunk.saveSize, deltaMaxChunkBuffer); //*** resultchunk.saveSize save tmpMinDeltaSize only here
-
-    if (basechunk.loadFromDisk)
-        free(basechunk.chunkPtr); // free base chunk memory
-
-    bool end = false;
-    uint64_t tmpsaveSize = 0;
-    while (!end && resultchunk.FirstChildID >= 0)
-    {
-        uint64_t tmpFatherID = resultchunk.chunkID;
-        uint64_t tmpChildID = resultchunk.chunkID;
-
-        SetTime(startIO);
-        Chunk_t TmpChildChunk = offline_dataWrite_->Get_Chunk_Info(resultchunk.FirstChildID);
-        SetTime(endIO);
-        SetTime(startIO, endIO, IOTime);
-
-        uint8_t *basechunk_ptr = xd3_decode(TmpChildChunk.chunkPtr, TmpChildChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);
-        xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer);
-        if (tmpsaveSize < resultchunk.saveSize)
-        {
-            resultchunk.saveSize = tmpsaveSize;
-            resultchunk.chunkID = TmpChildChunk.chunkID;
-            resultchunk.chunkSize = TmpChildChunk.chunkSize;
-            resultchunk.FirstChildID = TmpChildChunk.FirstChildID;
-            memcpy(MinBaseBuffer, basechunk_ptr, TmpChildChunk.chunkSize);
-        }
-        if (TmpChildChunk.loadFromDisk)
-            free(TmpChildChunk.chunkPtr); // free child chunk memory
-        free(basechunk_ptr);              // free base chunk memory
-
-        Chunk_t TmpBroChunk = TmpChildChunk;
-        while (TmpBroChunk.FirstBroID >= 0)
-        {
-            SetTime(startIO);
-            TmpBroChunk = offline_dataWrite_->Get_Chunk_Info(TmpBroChunk.FirstBroID);
-            SetTime(endIO);
-            SetTime(startIO, endIO, IOTime);
-            uint8_t *basechunk_ptr = xd3_decode(TmpBroChunk.chunkPtr, TmpBroChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);
-            xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer); //*** resultchunk.saveSize save tmpMinDeltaSize only here
-            if (tmpsaveSize < resultchunk.saveSize)
-            {
-                resultchunk.saveSize = tmpsaveSize;
-                resultchunk.chunkID = TmpBroChunk.chunkID;
-                resultchunk.chunkSize = TmpBroChunk.chunkSize;
-                resultchunk.FirstChildID = TmpBroChunk.FirstChildID;
-                memcpy(MinBaseBuffer, basechunk_ptr, TmpBroChunk.chunkSize);
-            }
-            if (TmpBroChunk.loadFromDisk)
-                free(TmpBroChunk.chunkPtr); // free bro chunk memory
-            free(basechunk_ptr);
-        }
-        StatsHit(tmpFatherID, resultchunk.chunkID, sfs);
-        if (resultchunk.chunkID == tmpChildID)
-        {
-            end = true; // no more child or bro
-        }
-        else
-        {
-            basechunk.chunkSize = resultchunk.chunkSize;
-            memcpy(CombinedBuffer, resultchunk.chunkPtr, resultchunk.chunkSize); // CombineBuffer is FatherNode
-        }
-    }
-    SetTime(endMiDelta);
-    SetTime(startMiDelta, endMiDelta, MiDeltaTime);
-    return resultchunk;
-}
-
 uint8_t *OfflineTreeFeatureLru::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer)
 {
     SetTime(startMiEncode);
@@ -385,24 +254,6 @@ uint8_t *OfflineTreeFeatureLru::xd3_encode_buffer(const uint8_t *targetChunkbuff
     SetTime(endMiEncode);
     SetTime(startMiEncode, endMiEncode, EncodeTime);
     return tmpDeltaBuffer;
-}
-
-void OfflineTreeFeatureLru::StatsHit(uint64_t FatherID, uint64_t HitID, SuperFeatures sfs)
-{
-    if (offline_dataWrite_->chunklist[FatherID].BeforeFit == HitID)
-    {
-        offline_dataWrite_->chunklist[FatherID].HitCount++;
-    }
-    else
-    {
-        offline_dataWrite_->chunklist[FatherID].BeforeFit = HitID;
-        offline_dataWrite_->chunklist[FatherID].HitCount = 1;
-    }
-    if (offline_dataWrite_->chunklist[FatherID].HitCount > 4)
-    {
-        if (table.Tree_SF_Find(sfs) == FatherID)
-            table.Tree_SF_ReWrite(sfs, HitID);
-    }
 }
 
 void OfflineTreeFeatureLru::StatsHit(uint64_t FatherID, uint64_t HitID, uint64_t BasechunkID)

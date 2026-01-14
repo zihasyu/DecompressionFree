@@ -5,9 +5,10 @@
 #include "../odess_similarity_detection.h"
 
 #include "../lruCache.h"
-
+// #include "cache.hpp"
+// #include "cache_policy.hpp"
 #include <unordered_map>
-
+#include <memory>
 using namespace std;
 
 class OfflineTreeFeatureLru : public AbsMethod
@@ -25,13 +26,13 @@ private:
     std::unordered_map<uint64_t, int> chunkHotMap;
     std::unordered_map<uint64_t, uint64_t> logicalRootMap;
 
+    vector<uint8_t> cacheData1, cacheData2, cacheData3, cacheData4, cacheData5;
+
 public:
     OfflineTreeFeatureLru();
     ~OfflineTreeFeatureLru();
     void ProcessTrace();
-    Chunk_t CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, SuperFeatures sfs);
     uint8_t *xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer);
-    void StatsHit(uint64_t FatherID, uint64_t HitID, SuperFeatures sfs);
     Chunk_t xd3_recursive_restore_BL_time(uint64_t BasechunkId);
     Chunk_t CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk);
     void StatsHit(uint64_t FatherID, uint64_t HitID, uint64_t BasechunkID);
