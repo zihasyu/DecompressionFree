@@ -1,5 +1,5 @@
-set(CMAKE_BUILD_TYPE "Release")
-# set(CMAKE_BUILD_TYPE "Debug")
+# set(CMAKE_BUILD_TYPE "Release")
+set(CMAKE_BUILD_TYPE "Debug")
 cmake_minimum_required(VERSION 3.1)
 project(DFree)
 
@@ -11,8 +11,10 @@ set(CMAKE_MODULE_PATH /usr/share/cmake-3.10/Modules/)
 set(EXECUTABLE_OUTPUT_PATH ${DFree_SOURCE_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${DFree_SOURCE_DIR}/lib)
 
-set(CMAKE_C_FLAGS_DEBUG "-O0 -Wall -g -ggdb3")
-set(CMAKE_CXX_FLAGS_DEBUG "-O0 -Wall -fsanitize=address -fno-omit-frame-pointer -g -ggdb3") 
+# set(CMAKE_C_FLAGS_DEBUG "-O0 -Wall -g -ggdb3")
+# set(CMAKE_CXX_FLAGS_DEBUG "-O0 -Wall -fsanitize=address -fno-omit-frame-pointer -g -ggdb3") 
+set(CMAKE_C_FLAGS_DEBUG "-O0 -Wall -g")
+set(CMAKE_CXX_FLAGS_DEBUG "-O0 -Wall -g")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -Wall") 
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall") 
 

@@ -1,7 +1,6 @@
 #include "../../include/Tree/TreeCache.h"
 
 TreeCache::TreeCache()
-    : chunkCache(1024, 64)
 {
     // cout << " Chunk_t is " << sizeof(Chunk_t) << " Chunk_t_ori is " << sizeof(Chunk_t_odess) << " <super_feature_t, unordered_set<string>> is " << sizeof(super_feature_t);
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
@@ -349,60 +348,157 @@ void TreeCache::StatsHit(uint64_t FatherID, uint64_t HitID, SuperFeatures sfs)
     }
 }
 
+// Chunk_t TreeCache::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
+// {
+//     std::vector<uint8_t> cachedData;
+//     cacheAccessCount++;
+//     if (chunkCache.tryGet(BasechunkId, cachedData))
+//     {
+//         cacheHitCount++;
+//         Chunk_t cachedChunk;
+//         cachedChunk.chunkID = BasechunkId;
+//         cachedChunk.chunkSize = cachedData.size();
+//         cachedChunk.chunkPtr = (uint8_t *)malloc(cachedData.size());
+//         cachedChunk.FirstChildID = dataWrite_->chunklist[BasechunkId].FirstChildID;
+//         memcpy(cachedChunk.chunkPtr, cachedData.data(), cachedData.size());
+//         cachedChunk.loadFromDisk = false;
+//         return cachedChunk;
+//     }
+
+//     chunkHotMap[BasechunkId]++;
+
+//     // SetTime(startMiDelta);
+//     std::vector<Chunk_t> chunkChain;
+//     Chunk_t basechunk;
+//     size_t basechunk_size = 0;
+//     chunkChain.push_back(dataWrite_->Get_Chunk_MetaInfo(BasechunkId));
+//     // if only one layer
+//     if (chunkChain.back().basechunkID < 0)
+//     {
+//         SetTime(startIO);
+//         chunkChain.back() = dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);
+//         SetTime(endIO);
+//         SetTime(startIO, endIO, IOTime);
+
+//         return chunkChain.back();
+//     }
+
+//     // collect all delta chain blocks
+//     while (chunkChain.back().basechunkID >= 0)
+//         chunkChain.push_back(dataWrite_->Get_Chunk_MetaInfo(chunkChain.back().basechunkID));
+//     // push the last chunk
+//     SetTime(startIO);
+//     chunkChain.back() = dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);
+//     SetTime(endIO);
+//     SetTime(startIO, endIO, IOTime);
+
+//     memcpy(CombinedBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
+//     basechunk.loadFromDisk = false;
+//     basechunk.chunkSize = chunkChain.back().chunkSize;
+//     basechunk.chunkPtr = CombinedBuffer;
+//     basechunk.chunkID = chunkChain.back().chunkID;
+//     if (chunkChain.back().loadFromDisk)
+//         free(chunkChain.back().chunkPtr); // free base chunk memory
+
+//     for (int i = chunkChain.size() - 2; i >= 0; i--)
+//     {
+//         SetTime(startIO);
+//         chunkChain[i] = dataWrite_->Get_Chunk_Info(chunkChain[i].chunkID);
+//         SetTime(endIO);
+//         SetTime(startIO, endIO, IOTime);
+
+//         uint8_t *basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
+//                                             basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
+
+//         if (chunkChain[i].chunkSize != basechunk_size)
+//         {
+//             cout << "xd3 recursive restore error, chunk size mismatch" << endl;
+//             cout << "id " << chunkChain[i].chunkID << " chunkChain[i].chunkSize : " << chunkChain[i].chunkSize << "chunkChain[i].saveSize: " << chunkChain[i].saveSize
+//                  << " basechunksize " << basechunk.chunkSize << " restore basechunk_size : " << basechunk_size << endl;
+//             basechunk.chunkSize = 0;
+//             return basechunk;
+//         }
+//         if (chunkChain[i].loadFromDisk)
+//             free(chunkChain[i].chunkPtr);
+//         memcpy(CombinedBuffer, basechunk_ptr, basechunk_size);
+//         basechunk.chunkSize = chunkChain[i].chunkSize; // update size
+//         basechunk.FirstChildID = chunkChain[i].FirstChildID;
+//         basechunk.chunkID = chunkChain[i].chunkID;
+//         free(basechunk_ptr);
+
+//         basechunk_size = 0;
+//     }
+
+//     // SetTime(endMiDelta);
+//     // MiDeltaTime += endMiDelta - startMiDelta;
+//     int hotThreshold = 2;
+//     if (dataWrite_->chunklist[BasechunkId].basechunkID > 0 && chunkHotMap[BasechunkId] >= hotThreshold)
+//         chunkCache.insert(BasechunkId, std::vector<uint8_t>(basechunk.chunkPtr, basechunk.chunkPtr + basechunk.chunkSize));
+
+//     return basechunk;
+// }
+
 Chunk_t TreeCache::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
 {
+    //cacheAccessCount++;
+    bool hit;
+
+    // 1. 构造依赖链
+    std::vector<Chunk_t> chunkChain;
+    chunkChain.push_back(dataWrite_->Get_Chunk_MetaInfo(BasechunkId));
+    while (chunkChain.back().basechunkID >= 0)
+        chunkChain.push_back(dataWrite_->Get_Chunk_MetaInfo(chunkChain.back().basechunkID));
+
+    // 2. 从前往后找cache命中点
+    int cacheIdx = -1;
     std::vector<uint8_t> cachedData;
-    cacheAccessCount++;
-    if (chunkCache.tryGet(BasechunkId, cachedData))
-    {
-        cacheHitCount++;
-        Chunk_t cachedChunk;
-        cachedChunk.chunkID = BasechunkId;
-        cachedChunk.chunkSize = cachedData.size();
-        cachedChunk.chunkPtr = (uint8_t *)malloc(cachedData.size());
-        cachedChunk.FirstChildID = dataWrite_->chunklist[BasechunkId].FirstChildID;
-        memcpy(cachedChunk.chunkPtr, cachedData.data(), cachedData.size());
-        cachedChunk.loadFromDisk = false;
-        return cachedChunk;
+    for (int i = 0; i < chunkChain.size(); ++i) {
+        cacheAccessCount++;    
+        auto res = chunkCache.TryGet(chunkChain[i].chunkID);
+        if (res.second && res.first) {
+            cacheHitCount++;
+            cachedData = *res.first;
+            cacheIdx = i;
+            break;
+        }
     }
 
-    chunkHotMap[BasechunkId]++;
-
-    // SetTime(startMiDelta);
-    std::vector<Chunk_t> chunkChain;
     Chunk_t basechunk;
     size_t basechunk_size = 0;
-    chunkChain.push_back(dataWrite_->Get_Chunk_MetaInfo(BasechunkId));
-    // if only one layer
-    if (chunkChain.back().basechunkID < 0)
-    {
+
+    // 3. 如果有cache命中，从cache点恢复，否则从最底层恢复
+    if (cacheIdx != -1) {
+        // 用cache内容初始化到 CombinedBuffer
+        memcpy(CombinedBuffer, cachedData.data(), cachedData.size());
+        basechunk.chunkID = chunkChain[cacheIdx].chunkID;
+        basechunk.chunkSize = cachedData.size();
+        basechunk.chunkPtr = CombinedBuffer;
+        basechunk.loadFromDisk = false;
+        basechunk_size = cachedData.size();
+
+        hit = true;
+    } else {
+        // 最底层base chunk
         SetTime(startIO);
         chunkChain.back() = dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);
         SetTime(endIO);
         SetTime(startIO, endIO, IOTime);
 
-        return chunkChain.back();
+        memcpy(CombinedBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
+        basechunk.loadFromDisk = false;
+        basechunk.chunkSize = chunkChain.back().chunkSize;
+        basechunk.chunkPtr = CombinedBuffer;
+        basechunk.chunkID = chunkChain.back().chunkID;
+        basechunk_size = chunkChain.back().chunkSize;
+        if (chunkChain.back().loadFromDisk)
+            free(chunkChain.back().chunkPtr);
+        cacheIdx = chunkChain.size() - 1;
+
+        hit = false;
     }
 
-    // collect all delta chain blocks
-    while (chunkChain.back().basechunkID >= 0)
-        chunkChain.push_back(dataWrite_->Get_Chunk_MetaInfo(chunkChain.back().basechunkID));
-    // push the last chunk
-    SetTime(startIO);
-    chunkChain.back() = dataWrite_->Get_Chunk_Info(chunkChain.back().chunkID);
-    SetTime(endIO);
-    SetTime(startIO, endIO, IOTime);
-
-    memcpy(CombinedBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
-    basechunk.loadFromDisk = false;
-    basechunk.chunkSize = chunkChain.back().chunkSize;
-    basechunk.chunkPtr = CombinedBuffer;
-    basechunk.chunkID = chunkChain.back().chunkID;
-    if (chunkChain.back().loadFromDisk)
-        free(chunkChain.back().chunkPtr); // free base chunk memory
-
-    for (int i = chunkChain.size() - 2; i >= 0; i--)
-    {
+    // 4. 从cacheIdx-1往前递归恢复
+    for (int i = cacheIdx - 1; i >= 0; --i) {
         SetTime(startIO);
         chunkChain[i] = dataWrite_->Get_Chunk_Info(chunkChain[i].chunkID);
         SetTime(endIO);
@@ -411,30 +507,25 @@ Chunk_t TreeCache::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
         uint8_t *basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
                                             basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
 
-        if (chunkChain[i].chunkSize != basechunk_size)
-        {
+        if (chunkChain[i].chunkSize != basechunk_size) {
             cout << "xd3 recursive restore error, chunk size mismatch" << endl;
-            cout << "id " << chunkChain[i].chunkID << " chunkChain[i].chunkSize : " << chunkChain[i].chunkSize << "chunkChain[i].saveSize: " << chunkChain[i].saveSize
-                 << " basechunksize " << basechunk.chunkSize << " restore basechunk_size : " << basechunk_size << endl;
             basechunk.chunkSize = 0;
+            if (basechunk_ptr) free(basechunk_ptr);
             return basechunk;
         }
         if (chunkChain[i].loadFromDisk)
             free(chunkChain[i].chunkPtr);
         memcpy(CombinedBuffer, basechunk_ptr, basechunk_size);
-        basechunk.chunkSize = chunkChain[i].chunkSize; // update size
-        basechunk.FirstChildID = chunkChain[i].FirstChildID;
-        basechunk.chunkID = chunkChain[i].chunkID;
         free(basechunk_ptr);
-
-        basechunk_size = 0;
+        basechunk.chunkPtr = CombinedBuffer;
+        basechunk.chunkSize = chunkChain[i].chunkSize;
+        basechunk.chunkID = chunkChain[i].chunkID;
     }
+    basechunk.FirstChildID = chunkChain[0].FirstChildID;
 
-    // SetTime(endMiDelta);
-    // MiDeltaTime += endMiDelta - startMiDelta;
-    int hotThreshold = 2;
-    if (dataWrite_->chunklist[BasechunkId].basechunkID > 0 && chunkHotMap[BasechunkId] >= hotThreshold)
-        chunkCache.insert(BasechunkId, std::vector<uint8_t>(basechunk.chunkPtr, basechunk.chunkPtr + basechunk.chunkSize));
+    // 5. 插入cache
+    if(hit == false)
+        chunkCache.Put(BasechunkId, std::vector<uint8_t>(basechunk.chunkPtr, basechunk.chunkPtr + basechunk.chunkSize));
 
     return basechunk;
 }
