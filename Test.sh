@@ -49,13 +49,13 @@ methods=(
   # ["offlineTreeCache"]="-c 1 -m 3 -o 3"
 
   # design1
-  # ["Design1"]="-c 1 -m 3 -o 1"
+  ["Design1"]="-c 1 -m 3 -o 1"
   # design2
   # ["Design2"]="-c 1 -m 3 -o 5"
   # ["offlineTreeCutLayer"]="-c 1 -m 3 -o 2"
   # ["offlineTreeIngnore"]="-c 1 -m 3 -o 5"
   # design3
-  # ["Design3"]="-c 1 -m 3 -o 6"
+  ["Design3"]="-c 1 -m 3 -o 6"
   # ["offlineTreeFeatureLru"]="-c 1 -m 3 -o 6"
   # ["offlineTreeFeature"]="-c 1 -m 3 -o 4"
 )
@@ -79,7 +79,7 @@ selected_datasets=(
 )
 execution_order=(
   "Design3"
-  "Design2"
+  # "Design2"
   "Design1"
 )
 
