@@ -1,4 +1,13 @@
 cd bin
+# 设置为 "true" 来为所有测试添加 -R 1 标志，设置为 "false" 或其他任何值则不添加。
+USE_R_FLAG="true"
+# ----------------
+
+# 根据开关确定 R 标志参数
+R_FLAG_PARAM=""
+if [[ "$USE_R_FLAG" == "true" ]]; then
+  R_FLAG_PARAM="-R 1"
+fi
 
 declare -A datasets
 datasets=(
@@ -38,6 +47,16 @@ methods=(
   # ["offlineTreeCut"]="-c 1 -m 3 -o 1"
   # ["offlineTreeCutLayer"]="-c 1 -m 3 -o 2"
   # ["offlineTreeCache"]="-c 1 -m 3 -o 3"
+
+  # design1
+  # ["Design1"]="-c 1 -m 3 -o 1"
+  # design2
+  # ["Design2"]="-c 1 -m 3 -o 5"
+  # ["offlineTreeCutLayer"]="-c 1 -m 3 -o 2"
+  # ["offlineTreeIngnore"]="-c 1 -m 3 -o 5"
+  # design3
+  # ["Design3"]="-c 1 -m 3 -o 6"
+  # ["offlineTreeFeatureLru"]="-c 1 -m 3 -o 6"
   # ["offlineTreeFeature"]="-c 1 -m 3 -o 4"
 )
 
@@ -45,21 +64,32 @@ selected_datasets=(
   # "automake"
   # "bash"
   # "coreutils"
-  # "WindowsLog"
+  "WindowsLog"
   # "fdisk"
   "glibc"
   # "smalltalk"
   # "gcc"
   # "chromium"
-  # "linux"
+  "linux"
   # "cassandra"
   # "vmdk"
-  # "WEB"
+  "WEB"
   # "ThunderbirdLog"
   # "Wiki"
 )
+execution_order=(
+  "Design3"
+  "Design2"
+  "Design1"
+)
 
-for method_name in "${!methods[@]}"; do
+
+for method_name in "${execution_order[@]}"; do
+
+if [[ -z "${methods[$method_name]}" ]]; then
+    echo "Warning: Method '$method_name' is not defined in 'methods' array, skipping."
+    continue
+  fi
   method_params="${methods[$method_name]}"
   echo "Running method: $method_name"
   
@@ -75,7 +105,8 @@ for method_name in "${!methods[@]}"; do
         num=3
       fi
       
-      ./DFree -i "$path" $method_params -n "$num" > "${method_name}_${dataset}.txt"
+      # 在执行命令中加入 $R_FLAG_PARAM
+      ./DFree -i "$path" $method_params $R_FLAG_PARAM -n "$num" > "${method_name}_${dataset}.txt"
       
       echo "Completed $method_name on $dataset"
     else

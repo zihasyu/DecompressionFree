@@ -20,7 +20,7 @@ private:
     uint8_t *MinBaseBuffer = nullptr;
     uint8_t *tmpDeltaBuffer = nullptr;
 
-    lru11::Cache<uint64_t, std::vector<uint8_t>, std::mutex> chunkCache;
+    lru11::Cache<uint64_t, std::vector<uint8_t>> chunkCache;
     size_t cacheHitCount = 0;
     size_t cacheAccessCount = 0;
     std::unordered_map<uint64_t, int> chunkHotMap;
