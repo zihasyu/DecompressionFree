@@ -26,7 +26,10 @@ private:
     std::unordered_map<uint64_t, int> chunkHotMap;
     std::unordered_map<uint64_t, uint64_t> logicalRootMap;
 
-    vector<uint8_t> cacheData1, cacheData2, cacheData3, cacheData4, cacheData5;
+    // vector<uint8_t> cacheData1, cacheData2, cacheData3, cacheData4, cacheData5;
+    uint8_t *bro_basechunk_ptr_cache = nullptr;
+    uint8_t *chi_basechunk_ptr_cache = nullptr;
+    uint8_t *basechunk_ptr_cache = nullptr;
 
 public:
     OfflineTreeFeatureLru();

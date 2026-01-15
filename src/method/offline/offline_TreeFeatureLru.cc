@@ -13,6 +13,9 @@ OfflineTreeFeatureLru::OfflineTreeFeatureLru()
     SFindex = new unordered_map<string, vector<int>>[FINESSE_SF_NUM];
     tmpDeltaBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
     MinBaseBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
+    bro_basechunk_ptr_cache = (uint8_t *)malloc(MAX_CHUNK_SIZE * sizeof(uint8_t));
+    chi_basechunk_ptr_cache = (uint8_t *)malloc(MAX_CHUNK_SIZE * sizeof(uint8_t));
+    basechunk_ptr_cache = (uint8_t *)malloc(MAX_CHUNK_SIZE * sizeof(uint8_t));
 }
 
 OfflineTreeFeatureLru::~OfflineTreeFeatureLru()
@@ -230,8 +233,9 @@ void OfflineTreeFeatureLru::ProcessTrace()
     }
 
     // Finalize
-    ads_Version++;
-    SFnum = basechunkNum * 3;
+    // ads_Version++;
+    // SFnum = basechunkNum * 3;
+    cout << "lru cache hit rate: " << (double)cacheHitCount / (double)cacheAccessCount << " cacheHitCount " << cacheHitCount << " cacheAccessCount " << cacheAccessCount << endl;
     return;
 }
 
@@ -287,9 +291,9 @@ Chunk_t OfflineTreeFeatureLru::CutGreedy(uint64_t BasechunkId, const Chunk_t Tar
     {
         cacheHitCount++;
         basechunk = offline_dataWrite_->Get_Chunk_MetaInfo(BasechunkId);
-        basechunk.chunkPtr = (uint8_t *)malloc(basechunk.chunkSize);
+        basechunk.chunkPtr = basechunk_ptr_cache;
         memcpy(basechunk.chunkPtr, cachedData.data(), basechunk.chunkSize);
-        basechunk.loadFromDisk = true;
+        basechunk.loadFromDisk = false;
     }
     else
     {
@@ -342,8 +346,8 @@ Chunk_t OfflineTreeFeatureLru::CutGreedy(uint64_t BasechunkId, const Chunk_t Tar
         {
             cacheHitCount++;
             TmpChildChunk = offline_dataWrite_->Get_Chunk_MetaInfo(childId);
-            basechunk_ptr = (uint8_t *)malloc(TmpChildChunk.chunkSize);
-            memcpy(basechunk_ptr, cachedData.data(), TmpChildChunk.chunkSize);
+            memcpy(chi_basechunk_ptr_cache, cachedData.data(), TmpChildChunk.chunkSize);
+            basechunk_ptr = chi_basechunk_ptr_cache;
             basechunk_size = TmpChildChunk.chunkSize;
             // Since we are not using TmpChildChunk.chunkPtr, no need to manage it
             TmpChildChunk.loadFromDisk = false;
@@ -359,8 +363,6 @@ Chunk_t OfflineTreeFeatureLru::CutGreedy(uint64_t BasechunkId, const Chunk_t Tar
                 std::vector<uint8_t> dataToCache(basechunk_ptr, basechunk_ptr + basechunk_size);
                 chunkCache.insert(childId, dataToCache);
             }
-            if (TmpChildChunk.loadFromDisk)
-                free(TmpChildChunk.chunkPtr); // Free the delta data ptr
         }
 
         // uint8_t *basechunk_ptr = xd3_decode(TmpChildChunk.chunkPtr, TmpChildChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);
@@ -390,8 +392,8 @@ Chunk_t OfflineTreeFeatureLru::CutGreedy(uint64_t BasechunkId, const Chunk_t Tar
             {
                 cacheHitCount++;
                 TmpBroChunk = offline_dataWrite_->Get_Chunk_MetaInfo(broId);
-                bro_basechunk_ptr = (uint8_t *)malloc(TmpBroChunk.chunkSize);
-                memcpy(bro_basechunk_ptr, cachedData.data(), TmpBroChunk.chunkSize);
+                memcpy(bro_basechunk_ptr_cache, cachedData.data(), TmpBroChunk.chunkSize);
+                bro_basechunk_ptr = bro_basechunk_ptr_cache;
                 basechunk_size = TmpBroChunk.chunkSize;
                 TmpBroChunk.loadFromDisk = false;
             }
@@ -405,8 +407,6 @@ Chunk_t OfflineTreeFeatureLru::CutGreedy(uint64_t BasechunkId, const Chunk_t Tar
                     std::vector<uint8_t> dataToCache(bro_basechunk_ptr, bro_basechunk_ptr + basechunk_size);
                     chunkCache.insert(broId, dataToCache);
                 }
-                if (TmpBroChunk.loadFromDisk)
-                    free(TmpBroChunk.chunkPtr);
             }
 
             xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, bro_basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer); //*** resultchunk.saveSize save tmpMinDeltaSize only here
@@ -421,7 +421,6 @@ Chunk_t OfflineTreeFeatureLru::CutGreedy(uint64_t BasechunkId, const Chunk_t Tar
             if (TmpBroChunk.loadFromDisk)
                 free(TmpBroChunk.chunkPtr); // free bro chunk memory
             if (NeedFreeBro)
-
                 free(bro_basechunk_ptr); // free base chunk memory
         }
         StatsHit(tmpFatherID, resultchunk.chunkID, BasechunkId);

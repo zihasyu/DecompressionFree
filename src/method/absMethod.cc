@@ -820,7 +820,7 @@ void AbsMethod::PrintChunkInfo(string inputDirpath, int chunkingMethod, int meth
     out.close();
     return;
 }
-void AbsMethod::PrintChunkInfo(int64_t time, CommandLine_t CmdLine)
+void AbsMethod::PrintChunkInfo(double time, CommandLine_t CmdLine)
 {
     ofstream out;
     string fileName = "./chunkInfoLog.txt";
@@ -876,7 +876,7 @@ void AbsMethod::PrintChunkInfo(int64_t time, CommandLine_t CmdLine)
     return;
 }
 
-void AbsMethod::PrintOffline(int64_t time, CommandLine_t CmdLine)
+void AbsMethod::PrintOffline(double time, CommandLine_t CmdLine)
 {
     ofstream out;
     string fileName = "./offlineLog.txt";
@@ -931,7 +931,7 @@ void AbsMethod::PrintOffline(int64_t time, CommandLine_t CmdLine)
     out.close();
     return;
 }
-void AbsMethod::PrintChunkInfo(int64_t time, CommandLine_t CmdLine, double chunktime)
+void AbsMethod::PrintChunkInfo(double time, CommandLine_t CmdLine, double chunktime)
 {
     ofstream out;
     string fileName = "./chunkInfoLog.txt";
