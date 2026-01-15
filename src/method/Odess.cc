@@ -240,32 +240,6 @@ void Odess::ProcessTrace()
             std::cout << "Root node count: " << rootNodes.size() << std::endl;
             std::cout << "Calculated leaf node count: " << leafNodeCount << std::endl;
             std::cout << "==========================================" << std::endl;
-            // [NEW] DCC (Delta Chaining Cohesion) a.k.a. "插队率" 统计
-            double dcc_numerator = 0.0;
-            double dcc_denominator = 0.0;
-
-            for (const auto &pair : *rootChunkMap)
-            {
-                uint64_t key = pair.first;
-                const std::vector<uint64_t> &nodes = pair.second;
-
-                for (uint64_t node : nodes)
-                {
-                    if (key != node)
-                    {
-                        dcc_numerator++;
-                    }
-                    dcc_denominator++;
-                }
-            }
-
-            double dcc_ratio = (dcc_denominator > 0) ? (dcc_numerator / dcc_denominator) : 0.0;
-
-            std::cout << "===== DCC (插队率) for Version " << ads_Version - 1 << " =====" << std::endl;
-            std::cout << "Total nodes compared (分母): " << dcc_denominator << std::endl;
-            std::cout << "Mismatched nodes (分子): " << dcc_numerator << std::endl;
-            std::cout << "DCC Ratio (分子/分母): " << dcc_ratio << std::endl;
-            std::cout << "==========================================" << std::endl;
         }
     }
     recieveQueue->done_ = false;
