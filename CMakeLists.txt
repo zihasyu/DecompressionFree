@@ -12,6 +12,7 @@ set(EXECUTABLE_OUTPUT_PATH ${DFree_SOURCE_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${DFree_SOURCE_DIR}/lib)
 
 set(CMAKE_C_FLAGS_DEBUG "-O0 -Wall -g -ggdb3")
+# set(CMAKE_CXX_FLAGS_DEBUG "-O0 -Wall -g -ggdb3") # 火焰图only
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -Wall -fsanitize=address -fno-omit-frame-pointer -g -ggdb3") 
 # set(CMAKE_C_FLAGS_DEBUG "-O0 -Wall -g")
 # set(CMAKE_CXX_FLAGS_DEBUG "-O0 -Wall -g")

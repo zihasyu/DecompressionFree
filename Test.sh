@@ -49,28 +49,28 @@ methods=(
   # ["offlineTreeCache"]="-c 1 -m 3 -o 3"
 
   # design1
-  ["Design1"]="-c 1 -m 3 -o 1"
+  # ["Design1"]="-c 1 -m 3 -o 1"
   # design2
-  # ["Design2"]="-c 1 -m 3 -o 5"
+  ["Design2"]="-c 1 -m 3 -o 5"
   # ["offlineTreeCutLayer"]="-c 1 -m 3 -o 2"
   # ["offlineTreeIngnore"]="-c 1 -m 3 -o 5"
   # design3
   ["Design3"]="-c 1 -m 3 -o 6"
   # ["offlineTreeFeatureLru"]="-c 1 -m 3 -o 6"
-  # ["offlineTreeFeature"]="-c 1 -m 3 -o 4"
+  ["offlineTreeFeature"]="-c 1 -m 3 -o 4"
 )
 
 selected_datasets=(
   # "automake"
   # "bash"
   # "coreutils"
-  # "WindowsLog"
+  "WindowsLog"
   # "fdisk"
   # "glibc"
   # "smalltalk"
   # "gcc"
   # "chromium"
-  "linux"
+  # "linux"
   # "cassandra"
   # "vmdk"
   # "WEB"
@@ -78,8 +78,9 @@ selected_datasets=(
   # "Wiki"
 )
 execution_order=(
-  "Design3"
-  # "Design2"
+  # "Design3"
+  # "offlineTreeFeature"
+  "Design2"
   # "Design1"
 )
 
@@ -109,6 +110,15 @@ if [[ -z "${methods[$method_name]}" ]]; then
       
       # 在执行命令中加入 $R_FLAG_PARAM
       ./DFree -i "$path" $method_params $R_FLAG_PARAM -n "$num" > "${method_name}_${dataset}.txt"
+
+      #  # --- perf start ---
+      # PERF_DATA_FILE="perf_${method_name}_${dataset}.data"
+      
+      # echo "Recording performance data to $PERF_DATA_FILE"
+      
+      # # 使用 -o 选项指定输出文件名
+      #       sudo perf record -o "$PERF_DATA_FILE" -F 99 -g -- ./DFree -i "$path" $method_params $R_FLAG_PARAM -n "$num" > "perf_output_${method_name}_${dataset}.txt"
+      # # --- perf end---
       
       echo "Completed $method_name on $dataset"
     else
