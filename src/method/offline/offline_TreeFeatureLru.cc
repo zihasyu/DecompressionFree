@@ -3,7 +3,7 @@
 const size_t TREE_INSERT_SAVE_THRESHOLD = 128;
 
 OfflineTreeFeatureLru::OfflineTreeFeatureLru()
-    : chunkCache(1024) // 在构造函数初始化列表中初始化缓存容量
+// : chunkCache(1024) // 在构造函数初始化列表中初始化缓存容量
 {
     // cout << " Chunk_t is " << sizeof(Chunk_t) << " Chunk_t_ori is " << sizeof(Chunk_t_odess) << " <super_feature_t, unordered_set<string>> is " << sizeof(super_feature_t);
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
@@ -13,9 +13,9 @@ OfflineTreeFeatureLru::OfflineTreeFeatureLru()
     SFindex = new unordered_map<string, vector<int>>[FINESSE_SF_NUM];
     tmpDeltaBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
     MinBaseBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
-    bro_basechunk_ptr_cache = (uint8_t *)malloc(MAX_CHUNK_SIZE * sizeof(uint8_t));
-    chi_basechunk_ptr_cache = (uint8_t *)malloc(MAX_CHUNK_SIZE * sizeof(uint8_t));
-    basechunk_ptr_cache = (uint8_t *)malloc(MAX_CHUNK_SIZE * sizeof(uint8_t));
+    //     bro_basechunk_ptr_cache = (uint8_t *)malloc(MAX_CHUNK_SIZE * sizeof(uint8_t));
+    //     chi_basechunk_ptr_cache = (uint8_t *)malloc(MAX_CHUNK_SIZE * sizeof(uint8_t));
+    //     basechunk_ptr_cache = (uint8_t *)malloc(MAX_CHUNK_SIZE * sizeof(uint8_t));
 }
 
 OfflineTreeFeatureLru::~OfflineTreeFeatureLru()
@@ -284,20 +284,18 @@ Chunk_t OfflineTreeFeatureLru::CutGreedy(uint64_t BasechunkId, const Chunk_t Tar
     Chunk_t resultchunk;
     size_t basechunk_size = 0;
 
-    Chunk_t basechunk;
-    std::vector<uint8_t> cachedData;
     cacheAccessCount++;
-    if (chunkCache.tryGet(BasechunkId, cachedData))
+    size_t cachedSize = 0;
+    Chunk_t basechunk = offline_dataWrite_->Get_Chunk_MetaInfo(BasechunkId);
+    if (uint8_t *cachedPtr = chunkCache_.tryGet(BasechunkId, cachedSize); cachedPtr != nullptr)
     {
         cacheHitCount++;
-        basechunk = offline_dataWrite_->Get_Chunk_MetaInfo(BasechunkId);
-        basechunk.chunkPtr = basechunk_ptr_cache;
-        memcpy(basechunk.chunkPtr, cachedData.data(), basechunk.chunkSize);
+        basechunk.chunkPtr = cachedPtr;
+        // memcpy(basechunk.chunkPtr, cachedData.data(), basechunk.chunkSize);
         basechunk.loadFromDisk = false;
     }
     else
     {
-        basechunk = offline_dataWrite_->Get_Chunk_MetaInfo(BasechunkId);
         if (basechunk.basechunkID < 0)
         {
             basechunk = offline_dataWrite_->Get_Chunk_Info(BasechunkId);
@@ -308,8 +306,8 @@ Chunk_t OfflineTreeFeatureLru::CutGreedy(uint64_t BasechunkId, const Chunk_t Tar
         }
         if (basechunk.chunkPtr != nullptr)
         {
-            std::vector<uint8_t> dataToCache(basechunk.chunkPtr, basechunk.chunkPtr + basechunk.chunkSize);
-            chunkCache.insert(BasechunkId, dataToCache);
+            // std::vector<uint8_t> dataToCache(basechunk.chunkPtr, basechunk.chunkPtr + basechunk.chunkSize);
+            chunkCache_.insert(BasechunkId, basechunk.chunkPtr, basechunk.chunkSize);
         }
     }
 
@@ -337,17 +335,16 @@ Chunk_t OfflineTreeFeatureLru::CutGreedy(uint64_t BasechunkId, const Chunk_t Tar
         uint64_t tmpFatherID = resultchunk.chunkID;
         uint64_t tmpChildID = resultchunk.chunkID;
 
-        Chunk_t TmpChildChunk;
         uint64_t childId = resultchunk.FirstChildID;
+        Chunk_t TmpChildChunk = offline_dataWrite_->Get_Chunk_MetaInfo(childId);
         uint8_t *basechunk_ptr = nullptr;
         cacheAccessCount++;
         bool NeedFreeChild = false;
-        if (chunkCache.tryGet(childId, cachedData))
+        if (uint8_t *cachedPtr2 = chunkCache_.tryGet(childId, cachedSize); cachedPtr2 != nullptr)
         {
             cacheHitCount++;
-            TmpChildChunk = offline_dataWrite_->Get_Chunk_MetaInfo(childId);
-            memcpy(chi_basechunk_ptr_cache, cachedData.data(), TmpChildChunk.chunkSize);
-            basechunk_ptr = chi_basechunk_ptr_cache;
+            // memcpy(chi_basechunk_ptr_cache, cachedData.data(), TmpChildChunk.chunkSize);
+            basechunk_ptr = cachedPtr2;
             basechunk_size = TmpChildChunk.chunkSize;
             // Since we are not using TmpChildChunk.chunkPtr, no need to manage it
             TmpChildChunk.loadFromDisk = false;
@@ -360,8 +357,8 @@ Chunk_t OfflineTreeFeatureLru::CutGreedy(uint64_t BasechunkId, const Chunk_t Tar
             if (basechunk_ptr != nullptr)
             {
                 // Cache the fully decoded chunk data
-                std::vector<uint8_t> dataToCache(basechunk_ptr, basechunk_ptr + basechunk_size);
-                chunkCache.insert(childId, dataToCache);
+                // std::vector<uint8_t> dataToCache(basechunk_ptr, basechunk_ptr + basechunk_size);
+                chunkCache_.insert(childId, basechunk_ptr, basechunk_size);
             }
         }
 
@@ -388,12 +385,12 @@ Chunk_t OfflineTreeFeatureLru::CutGreedy(uint64_t BasechunkId, const Chunk_t Tar
             bool NeedFreeBro = false;
 
             cacheAccessCount++;
-            if (chunkCache.tryGet(broId, cachedData))
+            if (uint8_t *cachedPtr3 = chunkCache_.tryGet(broId, cachedSize); cachedPtr3 != nullptr)
             {
                 cacheHitCount++;
                 TmpBroChunk = offline_dataWrite_->Get_Chunk_MetaInfo(broId);
-                memcpy(bro_basechunk_ptr_cache, cachedData.data(), TmpBroChunk.chunkSize);
-                bro_basechunk_ptr = bro_basechunk_ptr_cache;
+                // memcpy(bro_basechunk_ptr_cache, cachedData.data(), TmpBroChunk.chunkSize);
+                bro_basechunk_ptr = cachedPtr3;
                 basechunk_size = TmpBroChunk.chunkSize;
                 TmpBroChunk.loadFromDisk = false;
             }
@@ -404,8 +401,8 @@ Chunk_t OfflineTreeFeatureLru::CutGreedy(uint64_t BasechunkId, const Chunk_t Tar
                 NeedFreeBro = true;
                 if (bro_basechunk_ptr != nullptr)
                 {
-                    std::vector<uint8_t> dataToCache(bro_basechunk_ptr, bro_basechunk_ptr + basechunk_size);
-                    chunkCache.insert(broId, dataToCache);
+                    // std::vector<uint8_t> dataToCache(bro_basechunk_ptr, bro_basechunk_ptr + basechunk_size);
+                    chunkCache_.insert(broId, bro_basechunk_ptr, basechunk_size);
                 }
             }
 

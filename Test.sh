@@ -64,23 +64,23 @@ selected_datasets=(
   # "automake"
   # "bash"
   # "coreutils"
-  "WindowsLog"
+  # "WindowsLog"
   # "fdisk"
-  "glibc"
+  # "glibc"
   # "smalltalk"
   # "gcc"
   # "chromium"
   "linux"
   # "cassandra"
   # "vmdk"
-  "WEB"
+  # "WEB"
   # "ThunderbirdLog"
   # "Wiki"
 )
 execution_order=(
   "Design3"
   # "Design2"
-  "Design1"
+  # "Design1"
 )
 
 
@@ -98,10 +98,10 @@ if [[ -z "${methods[$method_name]}" ]]; then
       read -r path num <<< "${datasets[$dataset]}"
       echo "Processing dataset: $dataset"
       
-      sudo rm -f Containers/*
-      sudo rm -f OfflineContainers/*
-      sudo rm -f restoreFile/*
-      sudo sh -c  "echo 3 > /proc/sys/vm/drop_caches"
+      # sudo rm -f Containers/*
+      # sudo rm -f OfflineContainers/*
+      # sudo rm -f restoreFile/*
+      # sudo sh -c  "echo 3 > /proc/sys/vm/drop_caches"
       if [[ ("$method_name" == "offlineAllGreedy" || "$method_name" == "AllGreedy") && "$dataset" == "WEB" ]]; then
         echo "Applying special rule for $method_name on WEB: changing num to 3"
         num=3

@@ -3,7 +3,7 @@
 
 #include "../absmethod.h"
 #include "../odess_similarity_detection.h"
-
+#include "../chunkbufferpool.h"
 #include "../lruCache.h"
 // #include "cache.hpp"
 // #include "cache_policy.hpp"
@@ -20,7 +20,7 @@ private:
     uint8_t *MinBaseBuffer = nullptr;
     uint8_t *tmpDeltaBuffer = nullptr;
 
-    lru11::Cache<uint64_t, std::vector<uint8_t>> chunkCache;
+    // lru11::Cache<uint64_t, std::vector<uint8_t>> chunkCache;
     size_t cacheHitCount = 0;
     size_t cacheAccessCount = 0;
     std::unordered_map<uint64_t, int> chunkHotMap;
@@ -30,6 +30,7 @@ private:
     uint8_t *bro_basechunk_ptr_cache = nullptr;
     uint8_t *chi_basechunk_ptr_cache = nullptr;
     uint8_t *basechunk_ptr_cache = nullptr;
+    ChunkBufferPool<MAX_CHUNK_SIZE, 1024> chunkCache_;
 
 public:
     OfflineTreeFeatureLru();
