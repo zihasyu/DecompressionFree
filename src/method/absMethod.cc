@@ -889,7 +889,7 @@ void AbsMethod::PrintOffline(double time, CommandLine_t CmdLine)
         out.open(fileName, ios::app);
     }
     out << "-----------------INSTRUCTION----------------------" << endl;
-    out << "./DFree -i " << CmdLine.dirName << " -c " << CmdLine.chunkingType << " -m " << CmdLine.compressionMethod << " -n " << CmdLine.backupNum << " -r " << CmdLine.ratio << " -a " << CmdLine.AcceptThreshold << " -b " << CmdLine.IsFalseFilter << " -t " << CmdLine.TurnOnNameHash << " -H " << CmdLine.MultiHeaderChunk << "-o" << CmdLine.offlineMethod << endl;
+    out << "./DFree -i " << CmdLine.dirName << " -c " << CmdLine.chunkingType << " -m " << CmdLine.compressionMethod << " -n " << CmdLine.backupNum << " -r " << CmdLine.ratio << " -a " << CmdLine.AcceptThreshold << " -b " << CmdLine.IsFalseFilter << " -t " << CmdLine.TurnOnNameHash << " -H " << CmdLine.MultiHeaderChunk << " -o " << CmdLine.offlineMethod << " -T " << CmdLine.Threshold << endl;
     out << "-----------------CHUNK NUM-----------------------" << endl;
     out << "logical chunk num: " << logicalchunkNum << endl;
     out << "unique chunk num: " << uniquechunkNum << endl;

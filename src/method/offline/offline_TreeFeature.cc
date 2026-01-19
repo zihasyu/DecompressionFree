@@ -1,7 +1,5 @@
 #include "../../../include/Offline/offline_tree_Feature.h"
 
-const size_t TREE_INSERT_SAVE_THRESHOLD = 128;
-
 OfflineTreeFeature::OfflineTreeFeature()
 {
     // cout << " Chunk_t is " << sizeof(Chunk_t) << " Chunk_t_ori is " << sizeof(Chunk_t_odess) << " <super_feature_t, unordered_set<string>> is " << sizeof(super_feature_t);

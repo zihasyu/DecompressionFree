@@ -1,7 +1,5 @@
 #include "../../../include/Offline/offline_tree_Feature_lru.h"
 
-const size_t TREE_INSERT_SAVE_THRESHOLD = 128;
-
 OfflineTreeFeatureLru::OfflineTreeFeatureLru()
 // : chunkCache(1024) // 在构造函数初始化列表中初始化缓存容量
 {

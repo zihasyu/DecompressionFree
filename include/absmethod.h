@@ -180,5 +180,6 @@ public:
     }
     Chunk_t xd3_recursive_restore_offline_time(uint64_t BasechunkId);
     std::unordered_map<uint64_t, std::vector<uint64_t>> *rootChunkMap;
+    size_t TREE_INSERT_SAVE_THRESHOLD = 0;
 };
 #endif

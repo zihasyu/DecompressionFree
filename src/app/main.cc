@@ -26,7 +26,7 @@ int main(int argc, char **argv)
 
     vector<string> readfileList;
 
-    const char optString[] = "i:m:c:n:r:a:b:t:H:o:R:";
+    const char optString[] = "i:m:c:n:r:a:b:t:H:o:R:T:";
     // if (argc != sizeof(optString) && argc != sizeof(optString) - 2 && argc != sizeof(optString) - 4 && argc != sizeof(optString) - 6 && argc != sizeof(optString) - 8 && argc != sizeof(optString) - 10 && argc != sizeof(optString) - 12 && argc != sizeof(optString) - 14 && argc != sizeof(optString) - 16)
     // {
     //     cout << "argc is " << argc << endl;
@@ -72,6 +72,8 @@ int main(int argc, char **argv)
             break;
         case 'R': // for restore
             CmdLine.enableRestore = atoi(optarg);
+        case 'T':
+            CmdLine.Threshold = atoi(optarg);
             break;
         default:
             break;
@@ -327,7 +329,7 @@ int main(int argc, char **argv)
     default:
         break;
     }
-
+    OfflineAbsMethodObj->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
     if (CmdLine.offlineMethod >= 0)
     {
         OfflineAbsMethodObj->offline_dataWrite_ = new dataWrite();
