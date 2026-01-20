@@ -32,6 +32,8 @@ public:
     std::chrono::time_point<std::chrono::high_resolution_clock> startMiDelta, endMiDelta;
     std::chrono::duration<double> MiDeltaTime;
 
+    std::chrono::duration<double> RestoreChunkTime = std::chrono::duration<double>::zero();
+
     // old
     int ads_Version = 0;
     // util

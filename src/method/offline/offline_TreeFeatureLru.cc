@@ -77,6 +77,7 @@ void OfflineTreeFeatureLru::ProcessTrace()
             uint64_t cid = *currentIter;
             currentIter++;
 
+            auto startRestoreChunk = std::chrono::high_resolution_clock::now();
             // 1. Restore the chunk content to its original form
             Chunk_t tmpChunk = dataWrite_->Get_Chunk_MetaInfo(cid);
             if (tmpChunk.basechunkID >= 0)
@@ -106,6 +107,8 @@ void OfflineTreeFeatureLru::ProcessTrace()
                     free(rawChunk.chunkPtr);
                 }
             }
+            auto endRestoreChunk = std::chrono::high_resolution_clock::now();
+            RestoreChunkTime += endRestoreChunk - startRestoreChunk;
 
             // 1.5. 检查并处理“插队”
             auto subRootIt = sortedRootChunkMap.find(cid);

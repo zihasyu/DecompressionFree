@@ -72,6 +72,7 @@ int main(int argc, char **argv)
             break;
         case 'R': // for restore
             CmdLine.enableRestore = atoi(optarg);
+            break;
         case 'T':
             CmdLine.Threshold = atoi(optarg);
             break;
@@ -341,6 +342,7 @@ int main(int argc, char **argv)
         OfflineAbsMethodObj->ProcessTrace();
         auto endTmp = std::chrono::high_resolution_clock::now();
         auto offlineTimeTmp = std::chrono::duration_cast<std::chrono::duration<double>>(endTmp - startTmp).count();
+        cout << "RestoreChunkTime: " << OfflineAbsMethodObj->RestoreChunkTime.count() << "s" << std::endl;
         std::cout << "Time taken by for offline: " << offlineTimeTmp << " s " << std::endl;
         std::cout << "Offline Compression ratio " << (double)absMethodObj->logicalchunkSize / (double)OfflineAbsMethodObj->uniquechunkSize << std::endl;
         std::cout << "Offline Throughput " << (double)absMethodObj->logicalchunkSize / offlineTimeTmp / 1024 / 1024 << " MiB/s" << std::endl;

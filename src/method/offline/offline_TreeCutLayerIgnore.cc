@@ -41,6 +41,7 @@ void OfflineTreeCutLayerIgnore::ProcessTrace()
     // [CHANGE] Iterate through all chunks using a for loop
     for (size_t i = 0; i < totalChunks; i++)
     {
+        auto startRestoreChunk = std::chrono::high_resolution_clock::now();
         // 1. Restore the chunk content to its original form
         Chunk_t tmpChunk = dataWrite_->Get_Chunk_MetaInfo(i);
         if (tmpChunk.basechunkID >= 0)
@@ -70,6 +71,8 @@ void OfflineTreeCutLayerIgnore::ProcessTrace()
                 free(rawChunk.chunkPtr);
             }
         }
+        auto endRestoreChunk = std::chrono::high_resolution_clock::now();
+        RestoreChunkTime += endRestoreChunk - startRestoreChunk;
 
         // 2. Re-compute super features for the original content
         tmpChunkContent.assign((char *)tmpChunk.chunkPtr, tmpChunk.chunkSize);
