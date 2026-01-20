@@ -42,7 +42,7 @@ void OfflineTreeFeatureLru::ProcessTrace()
         sortedRootChunkMap.insert(pair);
     }
 
-    // [CHANGE] 遍历新创建的、有序的 sortedRootChunkMap
+    // 遍历新创建的、有序的 sortedRootChunkMap
     for (const auto &pair : sortedRootChunkMap)
     {
         uint64_t rootId = pair.first;
@@ -51,31 +51,33 @@ void OfflineTreeFeatureLru::ProcessTrace()
         {
             continue;
         }
-        // [FIX] 对主根进行 logicalRootMap 的初始化
+        // 对主根进行 logicalRootMap 的初始化
         logicalRootMap[rootId] = rootId;
-        // --- 栈式遍历，现在包含迭代器和逻辑根节点 ---
-        std::stack<std::vector<uint64_t>::const_iterator> iterStack;
-        std::stack<std::vector<uint64_t>::const_iterator> endStack;
-        std::stack<uint64_t> initialRootStack; // [NEW] 用于跟踪每一层的初始根ID
 
-        iterStack.push(chunkIds.begin());
-        endStack.push(chunkIds.end());
-        initialRootStack.push(rootId); // 初始根节点
-        while (!iterStack.empty())
+        // --- 队列式广度优先遍历 ---
+        struct QueueItem {
+            std::vector<uint64_t>::const_iterator iter;
+            std::vector<uint64_t>::const_iterator end;
+            uint64_t initialRootId;
+        };
+        std::queue<QueueItem> bfsQueue;
+        bfsQueue.push({chunkIds.begin(), chunkIds.end(), rootId});
+
+        while (!bfsQueue.empty())
         {
-            auto &currentIter = iterStack.top();
-            auto &currentEnd = endStack.top();
-            uint64_t currentInitialRootId = initialRootStack.top(); // 获取当前层的初始根ID
-            if (currentIter == currentEnd)
-            {
-                iterStack.pop();
-                endStack.pop();
-                initialRootStack.pop(); // 同步出栈
-                continue;
-            }
+            QueueItem item = bfsQueue.front();
+            bfsQueue.pop();
 
-            uint64_t cid = *currentIter;
-            currentIter++;
+            if (item.iter == item.end)
+                continue;
+
+            uint64_t cid = *item.iter;
+            auto nextIter = item.iter;
+            ++nextIter;
+            // 如果还有下一个元素，继续入队
+            if (nextIter != item.end) {
+                bfsQueue.push({nextIter, item.end, item.initialRootId});
+            }
 
             auto startRestoreChunk = std::chrono::high_resolution_clock::now();
             // 1. Restore the chunk content to its original form
@@ -115,14 +117,11 @@ void OfflineTreeFeatureLru::ProcessTrace()
             if (subRootIt != sortedRootChunkMap.end() && subRootIt->first != subRootIt->second[0])
             {
                 const std::vector<uint64_t> &subChunkIds = subRootIt->second;
-                iterStack.push(subChunkIds.begin());
-                endStack.push(subChunkIds.end());
-                initialRootStack.push(cid); // 将子根ID作为新一层的初始根压栈
-                logicalRootMap[cid] = cid;  // 初始化子根的逻辑根为它自己
-                // std::cout << "    !! [DEBUG] Chunk " << cid << " is a Sub-root. Pushing its group to stack. Context switched to " << cid << "." << std::endl;
+                bfsQueue.push({subChunkIds.begin(), subChunkIds.end(), cid});
+                logicalRootMap[cid] = cid;
             }
 
-            uint64_t basechunkid = logicalRootMap[currentInitialRootId];
+            uint64_t basechunkid = logicalRootMap[item.initialRootId];
             if (cid == rootId)
                 basechunkid = -1; // 根节点没有基准块
 
@@ -153,8 +152,6 @@ void OfflineTreeFeatureLru::ProcessTrace()
                     }
                     tmpChunk.basechunkID = -1;
 
-                    // if (tmpChunk.chunkSize > 60)
-                    //     table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
                     basechunkNum++;
                     basechunkSize += tmpChunk.saveSize;
                     free(deltachunk);
@@ -170,9 +167,6 @@ void OfflineTreeFeatureLru::ProcessTrace()
                     // Delta is successful
                     tmpChunk.deltaFlag = DELTA;
                     tmpChunk.basechunkID = RestoreBasechunk.chunkID;
-
-                    // if (tmpChunk.chunkSize > 60)
-                    //     table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
 
                     if (tmpChunk.saveSize >= TREE_INSERT_SAVE_THRESHOLD)
                     {
@@ -213,8 +207,6 @@ void OfflineTreeFeatureLru::ProcessTrace()
                 }
                 tmpChunk.basechunkID = -1;
 
-                // if (tmpChunk.chunkSize > 60)
-                //     table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
                 basechunkNum++;
                 basechunkSize += tmpChunk.saveSize;
 

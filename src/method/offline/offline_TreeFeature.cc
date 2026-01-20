@@ -38,50 +38,44 @@ void OfflineTreeFeature::ProcessTrace()
         sortedRootChunkMap.insert(pair);
     }
 
-    // [CHANGE] 遍历新创建的、有序的 sortedRootChunkMap
+    // 遍历新创建的、有序的 sortedRootChunkMap
     for (const auto &pair : sortedRootChunkMap)
     {
         uint64_t rootId = pair.first;
         const std::vector<uint64_t> &chunkIds = pair.second;
-
-        // [DEBUG] Print the current pair being considered
-        // std::stringstream ss;
-        // for (size_t i = 0; i < chunkIds.size(); ++i)
-        // {
-        //     ss << chunkIds[i] << (i < chunkIds.size() - 1 ? ", " : "");
-        // }
-        // std::cout << "\n--- Examining Pair: key=" << rootId << ", vector=[" << ss.str() << "]" << std::endl;
 
         // 子根 (key != vector[0]) 会在遍历主根时被“插队”处理，所以这里直接跳过。
         if (chunkIds.empty() || rootId != chunkIds[0])
         {
             continue;
         }
-        // [FIX] 对主根进行 logicalRootMap 的初始化
+        // 对主根进行 logicalRootMap 的初始化
         logicalRootMap[rootId] = rootId;
-        // --- 栈式遍历，现在包含迭代器和逻辑根节点 ---
-        std::stack<std::vector<uint64_t>::const_iterator> iterStack;
-        std::stack<std::vector<uint64_t>::const_iterator> endStack;
-        std::stack<uint64_t> initialRootStack; // [NEW] 用于跟踪每一层的初始根ID
 
-        iterStack.push(chunkIds.begin());
-        endStack.push(chunkIds.end());
-        initialRootStack.push(rootId); // 初始根节点
-        while (!iterStack.empty())
+        // --- 队列式广度优先遍历 ---
+        struct QueueItem {
+            std::vector<uint64_t>::const_iterator iter;
+            std::vector<uint64_t>::const_iterator end;
+            uint64_t initialRootId;
+        };
+        std::queue<QueueItem> bfsQueue;
+        bfsQueue.push({chunkIds.begin(), chunkIds.end(), rootId});
+
+        while (!bfsQueue.empty())
         {
-            auto &currentIter = iterStack.top();
-            auto &currentEnd = endStack.top();
-            uint64_t currentInitialRootId = initialRootStack.top(); // 获取当前层的初始根ID
-            if (currentIter == currentEnd)
-            {
-                iterStack.pop();
-                endStack.pop();
-                initialRootStack.pop(); // 同步出栈
-                continue;
-            }
+            QueueItem item = bfsQueue.front();
+            bfsQueue.pop();
 
-            uint64_t cid = *currentIter;
-            currentIter++;
+            if (item.iter == item.end)
+                continue;
+
+            uint64_t cid = *item.iter;
+            auto nextIter = item.iter;
+            ++nextIter;
+            // 如果还有下一个元素，继续入队
+            if (nextIter != item.end) {
+                bfsQueue.push({nextIter, item.end, item.initialRootId});
+            }
 
             // 1. Restore the chunk content to its original form
             Chunk_t tmpChunk = dataWrite_->Get_Chunk_MetaInfo(cid);
@@ -118,11 +112,8 @@ void OfflineTreeFeature::ProcessTrace()
             if (subRootIt != sortedRootChunkMap.end() && subRootIt->first != subRootIt->second[0])
             {
                 const std::vector<uint64_t> &subChunkIds = subRootIt->second;
-                iterStack.push(subChunkIds.begin());
-                endStack.push(subChunkIds.end());
-                initialRootStack.push(cid); // 将子根ID作为新一层的初始根压栈
-                logicalRootMap[cid] = cid;  // 初始化子根的逻辑根为它自己
-                // std::cout << "    !! [DEBUG] Chunk " << cid << " is a Sub-root. Pushing its group to stack. Context switched to " << cid << "." << std::endl;
+                bfsQueue.push({subChunkIds.begin(), subChunkIds.end(), cid});
+                logicalRootMap[cid] = cid;
             }
 
             // 2. Re-compute super features for the original content
@@ -139,14 +130,9 @@ void OfflineTreeFeature::ProcessTrace()
             //     basechunkid = table.Tree_SF_Find(superfeature);
             // }
 
-            uint64_t basechunkid = logicalRootMap[currentInitialRootId];
+            uint64_t basechunkid = logicalRootMap[item.initialRootId];
             if (cid == rootId)
                 basechunkid = -1; // 根节点没有基准块
-
-            // [DEBUG] Print cid and the basechunkid to be used
-            // std::cout << "    -> [DEBUG] Processing cid: " << cid
-            //           << " | InitialRoot: " << currentInitialRootId
-            //           << " | BasechunkID for CutGreedy: " << basechunkid << std::endl;
 
             // 3. Re-process the chunk
             if (basechunkid != -1)
