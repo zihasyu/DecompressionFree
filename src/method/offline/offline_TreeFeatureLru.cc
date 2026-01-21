@@ -30,106 +30,148 @@ OfflineTreeFeatureLru::~OfflineTreeFeatureLru()
     }
 }
 
+// 线程安全队列
+template<typename T>
+class ThreadSafeQueue {
+public:
+    void push(const T& value) {
+        std::lock_guard<std::mutex> lk(m_);
+        q_.push(value);
+        cv_.notify_one();
+    }
+    bool pop(T& value) {
+        std::unique_lock<std::mutex> lk(m_);
+        cv_.wait(lk, [this]{ return !q_.empty() || finished_; });
+        if (q_.empty()) return false;
+        value = std::move(q_.front());
+        q_.pop();
+        return true;
+    }
+    void set_finished() {
+        std::lock_guard<std::mutex> lk(m_);
+        finished_ = true;
+        cv_.notify_all();
+    }
+private:
+    std::queue<T> q_;
+    std::mutex m_;
+    std::condition_variable cv_;
+    bool finished_ = false;
+};
+
+// 用于线程间传递的结构体
+struct RestoredChunk {
+    uint64_t rootId;
+    uint64_t cid;
+    uint64_t basechunkid;
+    Chunk_t tmpChunk;
+    uint64_t initialRootId;
+};
+
 void OfflineTreeFeatureLru::ProcessTrace()
 {
-    // string tmpChunkContent;
-    // SuperFeatures superfeature;
-    size_t nextVersionEndPointIndex = 0;
+    using namespace std;
+    using namespace std::chrono;
+
+    ThreadSafeQueue<RestoredChunk> chunkQueue;
 
     std::map<uint64_t, const std::vector<uint64_t> &> sortedRootChunkMap;
     for (const auto &pair : *rootChunkMap)
-    {
         sortedRootChunkMap.insert(pair);
-    }
 
-    // 遍历新创建的、有序的 sortedRootChunkMap
-    for (const auto &pair : sortedRootChunkMap)
-    {
-        uint64_t rootId = pair.first;
-        const std::vector<uint64_t> &chunkIds = pair.second;
-        if (chunkIds.empty() || rootId != chunkIds[0])
+    // 恢复线程
+    std::thread restoreThread([&](){
+        for (const auto &pair : sortedRootChunkMap)
         {
-            continue;
-        }
-        // 对主根进行 logicalRootMap 的初始化
-        logicalRootMap[rootId] = rootId;
-
-        // --- 队列式广度优先遍历 ---
-        struct QueueItem {
-            std::vector<uint64_t>::const_iterator iter;
-            std::vector<uint64_t>::const_iterator end;
-            uint64_t initialRootId;
-        };
-        std::queue<QueueItem> bfsQueue;
-        bfsQueue.push({chunkIds.begin(), chunkIds.end(), rootId});
-
-        while (!bfsQueue.empty())
-        {
-            QueueItem item = bfsQueue.front();
-            bfsQueue.pop();
-
-            if (item.iter == item.end)
+            uint64_t rootId = pair.first;
+            const std::vector<uint64_t> &chunkIds = pair.second;
+            if (chunkIds.empty() || rootId != chunkIds[0])
                 continue;
+            logicalRootMap[rootId] = rootId;
 
-            uint64_t cid = *item.iter;
-            auto nextIter = item.iter;
-            ++nextIter;
-            // 如果还有下一个元素，继续入队
-            if (nextIter != item.end) {
-                bfsQueue.push({nextIter, item.end, item.initialRootId});
-            }
+            struct QueueItem {
+                std::vector<uint64_t>::const_iterator iter;
+                std::vector<uint64_t>::const_iterator end;
+                uint64_t initialRootId;
+            };
+            std::queue<QueueItem> bfsQueue;
+            bfsQueue.push({chunkIds.begin(), chunkIds.end(), rootId});
 
-            auto startRestoreChunk = std::chrono::high_resolution_clock::now();
-            // 1. Restore the chunk content to its original form
-            Chunk_t tmpChunk = dataWrite_->Get_Chunk_MetaInfo(cid);
-            if (tmpChunk.basechunkID >= 0)
+            while (!bfsQueue.empty())
             {
-                Chunk_t tmpPreChunk = dataWrite_->Get_Chunk_Info(tmpChunk.basechunkID);
-                Chunk_t tmpDeltaChunk = dataWrite_->Get_Chunk_Info(cid);
-                uint64_t tmpSize = 0;
-                tmpChunk.chunkPtr = xd3_decode(tmpDeltaChunk.chunkPtr, tmpDeltaChunk.saveSize, tmpPreChunk.chunkPtr, tmpPreChunk.chunkSize, &tmpSize);
-                tmpChunk.loadFromDisk = true;
-                if (tmpPreChunk.loadFromDisk)
-                    free(tmpPreChunk.chunkPtr);
-                if (tmpDeltaChunk.loadFromDisk)
-                    free(tmpDeltaChunk.chunkPtr);
-            }
-            else
-            {
-                Chunk_t rawChunk = dataWrite_->Get_Chunk_Info(cid);
-                tmpChunk = rawChunk;
-                tmpChunk.chunkPtr = (uint8_t *)malloc(tmpChunk.chunkSize);
-                if (tmpChunk.chunkPtr != nullptr && rawChunk.chunkPtr != nullptr)
-                {
-                    memcpy(tmpChunk.chunkPtr, rawChunk.chunkPtr, tmpChunk.chunkSize);
+                QueueItem item = bfsQueue.front();
+                bfsQueue.pop();
+
+                if (item.iter == item.end)
+                    continue;
+
+                uint64_t cid = *item.iter;
+                auto nextIter = item.iter;
+                ++nextIter;
+                if (nextIter != item.end) {
+                    bfsQueue.push({nextIter, item.end, item.initialRootId});
                 }
-                tmpChunk.loadFromDisk = true;
-                if (rawChunk.loadFromDisk)
+
+                auto startRestoreChunk = high_resolution_clock::now();
+                Chunk_t tmpChunk = dataWrite_->Get_Chunk_MetaInfo(cid);
+                if (tmpChunk.basechunkID >= 0)
                 {
-                    free(rawChunk.chunkPtr);
+                    Chunk_t tmpPreChunk = dataWrite_->Get_Chunk_Info(tmpChunk.basechunkID);
+                    Chunk_t tmpDeltaChunk = dataWrite_->Get_Chunk_Info(cid);
+                    uint64_t tmpSize = 0;
+                    tmpChunk.chunkPtr = xd3_decode(tmpDeltaChunk.chunkPtr, tmpDeltaChunk.saveSize, tmpPreChunk.chunkPtr, tmpPreChunk.chunkSize, &tmpSize);
+                    tmpChunk.loadFromDisk = true;
+                    if (tmpPreChunk.loadFromDisk)
+                        free(tmpPreChunk.chunkPtr);
+                    if (tmpDeltaChunk.loadFromDisk)
+                        free(tmpDeltaChunk.chunkPtr);
                 }
+                else
+                {
+                    Chunk_t rawChunk = dataWrite_->Get_Chunk_Info(cid);
+                    tmpChunk = rawChunk;
+                    tmpChunk.chunkPtr = (uint8_t *)malloc(tmpChunk.chunkSize);
+                    if (tmpChunk.chunkPtr != nullptr && rawChunk.chunkPtr != nullptr)
+                        memcpy(tmpChunk.chunkPtr, rawChunk.chunkPtr, tmpChunk.chunkSize);
+                    tmpChunk.loadFromDisk = true;
+                    if (rawChunk.loadFromDisk)
+                        free(rawChunk.chunkPtr);
+                }
+                auto endRestoreChunk = high_resolution_clock::now();
+                RestoreChunkTime += endRestoreChunk - startRestoreChunk;
+
+                auto subRootIt = sortedRootChunkMap.find(cid);
+                if (subRootIt != sortedRootChunkMap.end() && subRootIt->first != subRootIt->second[0])
+                {
+                    const std::vector<uint64_t> &subChunkIds = subRootIt->second;
+                    bfsQueue.push({subChunkIds.begin(), subChunkIds.end(), cid});
+                    logicalRootMap[cid] = cid;
+                }
+
+                uint64_t basechunkid = logicalRootMap[item.initialRootId];
+                if (cid == rootId)
+                    basechunkid = -1;
+
+                // 放入队列，交给处理线程
+                chunkQueue.push(RestoredChunk{rootId, cid, basechunkid, tmpChunk, item.initialRootId});
             }
-            auto endRestoreChunk = std::chrono::high_resolution_clock::now();
-            RestoreChunkTime += endRestoreChunk - startRestoreChunk;
+        }
+        chunkQueue.set_finished();
+    });
 
-            // 1.5. 检查并处理“插队”
-            auto subRootIt = sortedRootChunkMap.find(cid);
-            if (subRootIt != sortedRootChunkMap.end() && subRootIt->first != subRootIt->second[0])
-            {
-                const std::vector<uint64_t> &subChunkIds = subRootIt->second;
-                bfsQueue.push({subChunkIds.begin(), subChunkIds.end(), cid});
-                logicalRootMap[cid] = cid;
-            }
+    // 处理线程
+    std::thread processThread([&](){
+        RestoredChunk item;
+        while (chunkQueue.pop(item))
+        {
+            uint64_t rootId = item.rootId;
+            uint64_t cid = item.cid;
+            uint64_t basechunkid = item.basechunkid;
+            Chunk_t &tmpChunk = item.tmpChunk;
+            uint64_t initialRootId = item.initialRootId;
 
-            uint64_t basechunkid = logicalRootMap[item.initialRootId];
-            if (cid == rootId)
-                basechunkid = -1; // 根节点没有基准块
-
-            // 3. Re-process the chunk
             if (basechunkid != -1)
-            // A potential base chunk was found
             {
-                // Use CutGreedy to find the best base within the delta tree
                 auto RestoreBasechunk = CutGreedy(basechunkid, tmpChunk);
                 uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
 
@@ -138,7 +180,6 @@ void OfflineTreeFeatureLru::ProcessTrace()
 
                 if (tmpChunk.saveSize > tmpChunk.chunkSize || tmpChunk.saveSize <= 0 || RestoreBasechunk.chunkSize == 0)
                 {
-                    // Delta is not effective, fallback to LZ4
                     int tmpChunkLz4CompressSize = LZ4_compress_fast((char *)tmpChunk.chunkPtr, (char *)lz4ChunkBuffer, tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
                     if (tmpChunkLz4CompressSize > 0)
                     {
@@ -156,7 +197,6 @@ void OfflineTreeFeatureLru::ProcessTrace()
                     basechunkSize += tmpChunk.saveSize;
                     free(deltachunk);
 
-                    // Insert into the destination offline_dataWrite_
                     if (tmpChunk.deltaFlag == NO_LZ4)
                         offline_dataWrite_->Chunk_Insert(tmpChunk);
                     else
@@ -164,7 +204,6 @@ void OfflineTreeFeatureLru::ProcessTrace()
                 }
                 else
                 {
-                    // Delta is successful
                     tmpChunk.deltaFlag = DELTA;
                     tmpChunk.basechunkID = RestoreBasechunk.chunkID;
 
@@ -187,12 +226,10 @@ void OfflineTreeFeatureLru::ProcessTrace()
                     StatsDelta(tmpChunk);
                     free(deltachunk);
 
-                    // Insert into the destination offline_dataWrite_
                     offline_dataWrite_->Chunk_Insert(tmpChunk);
                 }
             }
             else
-            // No suitable base chunk found, treat as a new base chunk
             {
                 int tmpChunkLz4CompressSize = LZ4_compress_fast((char *)tmpChunk.chunkPtr, (char *)lz4ChunkBuffer, tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
                 if (tmpChunkLz4CompressSize > 0)
@@ -210,24 +247,22 @@ void OfflineTreeFeatureLru::ProcessTrace()
                 basechunkNum++;
                 basechunkSize += tmpChunk.saveSize;
 
-                // Insert into the destination offline_dataWrite_
                 if (tmpChunk.deltaFlag == NO_LZ4)
                     offline_dataWrite_->Chunk_Insert(tmpChunk);
                 else
                     offline_dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
             }
 
-            // Update statistics
-            uniquechunkNum++; // In offline mode, every chunk is processed as "unique"
+            uniquechunkNum++;
             uniquechunkSize += tmpChunk.saveSize;
             logicalchunkNum++;
             logicalchunkSize += tmpChunk.chunkSize;
         }
-    }
+    });
 
-    // Finalize
-    // ads_Version++;
-    // SFnum = basechunkNum * 3;
+    restoreThread.join();
+    processThread.join();
+
     cout << "lru cache hit rate: " << (double)cacheHitCount / (double)cacheAccessCount << " cacheHitCount " << cacheHitCount << " cacheAccessCount " << cacheAccessCount << endl;
     return;
 }
