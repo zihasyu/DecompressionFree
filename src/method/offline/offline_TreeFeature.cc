@@ -28,31 +28,26 @@ OfflineTreeFeature::~OfflineTreeFeature()
 
 void OfflineTreeFeature::ProcessTrace()
 {
-    // string tmpChunkContent;
-    // SuperFeatures superfeature;
-    size_t nextVersionEndPointIndex = 0;
-
-    std::map<uint64_t, const std::vector<uint64_t> &> sortedRootChunkMap;
-    for (const auto &pair : *rootChunkMap)
-    {
+    std::map<uint64_t, const std::vector<uint64_t>&> sortedRootChunkMap;
+    for (const auto& pair : *rootChunkMap)
         sortedRootChunkMap.insert(pair);
-    }
 
-    // 遍历新创建的、有序的 sortedRootChunkMap
-    for (const auto &pair : sortedRootChunkMap)
-    {
-        uint64_t rootId = pair.first;
-        const std::vector<uint64_t> &chunkIds = pair.second;
+    std::set<uint64_t> processed; // 防止重复处理
 
-        // 子根 (key != vector[0]) 会在遍历主根时被“插队”处理，所以这里直接跳过。
-        if (chunkIds.empty() || rootId != chunkIds[0])
-        {
-            continue;
-        }
-        // 对主根进行 logicalRootMap 的初始化
+    // 递归处理一棵树（先主根整棵树，再递归处理所有子根树）
+    std::function<void(uint64_t)> process_tree = [&](uint64_t rootId) {
+        auto it = sortedRootChunkMap.find(rootId);
+        if (it == sortedRootChunkMap.end() || processed.count(rootId)) return;
+        const std::vector<uint64_t>& chunkIds = it->second;
+        if (chunkIds.empty()) return;
+
+        processed.insert(rootId);
         logicalRootMap[rootId] = rootId;
 
-        // --- 队列式广度优先遍历 ---
+        // 记录本树下的子根
+        std::vector<uint64_t> subRoots;
+
+        // 广度优先遍历本树
         struct QueueItem {
             std::vector<uint64_t>::const_iterator iter;
             std::vector<uint64_t>::const_iterator end;
@@ -61,20 +56,21 @@ void OfflineTreeFeature::ProcessTrace()
         std::queue<QueueItem> bfsQueue;
         bfsQueue.push({chunkIds.begin(), chunkIds.end(), rootId});
 
-        while (!bfsQueue.empty())
-        {
+        while (!bfsQueue.empty()) {
             QueueItem item = bfsQueue.front();
             bfsQueue.pop();
-
-            if (item.iter == item.end)
-                continue;
+            if (item.iter == item.end) continue;
 
             uint64_t cid = *item.iter;
             auto nextIter = item.iter;
             ++nextIter;
-            // 如果还有下一个元素，继续入队
-            if (nextIter != item.end) {
+            if (nextIter != item.end)
                 bfsQueue.push({nextIter, item.end, item.initialRootId});
+
+            // 记录子根（但不插队处理）
+            auto subRootIt = sortedRootChunkMap.find(cid);
+            if (subRootIt != sortedRootChunkMap.end() && cid != subRootIt->second[0]) {
+                subRoots.push_back(cid);
             }
 
             // 1. Restore the chunk content to its original form
@@ -107,38 +103,13 @@ void OfflineTreeFeature::ProcessTrace()
                 }
             }
 
-            // 1.5. 检查并处理“插队”
-            auto subRootIt = sortedRootChunkMap.find(cid);
-            if (subRootIt != sortedRootChunkMap.end() && subRootIt->first != subRootIt->second[0])
-            {
-                const std::vector<uint64_t> &subChunkIds = subRootIt->second;
-                bfsQueue.push({subChunkIds.begin(), subChunkIds.end(), cid});
-                logicalRootMap[cid] = cid;
-            }
-
-            // 2. Re-compute super features for the original content
-            // tmpChunkContent.assign((char *)tmpChunk.chunkPtr, tmpChunk.chunkSize);
-            // uint64_t basechunkid = -1;
-            // if (tmpChunk.chunkSize > 60)
-            // {
-            //     startSF = std::chrono::high_resolution_clock::now();
-            //     // superfeature = table.feature_generator_.GenerateSuperFeatures(tmpChunkContent);
-            //     endSF = std::chrono::high_resolution_clock::now();
-            //     SFTime += (endSF - startSF);
-
-            //     // Find a potential base chunk in the new, evolving feature index
-            //     basechunkid = table.Tree_SF_Find(superfeature);
-            // }
-
             uint64_t basechunkid = logicalRootMap[item.initialRootId];
             if (cid == rootId)
                 basechunkid = -1; // 根节点没有基准块
 
             // 3. Re-process the chunk
             if (basechunkid != -1)
-            // A potential base chunk was found
             {
-                // Use CutGreedy to find the best base within the delta tree
                 auto RestoreBasechunk = CutGreedy(basechunkid, tmpChunk);
                 uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
 
@@ -147,7 +118,6 @@ void OfflineTreeFeature::ProcessTrace()
 
                 if (tmpChunk.saveSize > tmpChunk.chunkSize || tmpChunk.saveSize <= 0 || RestoreBasechunk.chunkSize == 0)
                 {
-                    // Delta is not effective, fallback to LZ4
                     int tmpChunkLz4CompressSize = LZ4_compress_fast((char *)tmpChunk.chunkPtr, (char *)lz4ChunkBuffer, tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
                     if (tmpChunkLz4CompressSize > 0)
                     {
@@ -160,14 +130,10 @@ void OfflineTreeFeature::ProcessTrace()
                         tmpChunk.saveSize = tmpChunk.chunkSize;
                     }
                     tmpChunk.basechunkID = -1;
-
-                    // if (tmpChunk.chunkSize > 60)
-                    //     table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
                     basechunkNum++;
                     basechunkSize += tmpChunk.saveSize;
                     free(deltachunk);
 
-                    // Insert into the destination offline_dataWrite_
                     if (tmpChunk.deltaFlag == NO_LZ4)
                         offline_dataWrite_->Chunk_Insert(tmpChunk);
                     else
@@ -175,12 +141,8 @@ void OfflineTreeFeature::ProcessTrace()
                 }
                 else
                 {
-                    // Delta is successful
                     tmpChunk.deltaFlag = DELTA;
                     tmpChunk.basechunkID = RestoreBasechunk.chunkID;
-
-                    // if (tmpChunk.chunkSize > 60)
-                    //     table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
 
                     if (tmpChunk.saveSize >= TREE_INSERT_SAVE_THRESHOLD)
                     {
@@ -201,12 +163,10 @@ void OfflineTreeFeature::ProcessTrace()
                     StatsDelta(tmpChunk);
                     free(deltachunk);
 
-                    // Insert into the destination offline_dataWrite_
                     offline_dataWrite_->Chunk_Insert(tmpChunk);
                 }
             }
             else
-            // No suitable base chunk found, treat as a new base chunk
             {
                 int tmpChunkLz4CompressSize = LZ4_compress_fast((char *)tmpChunk.chunkPtr, (char *)lz4ChunkBuffer, tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
                 if (tmpChunkLz4CompressSize > 0)
@@ -220,28 +180,35 @@ void OfflineTreeFeature::ProcessTrace()
                     tmpChunk.saveSize = tmpChunk.chunkSize;
                 }
                 tmpChunk.basechunkID = -1;
-
-                // if (tmpChunk.chunkSize > 60)
-                //     table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
                 basechunkNum++;
                 basechunkSize += tmpChunk.saveSize;
 
-                // Insert into the destination offline_dataWrite_
                 if (tmpChunk.deltaFlag == NO_LZ4)
                     offline_dataWrite_->Chunk_Insert(tmpChunk);
                 else
                     offline_dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
             }
 
-            // Update statistics
-            uniquechunkNum++; // In offline mode, every chunk is processed as "unique"
+            uniquechunkNum++;
             uniquechunkSize += tmpChunk.saveSize;
             logicalchunkNum++;
             logicalchunkSize += tmpChunk.chunkSize;
         }
+
+        // 主树处理完后，递归处理所有子根
+        for (uint64_t subRoot : subRoots) {
+            process_tree(subRoot);
+        }
+    };
+
+    // 只对主根调用递归
+    for (const auto& pair : sortedRootChunkMap) {
+        uint64_t rootId = pair.first;
+        const std::vector<uint64_t>& chunkIds = pair.second;
+        if (chunkIds.empty() || rootId != chunkIds[0]) continue;
+        process_tree(rootId);
     }
 
-    // Finalize
     ads_Version++;
     SFnum = basechunkNum * 3;
     return;
