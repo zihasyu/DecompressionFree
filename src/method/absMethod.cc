@@ -270,10 +270,12 @@ uint8_t *AbsMethod::xd3_encode(const uint8_t *targetChunkbuffer, size_t targetCh
 }
 uint8_t *AbsMethod::xd3_decode(const uint8_t *in, size_t in_size, const uint8_t *ref, size_t ref_size, size_t *res_size) // 更改函数
 {
+    static thread_local uint8_t *decodeBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * 2);
+
     SetTime(startDecode);
     const auto max_buffer_size = CONTAINER_MAX_SIZE * 2;
     size_t sz;
-    auto ret = xd3_decode_memory(in, in_size, ref, ref_size, DecodeBuffer, &sz, max_buffer_size, 0);
+    auto ret = xd3_decode_memory(in, in_size, ref, ref_size, decodeBuffer, &sz, max_buffer_size, 0);
     if (ret != 0)
     {
         cout << "decode error" << endl;
@@ -291,7 +293,7 @@ uint8_t *AbsMethod::xd3_decode(const uint8_t *in, size_t in_size, const uint8_t 
     uint8_t *res;
     res = (uint8_t *)malloc(sz);
     *res_size = sz;
-    memcpy(res, DecodeBuffer, sz);
+    memcpy(res, decodeBuffer, sz);
     SetTime(endDecode);
     SetTime(startDecode, endDecode, DecodeTime);
     return res;
