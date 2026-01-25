@@ -29,8 +29,10 @@ OfflineTreeFeature::~OfflineTreeFeature()
 void OfflineTreeFeature::ProcessTrace()
 {
     std::map<uint64_t, const std::vector<uint64_t>&> sortedRootChunkMap;
-    for (const auto& pair : *rootChunkMap)
+    for (const auto& pair : *rootChunkMap){
         sortedRootChunkMap.insert(pair);
+        logicalRootMap[pair.first] = pair.first;
+    }
 
     std::set<uint64_t> processed; // 防止重复处理
 
@@ -42,7 +44,7 @@ void OfflineTreeFeature::ProcessTrace()
         if (chunkIds.empty()) return;
 
         processed.insert(rootId);
-        logicalRootMap[rootId] = rootId;
+        // logicalRootMap[rootId] = rootId;
 
         // 记录本树下的子根
         std::vector<uint64_t> subRoots;
