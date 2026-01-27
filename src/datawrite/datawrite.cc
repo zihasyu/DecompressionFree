@@ -687,6 +687,9 @@ Chunk_t dataWrite::Get_Chunk_Info(int id)
         {
             uint64_t size;
             infile.read((char *)&size, sizeof(uint64_t));
+
+            physicalReadBytes += sizeof(uint64_t) + size;
+
             //     Allocate memory for the container
             string container;
             container.assign(size, 0);
@@ -721,6 +724,8 @@ Chunk_t dataWrite::Get_Chunk_Info(int id)
         loadContainerTimes++;
         chunklist[id].loadFromDisk = true;
         // cout << "read from disk and size is " << chunklist[id].chunkSize << endl;
+
+        logicalReadBytes += chunklist[id].saveSize;
     }
     else
     {

@@ -128,6 +128,9 @@ public:
     uint64_t prevContainerID = -1;
     int single = 0;
     int multi = 0;
+
+    uint64_t logicalReadBytes = 0;
+    uint64_t physicalReadBytes = 0;
 };
 
 #endif

@@ -281,6 +281,10 @@ int main(int argc, char **argv)
     tool::Logging(myName.c_str(), "Total compressed size is %lu\n", absMethodObj->uniquechunkSize);
     tool::Logging(myName.c_str(), "Compression ratio is %.4f\n", (double)absMethodObj->logicalchunkSize / (double)absMethodObj->uniquechunkSize);
 
+    cout << "logical read bytes: " << absMethodObj->dataWrite_->logicalReadBytes << endl;
+    cout << "physical read bytes: " << absMethodObj->dataWrite_->physicalReadBytes << endl;
+    cout << "read amplification: " << (double)absMethodObj->dataWrite_->physicalReadBytes / absMethodObj->dataWrite_->logicalReadBytes << endl;
+
     if (CmdLine.compressionMethod != 5)
         absMethodObj->PrintChunkInfo(sumTimeInSeconds, CmdLine);
     else
@@ -330,9 +334,11 @@ int main(int argc, char **argv)
     default:
         break;
     }
-    OfflineAbsMethodObj->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
+    // OfflineAbsMethodObj->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
     if (CmdLine.offlineMethod >= 0)
     {
+        OfflineAbsMethodObj->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
+
         OfflineAbsMethodObj->offline_dataWrite_ = new dataWrite();
         OfflineAbsMethodObj->dataWrite_ = absMethodObj->dataWrite_;
         OfflineAbsMethodObj->rootChunkMap = absMethodObj->rootChunkMap;
