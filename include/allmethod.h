@@ -32,4 +32,9 @@
 #include "Offline/offline_treecache.h"
 #include "Offline/offline_treecutlayerIgnore.h"
 #include "Offline/offline_tree_Feature_lru.h"
+
+#include "Thread/design1.h"
+#include "Thread/design2.h"
+#include "Thread/design3.h"
+#include "Thread/greedy.h"
 #endif

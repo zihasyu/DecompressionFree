@@ -327,12 +327,34 @@ int main(int argc, char **argv)
         OfflineAbsMethodObj = new OfflineTreeFeatureLru(); // 6
         break;
     }
+    case Greedy_:
+    {
+        OfflineAbsMethodObj = new Greedy();
+        break;
+    }
+    case Design1_:
+    {
+        OfflineAbsMethodObj = new Design1();
+        break;
+    }
+    case Design2_:
+    {
+        OfflineAbsMethodObj = new Design2();
+        break;
+    }
+    case Design3_:
+    {
+        OfflineAbsMethodObj = new Design3();
+        break;
+    }
     default:
         break;
     }
-    OfflineAbsMethodObj->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
+    // OfflineAbsMethodObj->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
     if (CmdLine.offlineMethod >= 0)
     {
+        OfflineAbsMethodObj->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
+
         OfflineAbsMethodObj->offline_dataWrite_ = new dataWrite();
         OfflineAbsMethodObj->dataWrite_ = absMethodObj->dataWrite_;
         OfflineAbsMethodObj->rootChunkMap = absMethodObj->rootChunkMap;

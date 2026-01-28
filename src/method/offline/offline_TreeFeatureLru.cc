@@ -30,178 +30,94 @@ OfflineTreeFeatureLru::~OfflineTreeFeatureLru()
     }
 }
 
-// 线程安全队列
-template <typename T>
-class ThreadSafeQueue
-{
-public:
-    void push(const T &value)
-    {
-        std::lock_guard<std::mutex> lk(m_);
-        q_.push(value);
-        cv_.notify_one();
-    }
-    bool pop(T &value)
-    {
-        std::unique_lock<std::mutex> lk(m_);
-        cv_.wait(lk, [this]
-                 { return !q_.empty() || finished_; });
-        if (q_.empty())
-            return false;
-        value = std::move(q_.front());
-        q_.pop();
-        return true;
-    }
-    void set_finished()
-    {
-        std::lock_guard<std::mutex> lk(m_);
-        finished_ = true;
-        cv_.notify_all();
-    }
-
-private:
-    std::queue<T> q_;
-    std::mutex m_;
-    std::condition_variable cv_;
-    bool finished_ = false;
-};
-
-// 用于线程间传递的结构体
-struct RestoredChunk
-{
-    uint64_t rootId;
-    uint64_t cid;
-    Chunk_t tmpChunk;
-    uint64_t initialRootId;
-};
-
 void OfflineTreeFeatureLru::ProcessTrace()
 {
-    using namespace std;
-    using namespace std::chrono;
+    // string tmpChunkContent;
+    // SuperFeatures superfeature;
+    size_t nextVersionEndPointIndex = 0;
 
-    ThreadSafeQueue<RestoredChunk> chunkQueue;
-
-    std::map<uint64_t, const std::vector<uint64_t> &> sortedRootChunkMap;
-    for (const auto &pair : *rootChunkMap)
-    {
+    std::map<uint64_t, const std::vector<uint64_t>&> sortedRootChunkMap;
+    for (const auto& pair : *rootChunkMap){
         sortedRootChunkMap.insert(pair);
         logicalRootMap[pair.first] = pair.first;
     }
 
-    // 恢复线程
-    std::thread restoreThread([&]()
-                              {
-        // 递归处理一棵树（先主根整棵树，再递归处理所有子根树）
-        std::function<void(uint64_t)> process_tree = [&](uint64_t rootId) {
-            auto it = sortedRootChunkMap.find(rootId);
-            if (it == sortedRootChunkMap.end()) return;
-            const std::vector<uint64_t>& chunkIds = it->second;
-            if (chunkIds.empty()) return;
+    std::set<uint64_t> processed; // 防止重复处理
 
-            // logicalRootMap[rootId] = rootId;
+    // 递归处理一棵树（先主根整棵树，再递归处理所有子根树）
+    std::function<void(uint64_t)> process_tree = [&](uint64_t rootId) {
+        auto it = sortedRootChunkMap.find(rootId);
+        if (it == sortedRootChunkMap.end() || processed.count(rootId)) return;
+        const std::vector<uint64_t>& chunkIds = it->second;
+        if (chunkIds.empty()) return;
 
-            // 记录本树下的子根
-            std::vector<uint64_t> subRoots;
+        processed.insert(rootId);
+        // logicalRootMap[rootId] = rootId;
 
-            // 广度优先遍历本树
-            struct QueueItem {
-                std::vector<uint64_t>::const_iterator iter;
-                std::vector<uint64_t>::const_iterator end;
-                uint64_t initialRootId;
-            };
-            std::queue<QueueItem> bfsQueue;
-            bfsQueue.push({chunkIds.begin(), chunkIds.end(), rootId});
+        // 记录本树下的子根
+        std::vector<uint64_t> subRoots;
 
-            while (!bfsQueue.empty())
-            {
-                QueueItem item = bfsQueue.front();
-                bfsQueue.pop();
-
-                if (item.iter == item.end)
-                    continue;
-
-                uint64_t cid = *item.iter;
-                auto nextIter = item.iter;
-                ++nextIter;
-                if (nextIter != item.end) {
-                    bfsQueue.push({nextIter, item.end, item.initialRootId});
-                }
-
-                auto startRestoreChunk = high_resolution_clock::now();
-                Chunk_t tmpChunk = dataWrite_->Get_Chunk_MetaInfo(cid);
-                if (tmpChunk.basechunkID >= 0)
-                {
-                    Chunk_t tmpPreChunk = dataWrite_->Get_Chunk_Info(tmpChunk.basechunkID);
-                    Chunk_t tmpDeltaChunk = dataWrite_->Get_Chunk_Info(cid);
-                    uint64_t tmpSize = 0;
-                    tmpChunk.chunkPtr = xd3_decode(tmpDeltaChunk.chunkPtr, tmpDeltaChunk.saveSize, tmpPreChunk.chunkPtr, tmpPreChunk.chunkSize, &tmpSize);
-                    tmpChunk.loadFromDisk = true;
-                    if (tmpPreChunk.loadFromDisk)
-                        free(tmpPreChunk.chunkPtr);
-                    if (tmpDeltaChunk.loadFromDisk)
-                        free(tmpDeltaChunk.chunkPtr);
-                }
-                else
-                {
-                    Chunk_t rawChunk = dataWrite_->Get_Chunk_Info(cid);
-                    // tmpChunk = rawChunk;
-                    tmpChunk.chunkPtr = (uint8_t *)malloc(tmpChunk.chunkSize);
-                    // if (tmpChunk.chunkPtr != nullptr && rawChunk.chunkPtr != nullptr)
-                    memcpy(tmpChunk.chunkPtr, rawChunk.chunkPtr, tmpChunk.chunkSize);
-                    tmpChunk.loadFromDisk = true;
-                    if (rawChunk.loadFromDisk)
-                        free(rawChunk.chunkPtr);
-                }
-                auto endRestoreChunk = high_resolution_clock::now();
-                RestoreChunkTime += endRestoreChunk - startRestoreChunk;
-
-                // 记录子根（但不插队处理）
-                auto subRootIt = sortedRootChunkMap.find(cid);
-                if (subRootIt != sortedRootChunkMap.end() && cid != subRootIt->second[0])
-                {
-                    subRoots.push_back(cid);
-                }
-
-                // uint64_t basechunkid = logicalRootMap[item.initialRootId];
-                // if (cid == rootId)
-                //     basechunkid = -1;
-
-                // 放入队列，交给处理线程
-                chunkQueue.push(RestoredChunk{rootId, cid,  tmpChunk, item.initialRootId});
-            }
-
-            // 主树处理完后，递归处理所有子根
-            for (uint64_t subRoot : subRoots) {
-                process_tree(subRoot);
-            }
+        // 广度优先遍历本树
+        struct QueueItem {
+            std::vector<uint64_t>::const_iterator iter;
+            std::vector<uint64_t>::const_iterator end;
+            uint64_t initialRootId;
         };
+        std::queue<QueueItem> bfsQueue;
+        bfsQueue.push({chunkIds.begin(), chunkIds.end(), rootId});
 
-        // 只对主根调用递归
-        for (const auto &pair : sortedRootChunkMap)
-        {
-            uint64_t rootId = pair.first;
-            const std::vector<uint64_t> &chunkIds = pair.second;
-            if (chunkIds.empty() || rootId != chunkIds[0])
-                continue;
-            process_tree(rootId);
-        }
-        chunkQueue.set_finished(); });
+        while (!bfsQueue.empty()) {
+            QueueItem item = bfsQueue.front();
+            bfsQueue.pop();
+            if (item.iter == item.end) continue;
 
-    // 处理线程
-    std::thread processThread([&]()
-                              {
-        RestoredChunk item;
-        while (chunkQueue.pop(item))
-        {
-            uint64_t rootId = item.rootId;
-            uint64_t cid = item.cid;
+            uint64_t cid = *item.iter;
+            auto nextIter = item.iter;
+            ++nextIter;
+            if (nextIter != item.end)
+                bfsQueue.push({nextIter, item.end, item.initialRootId});
+
+            // 记录子根（但不插队处理）
+            auto subRootIt = sortedRootChunkMap.find(cid);
+            if (subRootIt != sortedRootChunkMap.end() && cid != subRootIt->second[0]) {
+                subRoots.push_back(cid);
+            }
+
+            // 1. Restore the chunk content to its original form
+            Chunk_t tmpChunk = dataWrite_->Get_Chunk_MetaInfo(cid);
+            if (tmpChunk.basechunkID >= 0)
+            {
+                Chunk_t tmpPreChunk = dataWrite_->Get_Chunk_Info(tmpChunk.basechunkID);
+                Chunk_t tmpDeltaChunk = dataWrite_->Get_Chunk_Info(cid);
+                uint64_t tmpSize = 0;
+                tmpChunk.chunkPtr = xd3_decode(tmpDeltaChunk.chunkPtr, tmpDeltaChunk.saveSize, tmpPreChunk.chunkPtr, tmpPreChunk.chunkSize, &tmpSize);
+                tmpChunk.loadFromDisk = true;
+                if (tmpPreChunk.loadFromDisk)
+                    free(tmpPreChunk.chunkPtr);
+                if (tmpDeltaChunk.loadFromDisk)
+                    free(tmpDeltaChunk.chunkPtr);
+            }
+            else
+            {
+                Chunk_t rawChunk = dataWrite_->Get_Chunk_Info(cid);
+                tmpChunk = rawChunk;
+                tmpChunk.chunkPtr = (uint8_t *)malloc(tmpChunk.chunkSize);
+                if (tmpChunk.chunkPtr != nullptr && rawChunk.chunkPtr != nullptr)
+                {
+                    memcpy(tmpChunk.chunkPtr, rawChunk.chunkPtr, tmpChunk.chunkSize);
+                }
+                tmpChunk.loadFromDisk = true;
+                if (rawChunk.loadFromDisk)
+                {
+                    free(rawChunk.chunkPtr);
+                }
+            }
+
             uint64_t basechunkid = logicalRootMap[item.initialRootId];
             if (cid == rootId)
-                    basechunkid = -1;
-            Chunk_t &tmpChunk = item.tmpChunk;
-            uint64_t initialRootId = item.initialRootId;
+                basechunkid = -1; // 根节点没有基准块
 
+            // 3. Re-process the chunk
             if (basechunkid != -1)
             {
                 auto RestoreBasechunk = CutGreedy(basechunkid, tmpChunk);
@@ -224,7 +140,6 @@ void OfflineTreeFeatureLru::ProcessTrace()
                         tmpChunk.saveSize = tmpChunk.chunkSize;
                     }
                     tmpChunk.basechunkID = -1;
-
                     basechunkNum++;
                     basechunkSize += tmpChunk.saveSize;
                     free(deltachunk);
@@ -275,7 +190,6 @@ void OfflineTreeFeatureLru::ProcessTrace()
                     tmpChunk.saveSize = tmpChunk.chunkSize;
                 }
                 tmpChunk.basechunkID = -1;
-
                 basechunkNum++;
                 basechunkSize += tmpChunk.saveSize;
 
@@ -289,11 +203,25 @@ void OfflineTreeFeatureLru::ProcessTrace()
             uniquechunkSize += tmpChunk.saveSize;
             logicalchunkNum++;
             logicalchunkSize += tmpChunk.chunkSize;
-        } });
+        }
 
-    restoreThread.join();
-    processThread.join();
+        // 主树处理完后，递归处理所有子根
+        for (uint64_t subRoot : subRoots) {
+            process_tree(subRoot);
+        }
+    };
 
+    // 只对主根调用递归
+    for (const auto& pair : sortedRootChunkMap) {
+        uint64_t rootId = pair.first;
+        const std::vector<uint64_t>& chunkIds = pair.second;
+        if (chunkIds.empty() || rootId != chunkIds[0]) continue;
+        process_tree(rootId);
+    }
+
+    // Finalize
+    // ads_Version++;
+    // SFnum = basechunkNum * 3;
     cout << "lru cache hit rate: " << (double)cacheHitCount / (double)cacheAccessCount << " cacheHitCount " << cacheHitCount << " cacheAccessCount " << cacheAccessCount << endl;
     return;
 }

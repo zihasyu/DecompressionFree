@@ -1,4 +1,5 @@
 aux_source_directory(. METHOD_SRC)
 add_subdirectory(offline)
+add_subdirectory(thread)
 # add_library(methodcore ${METHOD_SRC})
-add_library(methodcore ${METHOD_SRC} $<TARGET_OBJECTS:method_offline>)
+add_library(methodcore ${METHOD_SRC} $<TARGET_OBJECTS:method_offline> $<TARGET_OBJECTS:method_thread>)

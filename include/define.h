@@ -367,7 +367,11 @@ enum OFFLINE_TYPE
     Offline_Tree_Cache,
     Offline_Tree_Feature,
     Offline_Tree_Cut_Layer_Ignore,
-    Offline_Tree_Feature_LRU
+    Offline_Tree_Feature_LRU,
+    Greedy_,
+    Design1_,
+    Design2_,
+    Design3_
 };
 enum DELTA_TYPE
 {
