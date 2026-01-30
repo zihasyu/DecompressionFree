@@ -1,7 +1,7 @@
 import re
 
-input_file = 'bin/C1_M3_linux_R1_T64.txt'
-output_file = 'restore/linux_odess.txt'
+input_file = 'bin/C1_M14_linux_R1_T64.txt'
+output_file = 'restore_time/linux_allGreedy.txt'
 
 restore_times = []
 
