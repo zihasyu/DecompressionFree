@@ -724,8 +724,6 @@ Chunk_t dataWrite::Get_Chunk_Info(int id)
         loadContainerTimes++;
         chunklist[id].loadFromDisk = true;
         // cout << "read from disk and size is " << chunklist[id].chunkSize << endl;
-
-        logicalReadBytes += chunklist[id].saveSize;
     }
     else
     {
@@ -749,6 +747,7 @@ Chunk_t dataWrite::Get_Chunk_Info(int id)
             cout << "open file failed" << endl;
         }
     }
+    logicalReadBytes += chunklist[id].saveSize;
 
     return chunklist[id];
 }
@@ -1400,4 +1399,10 @@ Chunk_t dataWrite::xd3_recursive_restore_offline_time(uint64_t BasechunkId)
     }
 
     return basechunk;
+}
+
+void dataWrite::ClearContainerCache()
+{
+    if (containerCache)
+        containerCache->ClearCache();
 }

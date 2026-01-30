@@ -55,3 +55,10 @@ uint8_t *ReadCache::ReadFromCache(string &name)
     uint32_t index = this->readCache_->get(name);
     return containerPool_[index];
 }
+
+void ReadCache::ClearCache()
+{
+    if (readCache_)
+        readCache_->clear();
+    currentIndex_ = 0;
+}

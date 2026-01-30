@@ -361,6 +361,24 @@ int main(int argc, char **argv)
 
         for (auto i = 0; i < CmdLine.backupNum; i++)
         {
+            // 先清空cache，保证本轮统计独立
+            if (CmdLine.offlineMethod >= 0)
+                OfflineAbsMethodObj->offline_dataWrite_->ClearContainerCache();
+            else
+                absMethodObj->dataWrite_->ClearContainerCache();
+
+            uint64_t prevPhysicalRead = 0, prevLogicalRead = 0;
+            if (CmdLine.offlineMethod >= 0)
+            {
+                prevPhysicalRead = OfflineAbsMethodObj->offline_dataWrite_->physicalReadBytes;
+                prevLogicalRead = OfflineAbsMethodObj->offline_dataWrite_->logicalReadBytes;
+            }
+            else
+            {
+                prevPhysicalRead = absMethodObj->dataWrite_->physicalReadBytes;
+                prevLogicalRead = absMethodObj->dataWrite_->logicalReadBytes;
+            }
+
             auto startTmp = std::chrono::high_resolution_clock::now();
             if (CmdLine.offlineMethod >= 0)
             {
@@ -372,9 +390,30 @@ int main(int argc, char **argv)
             auto endTmp = std::chrono::high_resolution_clock::now();
             auto TimeTmp = std::chrono::duration_cast<std::chrono::duration<double>>(endTmp - startTmp).count();
             RestoreTimeSum += TimeTmp;
+
+            // 记录恢复后的物理/逻辑读字节
+            uint64_t curPhysicalRead = 0, curLogicalRead = 0;
+            if (CmdLine.offlineMethod >= 0)
+            {
+                curPhysicalRead = OfflineAbsMethodObj->offline_dataWrite_->physicalReadBytes;
+                curLogicalRead = OfflineAbsMethodObj->offline_dataWrite_->logicalReadBytes;
+            }
+            else
+            {
+                curPhysicalRead = absMethodObj->dataWrite_->physicalReadBytes;
+                curLogicalRead = absMethodObj->dataWrite_->logicalReadBytes;
+            }
+
+            uint64_t versionPhysicalRead = curPhysicalRead - prevPhysicalRead;
+            uint64_t versionLogicalRead = curLogicalRead - prevLogicalRead;
+            double versionReadAmplification = versionLogicalRead > 0 ? (double)versionPhysicalRead / versionLogicalRead : 0.0;
+
             cout << "----------------------restore-------------------------" << std::endl;
             cout << "Version " << i << endl;
             cout << "Restore time: " << TimeTmp << " s" << endl;
+            cout << "Version logical read bytes: " << versionLogicalRead << endl;
+            cout << "Version physical read bytes: " << versionPhysicalRead << endl;
+            cout << "Version read amplification: " << versionReadAmplification << endl;
             if (CmdLine.offlineMethod >= 0)
             {
                 cout << "before visit container: " << OfflineAbsMethodObj->offline_dataWrite_->single << std::endl;

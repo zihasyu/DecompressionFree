@@ -131,6 +131,7 @@ public:
 
     uint64_t logicalReadBytes = 0;
     uint64_t physicalReadBytes = 0;
+    void ClearContainerCache();
 };
 
 #endif

@@ -71,6 +71,9 @@ public:
      * @return uint8_t* container data
      */
     uint8_t *ReadFromCache(string &name);
+
+    //2026/1/29 测量恢复读放大
+    void ClearCache();
 };
 
 #endif // !BASICDEDUP_READCACHE_H
