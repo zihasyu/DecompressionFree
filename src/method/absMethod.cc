@@ -869,10 +869,13 @@ void AbsMethod::PrintChunkInfo(double time, CommandLine_t CmdLine)
     out << "SF Overhead: " << (double)(basechunkNum * 120) / 1024 / 1024 << "MiB" << endl; //(3*(8+32)=120B)
     out << "Recipe Overhead: " << (double)logicalchunkNum * 8 / 1024 / 1024 << "MiB" << endl;
     out << "SF number: " << SFnum << endl;
-    // out << "-----------------Reduct----------------------------" << endl;
-    // out << "Dedup ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct) << endl;
-    // out << "Lossless ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct - LocalReduct) << endl;
-    // out << "Delta ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct - LocalReduct - DeltaReduct) << endl;
+    out << "-----------------Reduct----------------------------" << endl;
+    out << "Dedup ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct) << endl;
+    out << "Lossless ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct - LocalReduct) << endl;
+    out << "Delta ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct - LocalReduct - DeltaReduct) << endl;
+    out << "DedupReduct : " << DedupReduct << endl;
+    out << "DeltaReduct : " << DeltaReduct << endl;
+    out << "LocalReduct : " << LocalReduct << endl;
     out << "-----------------END-------------------------------" << endl;
     out.close();
     return;
@@ -925,10 +928,10 @@ void AbsMethod::PrintOffline(double time, CommandLine_t CmdLine)
     out << "SF Overhead: " << (double)(basechunkNum * 120) / 1024 / 1024 << "MiB" << endl; //(3*(8+32)=120B)
     out << "Recipe Overhead: " << (double)logicalchunkNum * 8 / 1024 / 1024 << "MiB" << endl;
     out << "SF number: " << SFnum << endl;
-    // out << "-----------------Reduct----------------------------" << endl;
-    // out << "Dedup ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct) << endl;
-    // out << "Lossless ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct - LocalReduct) << endl;
-    // out << "Delta ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct - LocalReduct - DeltaReduct) << endl;
+    out << "-----------------Reduct----------------------------" << endl;
+    out << "Dedup ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct) << endl;
+    out << "Lossless ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct - LocalReduct) << endl;
+    out << "Delta ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct - LocalReduct - DeltaReduct) << endl;
     out << "-----------------END-------------------------------" << endl;
     out.close();
     return;
