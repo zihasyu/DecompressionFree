@@ -414,7 +414,10 @@ void dataWrite::restoreFile(string fileName)
         // Chunk_t tmpChunkInfo = Get_Chunk_Info(recipe);
         if (tmpChunkInfo.deltaFlag == NO_DELTA || tmpChunkInfo.deltaFlag == NO_LZ4)
         {
+            auto ioStart = std::chrono::high_resolution_clock::now();
             Chunk_t tmpChunkInfo = Get_Chunk_Info(recipe);
+            auto ioEnd = std::chrono::high_resolution_clock::now();
+            restoreIOTime += (ioEnd - ioStart);
 
             if (chunklist[recipe].containerID != prevContainerID)
                 single++;
@@ -439,6 +442,8 @@ void dataWrite::restoreFile(string fileName)
             //     chunk.chunkPtr = nullptr;
             // }
         }
+        logicalReadBytes += tmpChunkInfo.saveSize;
+        restoreChunkNum++;
     }
 
     outFile.close();
@@ -687,6 +692,9 @@ Chunk_t dataWrite::Get_Chunk_Info(int id)
         {
             uint64_t size;
             infile.read((char *)&size, sizeof(uint64_t));
+
+            physicalReadBytes += sizeof(uint64_t) + size;
+
             //     Allocate memory for the container
             string container;
             container.assign(size, 0);
@@ -744,6 +752,7 @@ Chunk_t dataWrite::Get_Chunk_Info(int id)
             cout << "open file failed" << endl;
         }
     }
+    // logicalReadBytes += chunklist[id].saveSize;
 
     return chunklist[id];
 }
@@ -1341,7 +1350,10 @@ Chunk_t dataWrite::xd3_recursive_restore_offline_time(uint64_t BasechunkId)
     while (chunkChain.back().basechunkID >= 0)
         chunkChain.push_back(Get_Chunk_MetaInfo(chunkChain.back().basechunkID));
     // push the last chunk
+    auto startIO = std::chrono::high_resolution_clock::now();
     chunkChain.back() = Get_Chunk_Info(chunkChain.back().chunkID);
+    auto endIO = std::chrono::high_resolution_clock::now();
+    restoreIOTime += (endIO - startIO);
 
     if (chunkChain.back().containerID != prevContainerID)
         multi++;
@@ -1357,7 +1369,10 @@ Chunk_t dataWrite::xd3_recursive_restore_offline_time(uint64_t BasechunkId)
 
     for (int i = chunkChain.size() - 2; i >= 0; i--)
     {
+        auto startIO = std::chrono::high_resolution_clock::now();
         chunkChain[i] = Get_Chunk_Info(chunkChain[i].chunkID);
+        auto endIO = std::chrono::high_resolution_clock::now();
+        restoreIOTime += (endIO - startIO);
 
         if (i == 0)
         {
@@ -1372,8 +1387,12 @@ Chunk_t dataWrite::xd3_recursive_restore_offline_time(uint64_t BasechunkId)
             prevContainerID = chunkChain[i].containerID;
         }
 
+        auto decodeStart = std::chrono::high_resolution_clock::now();
         uint8_t *basechunk_ptr = xd3_decode(chunkChain[i].chunkPtr, chunkChain[i].saveSize,
                                             basechunk.chunkPtr, basechunk.chunkSize, &basechunk_size);
+        auto decodeEnd = std::chrono::high_resolution_clock::now();
+        restoreDecodeTime += (decodeEnd - decodeStart);
+        restoreDecodeCount++;
 
         if (chunkChain[i].chunkSize != basechunk_size)
         {
@@ -1395,4 +1414,10 @@ Chunk_t dataWrite::xd3_recursive_restore_offline_time(uint64_t BasechunkId)
     }
 
     return basechunk;
+}
+
+void dataWrite::ClearContainerCache()
+{
+    if (containerCache)
+        containerCache->ClearCache();
 }

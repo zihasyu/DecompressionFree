@@ -281,6 +281,10 @@ int main(int argc, char **argv)
     tool::Logging(myName.c_str(), "Total compressed size is %lu\n", absMethodObj->uniquechunkSize);
     tool::Logging(myName.c_str(), "Compression ratio is %.4f\n", (double)absMethodObj->logicalchunkSize / (double)absMethodObj->uniquechunkSize);
 
+    cout << "logical read bytes: " << absMethodObj->dataWrite_->logicalReadBytes << endl;
+    cout << "physical read bytes: " << absMethodObj->dataWrite_->physicalReadBytes << endl;
+    cout << "read amplification: " << (double)absMethodObj->dataWrite_->physicalReadBytes / absMethodObj->dataWrite_->logicalReadBytes << endl;
+
     if (CmdLine.compressionMethod != 5)
         absMethodObj->PrintChunkInfo(sumTimeInSeconds, CmdLine);
     else
@@ -375,8 +379,43 @@ int main(int argc, char **argv)
     {
         double RestoreTimeSum = 0;
 
+        if(CmdLine.offlineMethod >= 0)
+        {
+            OfflineAbsMethodObj->offline_dataWrite_->physicalReadBytes = 0;
+            OfflineAbsMethodObj->offline_dataWrite_->logicalReadBytes = 0;
+            OfflineAbsMethodObj->offline_dataWrite_->restoreIOTime = std::chrono::duration<double>(0);
+            OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeTime = std::chrono::duration<double>(0);
+            OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeCount = 0;
+        }
+        else
+        {
+            absMethodObj->dataWrite_->physicalReadBytes = 0;
+            absMethodObj->dataWrite_->logicalReadBytes = 0;
+            absMethodObj->dataWrite_->restoreIOTime = std::chrono::duration<double>(0);
+            absMethodObj->dataWrite_->restoreDecodeTime = std::chrono::duration<double>(0);
+            absMethodObj->dataWrite_->restoreDecodeCount = 0;
+        }
+
         for (auto i = 0; i < CmdLine.backupNum; i++)
         {
+            // 先清空cache，保证本轮统计独立
+            if (CmdLine.offlineMethod >= 0)
+                OfflineAbsMethodObj->offline_dataWrite_->ClearContainerCache();
+            else
+                absMethodObj->dataWrite_->ClearContainerCache();
+
+            uint64_t prevPhysicalRead = 0, prevLogicalRead = 0;
+            if (CmdLine.offlineMethod >= 0)
+            {
+                prevPhysicalRead = OfflineAbsMethodObj->offline_dataWrite_->physicalReadBytes;
+                prevLogicalRead = OfflineAbsMethodObj->offline_dataWrite_->logicalReadBytes;
+            }
+            else
+            {
+                prevPhysicalRead = absMethodObj->dataWrite_->physicalReadBytes;
+                prevLogicalRead = absMethodObj->dataWrite_->logicalReadBytes;
+            }
+
             auto startTmp = std::chrono::high_resolution_clock::now();
             if (CmdLine.offlineMethod >= 0)
             {
@@ -388,24 +427,87 @@ int main(int argc, char **argv)
             auto endTmp = std::chrono::high_resolution_clock::now();
             auto TimeTmp = std::chrono::duration_cast<std::chrono::duration<double>>(endTmp - startTmp).count();
             RestoreTimeSum += TimeTmp;
+
+            // 记录恢复后的物理/逻辑读字节
+            uint64_t curPhysicalRead = 0, curLogicalRead = 0;
+            if (CmdLine.offlineMethod >= 0)
+            {
+                curPhysicalRead = OfflineAbsMethodObj->offline_dataWrite_->physicalReadBytes;
+                curLogicalRead = OfflineAbsMethodObj->offline_dataWrite_->logicalReadBytes;
+            }
+            else
+            {
+                curPhysicalRead = absMethodObj->dataWrite_->physicalReadBytes;
+                curLogicalRead = absMethodObj->dataWrite_->logicalReadBytes;
+            }
+
+            uint64_t versionPhysicalRead = curPhysicalRead - prevPhysicalRead;
+            uint64_t versionLogicalRead = curLogicalRead - prevLogicalRead;
+            double versionReadAmplification = versionLogicalRead > 0 ? (double)versionPhysicalRead / versionLogicalRead : 0.0;
+
             cout << "----------------------restore-------------------------" << std::endl;
             cout << "Version " << i << endl;
             cout << "Restore time: " << TimeTmp << " s" << endl;
+            cout << "Version logical read bytes: " << versionLogicalRead << endl;
+            cout << "Version physical read bytes: " << versionPhysicalRead << endl;
+            cout << "Version read amplification: " << versionReadAmplification << endl;
             if (CmdLine.offlineMethod >= 0)
             {
                 cout << "before visit container: " << OfflineAbsMethodObj->offline_dataWrite_->single << std::endl;
                 cout << "after visit container: " << OfflineAbsMethodObj->offline_dataWrite_->multi << std::endl;
                 cout << "total visit container: " << OfflineAbsMethodObj->offline_dataWrite_->single + OfflineAbsMethodObj->offline_dataWrite_->multi << std::endl;
+                cout << "IO in restore: " << OfflineAbsMethodObj->offline_dataWrite_->restoreIOTime.count() << " s " << std::endl;
+                cout << "Decode time in restore: " << OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeTime.count() << " s " << std::endl;
+                cout << "Decode count in restore: " << OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeCount << endl;
+                cout << "decode count / restore chunk: " << (double)OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeCount / OfflineAbsMethodObj->offline_dataWrite_->restoreChunkNum << endl;
             }
             else
             {
                 cout << "before visit container: " << absMethodObj->dataWrite_->single << std::endl;
                 cout << "after visit container: " << absMethodObj->dataWrite_->multi << std::endl;
                 cout << "total visit container: " << absMethodObj->dataWrite_->single + absMethodObj->dataWrite_->multi << std::endl;
+                cout << "IO in restore: " << absMethodObj->dataWrite_->restoreIOTime.count() << " s " << std::endl;
+                cout << "Decode time in restore: " << absMethodObj->dataWrite_->restoreDecodeTime.count() << " s " << std::endl;
+                cout << "Decode count in restore: " << absMethodObj->dataWrite_->restoreDecodeCount << endl;
+                cout << "decode count / restore chunk: " << (double)absMethodObj->dataWrite_->restoreDecodeCount / absMethodObj->dataWrite_->restoreChunkNum << endl;
             }
         }
+        double overallReadAmplification;
+        double overallPhysicalRead;
+        double overallLogicalRead;
+        std::chrono::duration<double> restoreIoTime;
+        std::chrono::duration<double> restoreDecodeTime;
+        int restoreDecodeCount;
+        double avgDecode;
+        if(CmdLine.offlineMethod >= 0)
+        {
+            overallPhysicalRead = OfflineAbsMethodObj->offline_dataWrite_->physicalReadBytes;
+            overallLogicalRead = OfflineAbsMethodObj->offline_dataWrite_->logicalReadBytes;
+            overallReadAmplification = overallLogicalRead > 0 ? (double)overallPhysicalRead / overallLogicalRead : 0.0;
+            restoreIoTime = OfflineAbsMethodObj->offline_dataWrite_->restoreIOTime;
+            restoreDecodeTime = OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeTime;
+            restoreDecodeCount = OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeCount;
+            avgDecode = (double)OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeCount / OfflineAbsMethodObj->offline_dataWrite_->restoreChunkNum;
+        }
+        else
+        {
+            overallPhysicalRead = absMethodObj->dataWrite_->physicalReadBytes;
+            overallLogicalRead = absMethodObj->dataWrite_->logicalReadBytes;
+            overallReadAmplification = overallLogicalRead > 0 ? (double)overallPhysicalRead / overallLogicalRead : 0.0;
+            restoreIoTime = absMethodObj->dataWrite_->restoreIOTime;
+            restoreDecodeTime = absMethodObj->dataWrite_->restoreDecodeTime;
+            restoreDecodeCount = absMethodObj->dataWrite_->restoreDecodeCount;
+            avgDecode = (double)absMethodObj->dataWrite_->restoreDecodeCount / absMethodObj->dataWrite_->restoreChunkNum;
+        }
+
+        cout << "----------------------overall-------------------------" << std::endl;
         cout << "Time taken by restoreFile: " << RestoreTimeSum << " s " << std::endl;
         cout << "Avg Restore throughput: " << (double)absMethodObj->logicalchunkSize / RestoreTimeSum / 1024 / 1024 << " MiB/s" << endl;
+        cout << "Overall read amplification: " << overallReadAmplification << endl;
+        cout << "IO in restore: " << restoreIoTime.count() << " s " << std::endl;
+        cout << "Decode time in restore: " << restoreDecodeTime.count() << " s " << std::endl;
+        cout << "Decode count in restore: " << restoreDecodeCount << endl;
+        cout << "decode count / restore chunk: " << avgDecode << endl;
     }
 
     cout << "----------------------inline container-------------------------" << std::endl;
