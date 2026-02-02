@@ -132,6 +132,12 @@ public:
     uint64_t logicalReadBytes = 0;
     uint64_t physicalReadBytes = 0;
     void ClearContainerCache();
+
+
+    std::chrono::duration<double> restoreIOTime;
+    std::chrono::duration<double> restoreDecodeTime;
+    int restoreDecodeCount = 0;
+    int restoreChunkNum = 0;
 };
 
 #endif
