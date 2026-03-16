@@ -368,7 +368,11 @@ Chunk_t AbsMethod::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
     SetTime(endIO);
     SetTime(startIO, endIO, IOTime);
 
+    startMemcpy = std::chrono::high_resolution_clock::now();
     memcpy(CombinedBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
+    endMemcpy = std::chrono::high_resolution_clock::now();
+    MemcpyTime += (endMemcpy - startMemcpy);
+
     basechunk.loadFromDisk = false;
     basechunk.chunkSize = chunkChain.back().chunkSize;
     basechunk.chunkPtr = CombinedBuffer;
@@ -396,7 +400,12 @@ Chunk_t AbsMethod::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
         }
         if (chunkChain[i].loadFromDisk)
             free(chunkChain[i].chunkPtr);
+
+        startMemcpy = std::chrono::high_resolution_clock::now();
         memcpy(CombinedBuffer, basechunk_ptr, basechunk_size);
+        endMemcpy = std::chrono::high_resolution_clock::now();
+        MemcpyTime += (endMemcpy - startMemcpy);
+
         basechunk.chunkSize = chunkChain[i].chunkSize; // update size
         basechunk.FirstChildID = chunkChain[i].FirstChildID;
         basechunk.chunkID = chunkChain[i].chunkID;
@@ -862,6 +871,7 @@ void AbsMethod::PrintChunkInfo(double time, CommandLine_t CmdLine)
     out << "IO Time: " << IOTime.count() << "s" << endl;
     out << "Decode Time: " << DecodeTime.count() << "s" << endl;
     out << "Encode Time: " << EncodeTime.count() << "s" << endl;
+    out << "Memcpy Time: " << MemcpyTime.count() << "s" << endl;
     out << "-----------------OverHead--------------------------" << endl;
     out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
     out << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;

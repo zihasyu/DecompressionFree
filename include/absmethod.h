@@ -29,6 +29,8 @@ public:
     std::chrono::duration<double> DecodeTime;
     std::chrono::time_point<std::chrono::high_resolution_clock> startMiEncode, endMiEncode;
     std::chrono::duration<double> EncodeTime;
+    std::chrono::time_point<std::chrono::high_resolution_clock> startMemcpy, endMemcpy;
+    std::chrono::duration<double> MemcpyTime;
     std::chrono::time_point<std::chrono::high_resolution_clock> startMiDelta, endMiDelta;
     std::chrono::duration<double> MiDeltaTime;
 

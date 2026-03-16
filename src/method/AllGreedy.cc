@@ -208,7 +208,11 @@ Chunk_t AllGreedy::FindBest(SuperFeatures SF, const Chunk_t &Targetchunk)
             resultchunk.chunkSize = current.chunkSize;
             resultchunk.saveSize = deltaSize;
             resultchunk.chunkID = currentID;
+
+            startMemcpy = std::chrono::high_resolution_clock::now();
             memcpy(MinBaseBuffer, current.chunkPtr, current.chunkSize);
+            endMemcpy = std::chrono::high_resolution_clock::now();
+            MemcpyTime += (endMemcpy - startMemcpy);
         }
 
         if (current.loadFromDisk)
