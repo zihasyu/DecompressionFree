@@ -269,6 +269,17 @@ int main(int argc, char **argv)
             absMethodObj->Version_log(TimeTmp, chunkerObj->ChunkTime.count());
     }
 
+    std::string outputFileName = "sf_hit_count_" + CmdLine.dirName + "_C" + std::to_string(CmdLine.chunkingType) + "_M" + std::to_string(CmdLine.compressionMethod) + ".txt";
+    // 去除路径中的斜杠等特殊字符
+    std::replace(outputFileName.begin(), outputFileName.end(), '/', '_');
+    std::replace(outputFileName.begin(), outputFileName.end(), '\\', '_');
+
+    std::ofstream ofs(outputFileName);
+    for (const auto& kv : absMethodObj->table.sf_hit_counter) {
+        ofs << kv.first << "," << kv.second << std::endl;
+    }
+    ofs.close();
+
     auto endsum = std::chrono::high_resolution_clock::now();
     auto sumTime = (endsum - startsum);
     auto sumTimeInSeconds = std::chrono::duration_cast<std::chrono::duration<double>>(endsum - startsum).count();

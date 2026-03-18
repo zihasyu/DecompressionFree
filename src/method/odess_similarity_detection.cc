@@ -231,6 +231,8 @@ uint64_t FeatureIndexTable::SF_Find(const SuperFeatures &superfeatures)
     {
       if (!SFindex[sf].empty())
       {
+        // 命中时计数
+        sf_hit_counter[sf]++;
         // 返回vector中的最后一个元素，而不是第一个
         return SFindex[sf].back();
       }
