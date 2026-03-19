@@ -67,7 +67,8 @@ for task in "${runs[@]}"; do
     outname="offline${offline}_"
   fi
 
-  sudo echo 3 > /proc/sys/vm/drop_caches
+  sync
+  echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null
 
   ./DFree -i "$path" -c "$chunking" -m "$online" -n "$num" $offline_arg -R "$restore" > "${outname}C${chunking}_M${online}_${dataset}_R${restore}.txt"
   echo "完成：$dataset 分块$chunking 在线$online 离线$offline 恢复$restore"

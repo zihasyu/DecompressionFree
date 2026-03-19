@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 cd bin
 
 declare -A datasets
@@ -11,12 +13,12 @@ datasets=(
   # ["gcc"]="/mnt/dataset2/GNU_GCC/gcc-packed/tar 117"
   # ["chromium"]="/mnt/dataset2/chromium 107"
   # ["linux-100"]="/mnt/dataset2/linux 100"
-  ["linux"]="/home/public/Dataset/linux 270"
+  # ["linux"]="/home/public/Dataset/linux 270"
   # ["cassandra"]="/mnt/dataset2/cassandra 97"
   # ["vmdk"]="/mnt/dataset2/vmdk 8"
   # ["WEB"]="/mnt/dataset2/WEB 20"
-  ["WEB-3"]="/home/public/Dataset/WEB 3"
-  ["WindowsLog"]="/home/public/Dataset/WindowsLog 1"
+  # ["WEB-3"]="/home/public/Dataset/WEB 3"
+  # ["WindowsLog"]="/home/public/Dataset/WindowsLog 1"
   # ["ThunderbirdLog"]="/mnt/dataset2/ThunderbirdLog 1"
   # ["Wiki"]="/mnt/dataset2/wiki2025 7"
   # ["docker"]="/home/public/Dataset/docker 130"
@@ -52,7 +54,11 @@ for dataset in "${!datasets[@]}"; do
           threshold_arg="-T $threshold"
         fi
 
-        sudo echo 3 > /proc/sys/vm/drop_caches
+        sync
+        if ! echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null; then
+          echo "清理页缓存失败，请确认当前用户有 sudo 权限，或先手动执行一次: echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null" >&2
+          exit 1
+        fi
 
         ./DFree -i "$path" -c "$chunking" -m "$online" -n "$num" $offline_arg $threshold_arg -R "$restore" > "${outname}C${chunking}_M${online}_${dataset}_R${restore}_T${threshold}.txt"
         echo "完成：$dataset 分块$chunking 在线$online 离线$offline 恢复$restore 阈值$threshold"

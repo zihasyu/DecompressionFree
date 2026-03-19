@@ -6,17 +6,21 @@ run_method(){
 
 
 # # sudo rm Containers/*
-# # sudo echo 3 > /proc/sys/vm/drop_caches
+# # sync
+# # echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null
 # ./DFree -i $path -c 1 -m 6 -n $num  >OdessMiBL$name.txt
 # # sudo rm Containers/*
 
-# # sudo echo 3 > /proc/sys/vm/drop_caches
+# # sync
+# # echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null
 # ./DFree -i $path -c 1 -m 8 -n $num  >OdessMiBL2$name.txt
 # # sudo rm Containers/*
-# # sudo echo 3 > /proc/sys/vm/drop_caches
+# # sync
+# # echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null
 # ./DFree -i $path -c 1 -m 9 -n $num  >OdessMiBL3$name.txt
 # sudo rm Containers/*
-# sudo echo 3 > /proc/sys/vm/drop_caches
+# sync
+# echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null
 # ./DFree -i $path -c 1 -m 11 -n $num  >OdessMiLess4$name.txt
 
 # ./DFree -i $path -c 1 -m 10 -n $num  >OdessMiLog2$name.txt

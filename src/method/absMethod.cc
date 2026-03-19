@@ -1,5 +1,33 @@
 #include "../../include/absmethod.h"
 
+namespace
+{
+std::chrono::duration<double> GetBaseReconstructionTime(const AbsMethod &method)
+{
+    return method.IOTime + method.DecodeTime + method.RestoreMemcpyTime + method.BestBaseCopyTime;
+}
+
+std::chrono::duration<double> GetOtherTime(double total_time, const AbsMethod &method)
+{
+    auto other = std::chrono::duration<double>(total_time) - method.EncodeTime - GetBaseReconstructionTime(method);
+    if (other < std::chrono::duration<double>::zero())
+        return std::chrono::duration<double>::zero();
+    return other;
+}
+
+void WriteSearchBreakdown(std::ostream &out, const AbsMethod &method, double total_time)
+{
+    out << "MiDelta Time: " << method.MiDeltaTime.count() << "s" << endl;
+    out << "IO Time: " << method.IOTime.count() << "s" << endl;
+    out << "Decode Time: " << method.DecodeTime.count() << "s" << endl;
+    out << "Restore Memcpy Time: " << method.RestoreMemcpyTime.count() << "s" << endl;
+    out << "Best Base Copy Time: " << method.BestBaseCopyTime.count() << "s" << endl;
+    out << "Base Reconstruction Time: " << GetBaseReconstructionTime(method).count() << "s" << endl;
+    out << "Encode Trial Time: " << method.EncodeTime.count() << "s" << endl;
+    out << "Other Time: " << GetOtherTime(total_time, method).count() << "s" << endl;
+}
+} // namespace
+
 AbsMethod::AbsMethod()
 {
     mdCtx = EVP_MD_CTX_new();
@@ -371,7 +399,7 @@ Chunk_t AbsMethod::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
     startMemcpy = std::chrono::high_resolution_clock::now();
     memcpy(CombinedBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
     endMemcpy = std::chrono::high_resolution_clock::now();
-    MemcpyTime += (endMemcpy - startMemcpy);
+    RestoreMemcpyTime += (endMemcpy - startMemcpy);
 
     basechunk.loadFromDisk = false;
     basechunk.chunkSize = chunkChain.back().chunkSize;
@@ -404,7 +432,7 @@ Chunk_t AbsMethod::xd3_recursive_restore_BL_time(uint64_t BasechunkId)
         startMemcpy = std::chrono::high_resolution_clock::now();
         memcpy(CombinedBuffer, basechunk_ptr, basechunk_size);
         endMemcpy = std::chrono::high_resolution_clock::now();
-        MemcpyTime += (endMemcpy - startMemcpy);
+        RestoreMemcpyTime += (endMemcpy - startMemcpy);
 
         basechunk.chunkSize = chunkChain[i].chunkSize; // update size
         basechunk.FirstChildID = chunkChain[i].FirstChildID;
@@ -445,7 +473,10 @@ Chunk_t AbsMethod::xd3_recursive_restore_offline_time(uint64_t BasechunkId)
     SetTime(endIO);
     SetTime(startIO, endIO, IOTime);
 
+    startMemcpy = std::chrono::high_resolution_clock::now();
     memcpy(CombinedBuffer, chunkChain.back().chunkPtr, chunkChain.back().chunkSize);
+    endMemcpy = std::chrono::high_resolution_clock::now();
+    RestoreMemcpyTime += (endMemcpy - startMemcpy);
     basechunk.loadFromDisk = false;
     basechunk.chunkSize = chunkChain.back().chunkSize;
     basechunk.chunkPtr = CombinedBuffer;
@@ -473,7 +504,10 @@ Chunk_t AbsMethod::xd3_recursive_restore_offline_time(uint64_t BasechunkId)
         }
         if (chunkChain[i].loadFromDisk)
             free(chunkChain[i].chunkPtr);
+        startMemcpy = std::chrono::high_resolution_clock::now();
         memcpy(CombinedBuffer, basechunk_ptr, basechunk_size);
+        endMemcpy = std::chrono::high_resolution_clock::now();
+        RestoreMemcpyTime += (endMemcpy - startMemcpy);
         basechunk.chunkSize = chunkChain[i].chunkSize; // update size
         basechunk.FirstChildID = chunkChain[i].FirstChildID;
         basechunk.chunkID = chunkChain[i].chunkID;
@@ -754,10 +788,7 @@ void AbsMethod::PrintChunkInfo(string inputDirpath, int chunkingMethod, int meth
         out << "Reduce data speed: " << (double)(logicalchunkSize - uniquechunkSize) / time / 1024 / 1024 << "MiB/s" << endl;
         out << "SF generation time: " << SFTime.count() << "s" << endl;
         out << "SF generation throughput: " << (double)logicalchunkSize / SFTime.count() / 1024 / 1024 << "MiB/s" << endl;
-        out << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
-        out << "IO Time: " << IOTime.count() << "s" << endl;
-        out << "Decode Time: " << DecodeTime.count() << "s" << endl;
-        cout << "Encode Time: " << EncodeTime.count() << "s" << endl;
+        WriteSearchBreakdown(out, *this, static_cast<double>(time));
         out << "-----------------OverHead--------------------------" << endl;
         // out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
         out << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
@@ -803,10 +834,7 @@ void AbsMethod::PrintChunkInfo(string inputDirpath, int chunkingMethod, int meth
         out << "Reduce data speed: " << (double)(logicalchunkSize - uniquechunkSize) / time / 1024 / 1024 << "MiB/s" << endl;
         out << "SF generation time: " << SFTime.count() << "s" << endl;
         out << "SF generation throughput: " << (double)logicalchunkSize / SFTime.count() / 1024 / 1024 << "MiB/s" << endl;
-        out << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
-        out << "IO Time: " << IOTime.count() << "s" << endl;
-        out << "Decode Time: " << DecodeTime.count() << "s" << endl;
-        cout << "Encode Time: " << EncodeTime.count() << "s" << endl;
+        WriteSearchBreakdown(out, *this, static_cast<double>(time));
         out << "-----------------OverHead--------------------------" << endl;
         // out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
         out << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
@@ -867,11 +895,7 @@ void AbsMethod::PrintChunkInfo(double time, CommandLine_t CmdLine)
     out << "Reduce data speed: " << (double)(logicalchunkSize - uniquechunkSize) / time / 1024 / 1024 << "MiB/s" << endl;
     out << "SF generation time: " << SFTime.count() << "s" << endl;
     out << "SF generation throughput: " << (double)logicalchunkSize / SFTime.count() / 1024 / 1024 << "MiB/s" << endl;
-    out << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
-    out << "IO Time: " << IOTime.count() << "s" << endl;
-    out << "Decode Time: " << DecodeTime.count() << "s" << endl;
-    out << "Encode Time: " << EncodeTime.count() << "s" << endl;
-    out << "Memcpy Time: " << MemcpyTime.count() << "s" << endl;
+    WriteSearchBreakdown(out, *this, time);
     out << "-----------------OverHead--------------------------" << endl;
     out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
     out << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
@@ -982,10 +1006,7 @@ void AbsMethod::PrintChunkInfo(double time, CommandLine_t CmdLine, double chunkt
     out << "Reduce data speed: " << (double)(logicalchunkSize - uniquechunkSize) / time / 1024 / 1024 << "MiB/s" << endl;
     out << "SF generation time: " << SFTime.count() << "s" << endl;
     out << "SF generation throughput: " << (double)logicalchunkSize / SFTime.count() / 1024 / 1024 << "MiB/s" << endl;
-    out << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
-    out << "IO Time: " << IOTime.count() << "s" << endl;
-    out << "Decode Time: " << DecodeTime.count() << "s" << endl;
-    cout << "Encode Time: " << EncodeTime.count() << "s" << endl;
+    WriteSearchBreakdown(out, *this, time);
     out << "-----------------Time old------------------------------" << endl;
     out << "Chunk Time: " << chunktime << "s" << endl;
     out << "Dedup Time: " << DedupTime.count() << "s" << endl;
@@ -1075,10 +1096,7 @@ void AbsMethod::Version_log(double time)
     cout << "Reduce data speed: " << (double)(logicalchunkSize - preLogicalchunkiSize - uniquechunkSize + preuniquechunkSize) / time / 1024 / 1024 << "MiB/s" << endl;
     cout << "SF generation time: " << SFTime.count() - preSFTime.count() << "s" << endl;
     cout << "SF generation throughput: " << (double)(logicalchunkSize - preLogicalchunkiSize) / (SFTime.count() - preSFTime.count()) / 1024 / 1024 << "MiB/s" << endl;
-    cout << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
-    cout << "IO Time: " << IOTime.count() << "s" << endl;
-    cout << "Decode Time: " << DecodeTime.count() << "s" << endl;
-    cout << "Encode Time: " << EncodeTime.count() << "s" << endl;
+    WriteSearchBreakdown(cout, *this, time);
     cout << "-----------------OverHead--------------------------" << endl;
     // out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
     cout << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
@@ -1123,10 +1141,7 @@ void AbsMethod::PrintChunkInfo(string inputDirpath, int chunkingMethod, int meth
         out << "Reduce data speed: " << (double)(logicalchunkSize - uniquechunkSize) / time / 1024 / 1024 << "MiB/s" << endl;
         out << "SF generation time: " << SFTime.count() << "s" << endl;
         out << "SF generation throughput: " << (double)logicalchunkSize / SFTime.count() / 1024 / 1024 << "MiB/s" << endl;
-        out << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
-        out << "IO Time: " << IOTime.count() << "s" << endl;
-        out << "Decode Time: " << DecodeTime.count() << "s" << endl;
-        cout << "Encode Time: " << EncodeTime.count() << "s" << endl;
+        WriteSearchBreakdown(out, *this, static_cast<double>(time));
         out << "-----------------Time old------------------------------" << endl;
         out << "Chunk Time: " << chunktime << "s" << endl;
         out << "Dedup Time: " << DedupTime.count() << "s" << endl;
@@ -1184,10 +1199,7 @@ void AbsMethod::PrintChunkInfo(string inputDirpath, int chunkingMethod, int meth
         out << "Reduce data speed: " << (double)(logicalchunkSize - uniquechunkSize) / time / 1024 / 1024 << "MiB/s" << endl;
         out << "SF generation time: " << SFTime.count() << "s" << endl;
         out << "SF generation throughput: " << (double)logicalchunkSize / SFTime.count() / 1024 / 1024 << "MiB/s" << endl;
-        out << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
-        out << "IO Time: " << IOTime.count() << "s" << endl;
-        out << "Decode Time: " << DecodeTime.count() << "s" << endl;
-        cout << "Encode Time: " << EncodeTime.count() << "s" << endl;
+        WriteSearchBreakdown(out, *this, static_cast<double>(time));
         out << "-----------------Time old------------------------------" << endl;
         out << "Chunk Time: " << chunktime << "s" << endl;
         out << "Dedup Time: " << DedupTime.count() << "s" << endl;
@@ -1247,10 +1259,7 @@ void AbsMethod::Version_log(double time, double chunktime)
     cout << "Reduce data speed: " << (double)(logicalchunkSize - preLogicalchunkiSize - uniquechunkSize + preuniquechunkSize) / time / 1024 / 1024 << "MiB/s" << endl;
     cout << "SF generation time: " << SFTime.count() - preSFTime.count() << "s" << endl;
     cout << "SF generation throughput: " << (double)(logicalchunkSize - preLogicalchunkiSize) / (SFTime.count() - preSFTime.count()) / 1024 / 1024 << "MiB/s" << endl;
-    cout << "MiDelta Time: " << MiDeltaTime.count() << "s" << endl;
-    cout << "IO Time: " << IOTime.count() << "s" << endl;
-    cout << "Decode Time: " << DecodeTime.count() << "s" << endl;
-    cout << "Encode Time: " << EncodeTime.count() << "s" << endl;
+    WriteSearchBreakdown(cout, *this, time);
     cout << "-----------------Time old------------------------------" << endl;
     cout << "Chunk Time: " << chunktime << "s" << endl;
     cout << "Dedup Time: " << DedupTime.count() << "s" << endl;

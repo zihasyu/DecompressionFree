@@ -102,7 +102,8 @@ if [[ -z "${methods[$method_name]}" ]]; then
       # sudo rm -f Containers/*
       # sudo rm -f OfflineContainers/*
       # sudo rm -f restoreFile/*
-      # sudo sh -c  "echo 3 > /proc/sys/vm/drop_caches"
+      # sync
+      # echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null
       if [[ ("$method_name" == "offlineAllGreedy" || "$method_name" == "AllGreedy") && "$dataset" == "WEB" ]]; then
         echo "Applying special rule for $method_name on WEB: changing num to 3"
         num=3
