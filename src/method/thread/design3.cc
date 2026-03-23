@@ -1,4 +1,5 @@
 #include "../../../include/Thread/design3.h"
+#include <cstdint>
 
 Design3::Design3()
 // : chunkCache(1024) // 在构造函数初始化列表中初始化缓存容量
@@ -92,14 +93,16 @@ void Design3::ProcessTrace()
     // 恢复线程
     std::thread restoreThread([&]()
                               {
+        std::set<uint64_t> processed;
         // 递归处理一棵树（先主根整棵树，再递归处理所有子根树）
         std::function<void(uint64_t)> process_tree = [&](uint64_t rootId) {
             auto it = sortedRootChunkMap.find(rootId);
-            if (it == sortedRootChunkMap.end()) return;
+            if (it == sortedRootChunkMap.end() || processed.count(rootId)) return;
             const std::vector<uint64_t>& chunkIds = it->second;
             if (chunkIds.empty()) return;
 
             // logicalRootMap[rootId] = rootId;
+            processed.insert(rootId);
 
             // 记录本树下的子根
             std::vector<uint64_t> subRoots;
