@@ -3,15 +3,33 @@
 #include <csignal>
 #include <sstream>
 #include <chrono>
+#include <filesystem>
 
 #include "../../include/allmethod.h"
 
 using namespace std;
+namespace fs = std::filesystem;
 
 void signalHandler(int signum)
 {
     cout << "Interrupt signal (" << signum << ") received.\n";
     exit(signum);
+}
+
+void ResetDirectory(const std::string &path)
+{
+    std::error_code ec;
+    fs::remove_all(path, ec);
+    if (ec)
+    {
+        cerr << "Failed to clear directory " << path << ": " << ec.message() << endl;
+        ec.clear();
+    }
+    fs::create_directories(path, ec);
+    if (ec)
+    {
+        cerr << "Failed to create directory " << path << ": " << ec.message() << endl;
+    }
 }
 
 int main(int argc, char **argv)
@@ -217,6 +235,19 @@ int main(int argc, char **argv)
     chunkerObj->SetOutputMQ(chunkerMQ);
     absMethodObj->SetInputMQ(chunkerMQ);
     absMethodObj->dataWrite_ = new dataWrite();
+    const bool incrementalDesign4 = CmdLine.offlineMethod == Design4_;
+    if (incrementalDesign4)
+    {
+        if (CmdLine.compressionMethod != ODESS)
+        {
+            cerr << "Incremental Design4 offline processing currently requires ODESS as the online method." << endl;
+            return 1;
+        }
+        ResetDirectory("./InlineContainers");
+        ResetDirectory("./OfflineContainers");
+        ResetDirectory("./InlineContainers/current");
+        absMethodObj->dataWrite_->setContainerPath("./InlineContainers/current/");
+    }
     absMethodObj->AcceptThreshold = CmdLine.AcceptThreshold;
     absMethodObj->IsFalseFilter = CmdLine.IsFalseFilter;
     absMethodObj->TurnOnNameHash = CmdLine.TurnOnNameHash;
@@ -224,6 +255,8 @@ int main(int argc, char **argv)
 
     auto startsum = std::chrono::high_resolution_clock::now();
     double MTarTime = 0;
+    double incrementalOfflineTime = 0;
+    size_t compactedChunkBoundary = 0;
     if (CmdLine.chunkingType == MTAR || CmdLine.chunkingType == MTAROdess || CmdLine.chunkingType == MTARPalantir)
     {
         chunkerObj->MTar(readfileList, CmdLine.backupNum);
@@ -267,10 +300,70 @@ int main(int argc, char **argv)
         }
         else
             absMethodObj->Version_log(TimeTmp, chunkerObj->ChunkTime.count());
+
+        if (incrementalDesign4)
+        {
+            if (absMethodObj->rootChunkMap == nullptr || absMethodObj->dataWrite_->versionEndPoints.empty())
+            {
+                cerr << "Incremental Design4 offline processing requires a valid rootChunkMap and versionEndPoints." << endl;
+                return 1;
+            }
+
+            const size_t currentVersionEnd = absMethodObj->dataWrite_->versionEndPoints.back();
+            if (OfflineAbsMethodObj != nullptr && currentVersionEnd == compactedChunkBoundary)
+            {
+                cout << "----------------------incremental offline-------------------------" << std::endl;
+                cout << "batch " << i << " has no new unique chunks, reuse the current offline archive" << std::endl;
+                continue;
+            }
+            const string offlineGenerationPath = "./OfflineContainers/gen" + to_string(i) + "/";
+            ResetDirectory(offlineGenerationPath);
+
+            auto *nextOfflineMethod = new Design4();
+            nextOfflineMethod->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
+            nextOfflineMethod->dataWrite_ = absMethodObj->dataWrite_;
+            nextOfflineMethod->rootChunkMap = absMethodObj->rootChunkMap;
+            nextOfflineMethod->offline_dataWrite_ = new dataWrite();
+            nextOfflineMethod->offline_dataWrite_->setContainerPath(offlineGenerationPath);
+
+            auto *nextDesign4 = static_cast<Design4 *>(nextOfflineMethod);
+            if (OfflineAbsMethodObj != nullptr && OfflineAbsMethodObj->offline_dataWrite_ != nullptr && compactedChunkBoundary > 0)
+            {
+                nextDesign4->SetHistoricalSource(OfflineAbsMethodObj->offline_dataWrite_, compactedChunkBoundary);
+            }
+
+            auto offlineStart = std::chrono::high_resolution_clock::now();
+            nextOfflineMethod->ProcessTrace();
+            nextOfflineMethod->offline_dataWrite_->ProcessLastContainer();
+            auto offlineEnd = std::chrono::high_resolution_clock::now();
+            auto offlineBatchTime = std::chrono::duration_cast<std::chrono::duration<double>>(offlineEnd - offlineStart).count();
+            incrementalOfflineTime += offlineBatchTime;
+
+            cout << "----------------------incremental offline-------------------------" << std::endl;
+            cout << "batch " << i << " processed" << std::endl;
+            cout << "RestoreChunkTime: " << nextOfflineMethod->RestoreChunkTime.count() << "s" << std::endl;
+            cout << "Time taken by incremental offline: " << offlineBatchTime << " s " << std::endl;
+            cout << "Offline Compression ratio " << (double)absMethodObj->logicalchunkSize / (double)nextOfflineMethod->uniquechunkSize << std::endl;
+            cout << "Offline Throughput " << (double)absMethodObj->logicalchunkSize / offlineBatchTime / 1024 / 1024 << " MiB/s" << std::endl;
+
+            nextDesign4->SetHistoricalSource(nullptr, 0);
+            if (OfflineAbsMethodObj != nullptr)
+            {
+                if (OfflineAbsMethodObj->offline_dataWrite_ != nullptr)
+                {
+                    delete OfflineAbsMethodObj->offline_dataWrite_;
+                    OfflineAbsMethodObj->offline_dataWrite_ = nullptr;
+                }
+                OfflineAbsMethodObj->rootChunkMap = nullptr;
+                delete OfflineAbsMethodObj;
+            }
+
+            OfflineAbsMethodObj = nextOfflineMethod;
+            compactedChunkBoundary = currentVersionEnd;
+        }
     }
 
     auto endsum = std::chrono::high_resolution_clock::now();
-    auto sumTime = (endsum - startsum);
     auto sumTimeInSeconds = std::chrono::duration_cast<std::chrono::duration<double>>(endsum - startsum).count();
     std::cout << "Time taken by for loop: " << sumTimeInSeconds << " s " << std::endl;
     if (CmdLine.chunkingType == MTAR)
@@ -292,87 +385,106 @@ int main(int argc, char **argv)
 
     string fileName = "C" + to_string(CmdLine.chunkingType) + "_M" + to_string(CmdLine.compressionMethod);
     // absMethodObj->dataWrite_->Save_to_File_unique(fileName);
+    absMethodObj->dataWrite_->ProcessLastContainer();
 
     // offline processing
-    switch (CmdLine.offlineMethod)
+    if (!incrementalDesign4)
     {
-    case Offline_Greedy:
-    {
-        OfflineAbsMethodObj = new OfflineAllGreedy();
-        break;
-    }
-    case Offline_Tree_Cut:
-    {
-        OfflineAbsMethodObj = new OfflineTreeCut();
-        break;
-    }
-    case Offline_Tree_Cut_Layer:
-    {
-        OfflineAbsMethodObj = new OfflineTreeCutLayer();
-        break;
-    }
-    case Offline_Tree_Cache:
-    {
-        OfflineAbsMethodObj = new OfflineTreeCache();
-        break;
-    }
-    case Offline_Tree_Feature:
-    {
-        OfflineAbsMethodObj = new OfflineTreeFeature();
-        break;
-    }
-    case Offline_Tree_Cut_Layer_Ignore:
-    {
-        OfflineAbsMethodObj = new OfflineTreeCutLayerIgnore(); // 5
-        break;
-    }
-    case Offline_Tree_Feature_LRU:
-    {
-        OfflineAbsMethodObj = new OfflineTreeFeatureLru(); // 6
-        break;
-    }
-    case Greedy_:
-    {
-        OfflineAbsMethodObj = new Greedy();
-        break;
-    }
-    case Design1_:
-    {
-        OfflineAbsMethodObj = new Design1();
-        break;
-    }
-    case Design2_:
-    {
-        OfflineAbsMethodObj = new Design2();
-        break;
-    }
-    case Design3_:
-    {
-        OfflineAbsMethodObj = new Design3();
-        break;
-    }
-    default:
-        break;
-    }
-    // OfflineAbsMethodObj->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
-    if (CmdLine.offlineMethod >= 0)
-    {
-        OfflineAbsMethodObj->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
+        switch (CmdLine.offlineMethod)
+        {
+        case Offline_Greedy:
+        {
+            OfflineAbsMethodObj = new OfflineAllGreedy();
+            break;
+        }
+        case Offline_Tree_Cut:
+        {
+            OfflineAbsMethodObj = new OfflineTreeCut();
+            break;
+        }
+        case Offline_Tree_Cut_Layer:
+        {
+            OfflineAbsMethodObj = new OfflineTreeCutLayer();
+            break;
+        }
+        case Offline_Tree_Cache:
+        {
+            OfflineAbsMethodObj = new OfflineTreeCache();
+            break;
+        }
+        case Offline_Tree_Feature:
+        {
+            OfflineAbsMethodObj = new OfflineTreeFeature();
+            break;
+        }
+        case Offline_Tree_Cut_Layer_Ignore:
+        {
+            OfflineAbsMethodObj = new OfflineTreeCutLayerIgnore(); // 5
+            break;
+        }
+        case Offline_Tree_Feature_LRU:
+        {
+            OfflineAbsMethodObj = new OfflineTreeFeatureLru(); // 6
+            break;
+        }
+        case Greedy_:
+        {
+            OfflineAbsMethodObj = new Greedy();
+            break;
+        }
+        case Design1_:
+        {
+            OfflineAbsMethodObj = new Design1();
+            break;
+        }
+        case Design2_:
+        {
+            OfflineAbsMethodObj = new Design2();
+            break;
+        }
+        case Design3_:
+        {
+            OfflineAbsMethodObj = new Design3();
+            break;
+        }
+        case Design4_:
+        {
+            OfflineAbsMethodObj = new Design4();
+            break;
+        }
+        default:
+            break;
+        }
+        // OfflineAbsMethodObj->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
+        if (CmdLine.offlineMethod >= 0)
+        {
+            OfflineAbsMethodObj->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
 
-        OfflineAbsMethodObj->offline_dataWrite_ = new dataWrite();
-        OfflineAbsMethodObj->dataWrite_ = absMethodObj->dataWrite_;
-        OfflineAbsMethodObj->rootChunkMap = absMethodObj->rootChunkMap;
-        absMethodObj->rootChunkMap = nullptr;
-        OfflineAbsMethodObj->offline_dataWrite_->setContainerPath("./OfflineContainers/");
-        auto startTmp = std::chrono::high_resolution_clock::now();
-        OfflineAbsMethodObj->ProcessTrace();
-        auto endTmp = std::chrono::high_resolution_clock::now();
-        auto offlineTimeTmp = std::chrono::duration_cast<std::chrono::duration<double>>(endTmp - startTmp).count();
+            OfflineAbsMethodObj->offline_dataWrite_ = new dataWrite();
+            OfflineAbsMethodObj->dataWrite_ = absMethodObj->dataWrite_;
+            OfflineAbsMethodObj->rootChunkMap = absMethodObj->rootChunkMap;
+            absMethodObj->rootChunkMap = nullptr;
+            ResetDirectory("./OfflineContainers");
+            OfflineAbsMethodObj->offline_dataWrite_->setContainerPath("./OfflineContainers/");
+            auto startTmp = std::chrono::high_resolution_clock::now();
+            OfflineAbsMethodObj->ProcessTrace();
+            OfflineAbsMethodObj->offline_dataWrite_->ProcessLastContainer();
+            auto endTmp = std::chrono::high_resolution_clock::now();
+            auto offlineTimeTmp = std::chrono::duration_cast<std::chrono::duration<double>>(endTmp - startTmp).count();
+            cout << "RestoreChunkTime: " << OfflineAbsMethodObj->RestoreChunkTime.count() << "s" << std::endl;
+            std::cout << "Time taken by for offline: " << offlineTimeTmp << " s " << std::endl;
+            std::cout << "Offline Compression ratio " << (double)absMethodObj->logicalchunkSize / (double)OfflineAbsMethodObj->uniquechunkSize << std::endl;
+            std::cout << "Offline Throughput " << (double)absMethodObj->logicalchunkSize / offlineTimeTmp / 1024 / 1024 << " MiB/s" << std::endl;
+            OfflineAbsMethodObj->PrintOffline(offlineTimeTmp, CmdLine);
+        }
+    }
+    else if (OfflineAbsMethodObj != nullptr)
+    {
         cout << "RestoreChunkTime: " << OfflineAbsMethodObj->RestoreChunkTime.count() << "s" << std::endl;
-        std::cout << "Time taken by for offline: " << offlineTimeTmp << " s " << std::endl;
+        std::cout << "Time taken by incremental offline: " << incrementalOfflineTime << " s " << std::endl;
         std::cout << "Offline Compression ratio " << (double)absMethodObj->logicalchunkSize / (double)OfflineAbsMethodObj->uniquechunkSize << std::endl;
-        std::cout << "Offline Throughput " << (double)absMethodObj->logicalchunkSize / offlineTimeTmp / 1024 / 1024 << " MiB/s" << std::endl;
-        OfflineAbsMethodObj->PrintOffline(offlineTimeTmp, CmdLine);
+        std::cout << "Offline Throughput " << (double)absMethodObj->logicalchunkSize / incrementalOfflineTime / 1024 / 1024 << " MiB/s" << std::endl;
+        OfflineAbsMethodObj->PrintOffline(incrementalOfflineTime, CmdLine);
     }
 
     if (CmdLine.enableRestore)
@@ -530,8 +642,20 @@ int main(int argc, char **argv)
     }
 
     // clear
-    // delete absMethodObj->dataWrite_;
-    // delete absMethodObj->rootChunkMap;
+    if (incrementalDesign4 && OfflineAbsMethodObj)
+    {
+        OfflineAbsMethodObj->rootChunkMap = nullptr;
+    }
+    if (OfflineAbsMethodObj && OfflineAbsMethodObj->offline_dataWrite_)
+    {
+        delete OfflineAbsMethodObj->offline_dataWrite_;
+        OfflineAbsMethodObj->offline_dataWrite_ = nullptr;
+    }
+    if (absMethodObj && absMethodObj->dataWrite_)
+    {
+        delete absMethodObj->dataWrite_;
+        absMethodObj->dataWrite_ = nullptr;
+    }
     delete chunkerObj;
     delete absMethodObj;
     if (OfflineAbsMethodObj)

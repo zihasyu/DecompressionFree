@@ -30,15 +30,12 @@ void WriteSearchBreakdown(std::ostream &out, const AbsMethod &method, double tot
 
 AbsMethod::AbsMethod()
 {
-    mdCtx = EVP_MD_CTX_new();
-    hashBuf = (uint8_t *)malloc(CHUNK_HASH_SIZE * sizeof(uint8_t));
     DecodeBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * 2);
     CombinedBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * 2);
 }
 
 AbsMethod::~AbsMethod()
 {
-    free(hashBuf);
     free(DecodeBuffer);
     free(CombinedBuffer);
 }

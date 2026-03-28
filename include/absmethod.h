@@ -43,10 +43,10 @@ public:
     string filename;
     dataWrite *offline_dataWrite_ = nullptr;
     dataWrite *dataWrite_ = nullptr;
-    uint8_t *lz4ChunkBuffer;
-    uint8_t *hashBuf;
-    uint8_t *deltaMaxChunkBuffer;
-    EVP_MD_CTX *mdCtx;
+    uint8_t *lz4ChunkBuffer = nullptr;
+    uint8_t *hashBuf = nullptr;
+    uint8_t *deltaMaxChunkBuffer = nullptr;
+    EVP_MD_CTX *mdCtx = nullptr;
     // statics
     uint64_t totalLogicalSize = 0;
     uint64_t totalCompressedSize = 0;
@@ -132,7 +132,7 @@ public:
     uint8_t *CombinedBuffer;
     FeatureIndexTable table;
     AbsMethod();
-    ~AbsMethod();
+    virtual ~AbsMethod();
     void SetFilename(string name);
     virtual void ProcessTrace() = 0;
     void SetInputMQ(MessageQueue<Chunk_t> *mq) { recieveQueue = mq; }

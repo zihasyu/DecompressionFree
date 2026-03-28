@@ -371,7 +371,8 @@ enum OFFLINE_TYPE
     Greedy_,
     Design1_,
     Design2_,
-    Design3_
+    Design3_,
+    Design4_
 };
 enum DELTA_TYPE
 {
