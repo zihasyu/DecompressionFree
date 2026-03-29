@@ -316,7 +316,9 @@ int main(int argc, char **argv)
                 cout << "batch " << i << " has no new unique chunks, reuse the current offline archive" << std::endl;
                 continue;
             }
-            const string offlineGenerationPath = "./OfflineContainers/gen" + to_string(i) + "/";
+            // Only the previous generation is needed for the next incremental rebuild,
+            // so reuse two slots instead of retaining one directory per batch.
+            const string offlineGenerationPath = "./OfflineContainers/gen" + to_string(i % 2) + "/";
             ResetDirectory(offlineGenerationPath);
 
             auto *nextOfflineMethod = new Design4();
