@@ -372,7 +372,8 @@ enum OFFLINE_TYPE
     Design1_,
     Design2_,
     Design3_,
-    Design4_
+    Design4_,
+    Design5_
 };
 enum DELTA_TYPE
 {

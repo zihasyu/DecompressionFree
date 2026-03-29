@@ -46,7 +46,7 @@ datasets=(
   # ["vmdk"]="/mnt/dataset2/vmdk 8"
   # ["WEB"]="/mnt/dataset2/WEB 20"
   # ["WEB-3"]="/home/public/Dataset/WEB 3"
-  ["WindowsLog"]="/home/public/Dataset/WindowsLog 1"
+  # ["WindowsLog"]="/home/public/Dataset/WindowsLog 1"
   # ["ThunderbirdLog"]="/mnt/dataset2/ThunderbirdLog 1"
   # ["Wiki"]="/mnt/dataset2/wiki2025 7"
   # ["docker"]="/home/public/Dataset/docker 130"
@@ -57,7 +57,7 @@ chunking=1
 
 # 只用修改这里
 online_methods=(3)          # 在线方法编号列表
-offline_methods=(11)       # -1表示不做离线，其他为离线方法编号
+offline_methods=(12)       # -1表示不做离线，其他为离线方法编号
 restore_options=(1)         # 是否恢复  0,1
 threshold=64              # 新增：阈值参数，可根据需要修改
 
