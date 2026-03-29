@@ -1,540 +1,600 @@
-#include <iostream>
-#include <string>
-#include <csignal>
-#include <sstream>
 #include <chrono>
+#include <csignal>
+#include <iostream>
+#include <sstream>
+#include <string>
 
 #include "../../include/allmethod.h"
+#include "../../include/gc_simulator.h"
 
 using namespace std;
 
-void signalHandler(int signum)
-{
-    cout << "Interrupt signal (" << signum << ") received.\n";
-    exit(signum);
+void signalHandler(int signum) {
+  cout << "Interrupt signal (" << signum << ") received.\n";
+  exit(signum);
 }
 
-int main(int argc, char **argv)
-{
-    signal(SIGINT, signalHandler);
-    CommandLine_t CmdLine;
-    // uint32_t chunkingType;
-    // uint32_t compressionMethod;
-    // uint32_t backupNum;
-    // string dirName;
-    string myName = "DFree";
+int main(int argc, char **argv) {
+  signal(SIGINT, signalHandler);
+  CommandLine_t CmdLine;
+  // uint32_t chunkingType;
+  // uint32_t compressionMethod;
+  // uint32_t backupNum;
+  // string dirName;
+  string myName = "DFree";
 
-    vector<string> readfileList;
+  vector<string> readfileList;
 
-    const char optString[] = "i:m:c:n:r:a:b:t:H:o:R:T:";
-    // if (argc != sizeof(optString) && argc != sizeof(optString) - 2 && argc != sizeof(optString) - 4 && argc != sizeof(optString) - 6 && argc != sizeof(optString) - 8 && argc != sizeof(optString) - 10 && argc != sizeof(optString) - 12 && argc != sizeof(optString) - 14 && argc != sizeof(optString) - 16)
+  const char optString[] = "i:m:c:n:r:a:b:t:H:o:R:T:G:D:";
+  // if (argc != sizeof(optString) && argc != sizeof(optString) - 2 && argc !=
+  // sizeof(optString) - 4 && argc != sizeof(optString) - 6 && argc !=
+  // sizeof(optString) - 8 && argc != sizeof(optString) - 10 && argc !=
+  // sizeof(optString) - 12 && argc != sizeof(optString) - 14 && argc !=
+  // sizeof(optString) - 16)
+  // {
+  //     cout << "argc is " << argc << endl;
+  //     cout << "Usage: " << argv[0] << " -i <input file> -m <chunking method>
+  //     -c <compression method> -n <process number> -r <Bisearch fault ratio>
+  //     -a <False Filter Fixed parameters> -b <0 = fixed parameter> -t <0 = No
+  //     meta-guided> -H <Multi Header num>" << endl; return 0;
+  // }
+
+  // Grab command-line instructions
+  int option = 0;
+  while ((option = getopt(argc, argv, optString)) != -1) {
+    switch (option) {
+    case 'i':
+      CmdLine.dirName.assign(optarg);
+      break;
+    case 'c':
+      CmdLine.chunkingType = atoi(optarg);
+      break;
+    case 'm':
+      CmdLine.compressionMethod = atoi(optarg);
+      break;
+    case 'n':
+      CmdLine.backupNum = atoi(optarg);
+      break;
+    case 'r':
+      CmdLine.ratio = atoi(optarg);
+      break;
+    case 'a':
+      CmdLine.AcceptThreshold = atoi(optarg);
+      break;
+    case 'b':
+      CmdLine.IsFalseFilter = atoi(optarg);
+      break;
+    case 't':
+      CmdLine.TurnOnNameHash = atoi(optarg);
+      break;
+    case 'H':
+      CmdLine.MultiHeaderChunk = atoi(optarg);
+      break;
+    case 'o':
+      CmdLine.offlineMethod = atoi(optarg);
+      break;
+    case 'R': // for restore
+      CmdLine.enableRestore = atoi(optarg);
+      break;
+    case 'T':
+      CmdLine.Threshold = atoi(optarg);
+      break;
+    case 'G':
+      CmdLine.enableGCSimulation = atoi(optarg);
+      break;
+    case 'D':
+      CmdLine.gcDeletedVersions = atoi(optarg);
+      break;
+    default:
+      break;
+    }
+  }
+  if (CmdLine.dirName.empty() || CmdLine.chunkingType == -1 ||
+      CmdLine.compressionMethod == -1 || CmdLine.backupNum == -1) {
+    cout << "Usage: " << argv[0]
+         << " -i <input file> -c <chunking method> -m <compression method> -n "
+            "<process number> [OPTIONS...]"
+         << endl;
+    cout << "Mandatory arguments:" << endl;
+    cout << "  -i: Input directory" << endl;
+    cout << "  -c: Chunking type (integer)" << endl;
+    cout << "  -m: Compression method (integer)" << endl;
+    cout << "  -n: Number of versions/backups to process" << endl;
+    return 1;
+  }
+
+  AbsMethod *absMethodObj = nullptr, *OfflineAbsMethodObj = nullptr;
+  Chunker *chunkerObj = new Chunker(CmdLine.chunkingType);
+
+  MessageQueue<Chunk_t> *chunkerMQ =
+      new MessageQueue<Chunk_t>(CHUNK_QUEUE_SIZE);
+
+  switch (CmdLine.compressionMethod) {
+  case DEDUP: {
+    absMethodObj = new Dedup();
+    break;
+  }
+  case NTRANSFORM: {
+    absMethodObj = new NTransForm();
+    break;
+  }
+  case FINESSE: {
+    absMethodObj = new Finesse();
+    break;
+  }
+  case ODESS: {
+    absMethodObj = new Odess(CmdLine.offlineMethod);
+    break;
+  }
+  case PALANTIR: {
+    absMethodObj = new Palantir();
+    break;
+  }
+  case BiSEARCH: {
+    absMethodObj =
+        new BiSearch(CmdLine.ratio); // Ratio is used to debug false filter,
+                                     // which is not used now.
+    break;
+  }
+  case ODESS_MI_BL: {
+    absMethodObj = new OdessMiBL();
+    break;
+  }
+  case ODESS_MI_DF: {
+    absMethodObj = new OdessMiDF();
+    break;
+  }
+  case ODESS_MI_BL2: {
+    absMethodObj = new OdessMiBL2();
+    break;
+  }
+  case ODESS_MI_BL3: {
+    absMethodObj = new OdessMiBL3();
+    break;
+  }
+  case ODESS_ML_LOG2: {
+    absMethodObj = new OdessMLLog2();
+    break;
+  }
+  case ODESS_ML_LESS4: {
+    absMethodObj = new OdessMLLess4();
+    break;
+  }
+  case Tree_Cut: {
+    absMethodObj = new TreeCut();
+    break;
+  }
+
+  case Tree_Greedy: {
+    absMethodObj = new TreeGreedy();
+    break;
+  }
+  case All_Greedy: {
+    absMethodObj = new AllGreedy(); // 14
+    break;
+  }
+  case Tree_Cut_Layer: {
+    absMethodObj = new TreeCutLayer(); // 15
+    break;
+  }
+  case Tree_Cache: {
+    absMethodObj = new TreeCache();
+    break;
+  }
+  case Tree_Cache2: {
+    absMethodObj = new TreeCache2();
+    break;
+  }
+  case SUBTREE_REDUCTION: {
+    absMethodObj = new SubTreeReduction(); // 18
+    break;
+  }
+  case All_Greedy_LRU: {
+    absMethodObj = new AllGreedyLRU();
+    break;
+  }
+  case ALL_Greddy_LFU: {
+    absMethodObj = new AllGreedyLFU();
+    break;
+  }
+  default:
+    break;
+  }
+
+  tool::traverse_dir(CmdLine.dirName, readfileList, nofilter);
+  sort(readfileList.begin(), readfileList.end(), AbsMethod::compareNat);
+
+  boost::thread *thTmp[2] = {nullptr};
+  boost::thread::attributes attrs;
+  attrs.set_stack_size(THREAD_STACK_SIZE);
+  chunkerObj->SetOutputMQ(chunkerMQ);
+  absMethodObj->SetInputMQ(chunkerMQ);
+  absMethodObj->dataWrite_ = new dataWrite();
+  absMethodObj->AcceptThreshold = CmdLine.AcceptThreshold;
+  absMethodObj->IsFalseFilter = CmdLine.IsFalseFilter;
+  absMethodObj->TurnOnNameHash = CmdLine.TurnOnNameHash;
+  chunkerObj->MULTI_HEADER_CHUNK = CmdLine.MultiHeaderChunk;
+
+  auto startsum = std::chrono::high_resolution_clock::now();
+  double MTarTime = 0;
+  if (CmdLine.chunkingType == MTAR || CmdLine.chunkingType == MTAROdess ||
+      CmdLine.chunkingType == MTARPalantir) {
+    chunkerObj->MTar(readfileList, CmdLine.backupNum);
+  }
+  for (auto i = 0; i < CmdLine.backupNum; i++) {
+    auto startTmp = std::chrono::high_resolution_clock::now();
+    // set backup name
+    chunkerObj->LoadChunkFile(readfileList[i]);
+    absMethodObj->SetFilename(readfileList[i]);
+    absMethodObj->dataWrite_->SetFilename(readfileList[i]);
+    // thread running
+    // if (chunkingType == TAR_MultiHeader)
     // {
-    //     cout << "argc is " << argc << endl;
-    //     cout << "Usage: " << argv[0] << " -i <input file> -m <chunking method> -c <compression method> -n <process number> -r <Bisearch fault ratio> -a <False Filter Fixed parameters> -b <0 = fixed parameter> -t <0 = No meta-guided> -H <Multi Header num>" << endl;
-    //     return 0;
+    //     chunkerObj->SetHeaderChunkSize(uint64_t(ratio));
     // }
-
-    // Grab command-line instructions
-    int option = 0;
-    while ((option = getopt(argc, argv, optString)) != -1)
-    {
-        switch (option)
-        {
-        case 'i':
-            CmdLine.dirName.assign(optarg);
-            break;
-        case 'c':
-            CmdLine.chunkingType = atoi(optarg);
-            break;
-        case 'm':
-            CmdLine.compressionMethod = atoi(optarg);
-            break;
-        case 'n':
-            CmdLine.backupNum = atoi(optarg);
-            break;
-        case 'r':
-            CmdLine.ratio = atoi(optarg);
-            break;
-        case 'a':
-            CmdLine.AcceptThreshold = atoi(optarg);
-            break;
-        case 'b':
-            CmdLine.IsFalseFilter = atoi(optarg);
-            break;
-        case 't':
-            CmdLine.TurnOnNameHash = atoi(optarg);
-            break;
-        case 'H':
-            CmdLine.MultiHeaderChunk = atoi(optarg);
-            break;
-        case 'o':
-            CmdLine.offlineMethod = atoi(optarg);
-            break;
-        case 'R': // for restore
-            CmdLine.enableRestore = atoi(optarg);
-            break;
-        case 'T':
-            CmdLine.Threshold = atoi(optarg);
-            break;
-        default:
-            break;
-        }
+    thTmp[0] =
+        new boost::thread(attrs, boost::bind(&Chunker::Chunking, chunkerObj));
+    thTmp[1] = new boost::thread(
+        attrs, boost::bind(&AbsMethod::ProcessTrace, absMethodObj));
+    for (auto it : thTmp) {
+      it->join();
     }
-    if (CmdLine.dirName.empty() || CmdLine.chunkingType == -1 || CmdLine.compressionMethod == -1 || CmdLine.backupNum == -1)
-    {
-        cout << "Usage: " << argv[0] << " -i <input file> -c <chunking method> -m <compression method> -n <process number> [OPTIONS...]" << endl;
-        cout << "Mandatory arguments:" << endl;
-        cout << "  -i: Input directory" << endl;
-        cout << "  -c: Chunking type (integer)" << endl;
-        cout << "  -m: Compression method (integer)" << endl;
-        cout << "  -n: Number of versions/backups to process" << endl;
-        return 1;
+    // chunkerObj->WriteBoundariesToFile();
+    // chunkerObj->ClearBoundaries();
+    for (auto it : thTmp) {
+      delete it;
     }
-
-    AbsMethod *absMethodObj = nullptr, *OfflineAbsMethodObj = nullptr;
-    Chunker *chunkerObj = new Chunker(CmdLine.chunkingType);
-
-    MessageQueue<Chunk_t> *chunkerMQ = new MessageQueue<Chunk_t>(CHUNK_QUEUE_SIZE);
-
-    switch (CmdLine.compressionMethod)
-    {
-    case DEDUP:
-    {
-        absMethodObj = new Dedup();
-        break;
-    }
-    case NTRANSFORM:
-    {
-        absMethodObj = new NTransForm();
-        break;
-    }
-    case FINESSE:
-    {
-        absMethodObj = new Finesse();
-        break;
-    }
-    case ODESS:
-    {
-        absMethodObj = new Odess(CmdLine.offlineMethod);
-        break;
-    }
-    case PALANTIR:
-    {
-        absMethodObj = new Palantir();
-        break;
-    }
-    case BiSEARCH:
-    {
-        absMethodObj = new BiSearch(CmdLine.ratio); // Ratio is used to debug false filter, which is not used now.
-        break;
-    }
-    case ODESS_MI_BL:
-    {
-        absMethodObj = new OdessMiBL();
-        break;
-    }
-    case ODESS_MI_DF:
-    {
-        absMethodObj = new OdessMiDF();
-        break;
-    }
-    case ODESS_MI_BL2:
-    {
-        absMethodObj = new OdessMiBL2();
-        break;
-    }
-    case ODESS_MI_BL3:
-    {
-        absMethodObj = new OdessMiBL3();
-        break;
-    }
-    case ODESS_ML_LOG2:
-    {
-        absMethodObj = new OdessMLLog2();
-        break;
-    }
-    case ODESS_ML_LESS4:
-    {
-        absMethodObj = new OdessMLLess4();
-        break;
-    }
-    case Tree_Cut:
-    {
-        absMethodObj = new TreeCut();
-        break;
-    }
-
-    case Tree_Greedy:
-    {
-        absMethodObj = new TreeGreedy();
-        break;
-    }
-    case All_Greedy:
-    {
-        absMethodObj = new AllGreedy(); // 14
-        break;
-    }
-    case Tree_Cut_Layer:
-    {
-        absMethodObj = new TreeCutLayer(); // 15
-        break;
-    }
-    case Tree_Cache:
-    {
-        absMethodObj = new TreeCache();
-        break;
-    }
-    case Tree_Cache2:
-    {
-        absMethodObj = new TreeCache2();
-        break;
-    }
-    case SUBTREE_REDUCTION:
-    {
-        absMethodObj = new SubTreeReduction(); // 18
-        break;
-    }
-    case All_Greedy_LRU:
-    {
-        absMethodObj = new AllGreedyLRU();
-        break;
-    }
-    case ALL_Greddy_LFU:
-    {
-        absMethodObj = new AllGreedyLFU();
-        break;
-    }
-    default:
-        break;
-    }
-
-    tool::traverse_dir(CmdLine.dirName, readfileList, nofilter);
-    sort(readfileList.begin(), readfileList.end(), AbsMethod::compareNat);
-
-    boost::thread *thTmp[2] = {nullptr};
-    boost::thread::attributes attrs;
-    attrs.set_stack_size(THREAD_STACK_SIZE);
-    chunkerObj->SetOutputMQ(chunkerMQ);
-    absMethodObj->SetInputMQ(chunkerMQ);
-    absMethodObj->dataWrite_ = new dataWrite();
-    absMethodObj->AcceptThreshold = CmdLine.AcceptThreshold;
-    absMethodObj->IsFalseFilter = CmdLine.IsFalseFilter;
-    absMethodObj->TurnOnNameHash = CmdLine.TurnOnNameHash;
-    chunkerObj->MULTI_HEADER_CHUNK = CmdLine.MultiHeaderChunk;
-
-    auto startsum = std::chrono::high_resolution_clock::now();
-    double MTarTime = 0;
-    if (CmdLine.chunkingType == MTAR || CmdLine.chunkingType == MTAROdess || CmdLine.chunkingType == MTARPalantir)
-    {
-        chunkerObj->MTar(readfileList, CmdLine.backupNum);
-    }
-    for (auto i = 0; i < CmdLine.backupNum; i++)
-    {
-        auto startTmp = std::chrono::high_resolution_clock::now();
-        // set backup name
-        chunkerObj->LoadChunkFile(readfileList[i]);
-        absMethodObj->SetFilename(readfileList[i]);
-        absMethodObj->dataWrite_->SetFilename(readfileList[i]);
-        // thread running
-        // if (chunkingType == TAR_MultiHeader)
-        // {
-        //     chunkerObj->SetHeaderChunkSize(uint64_t(ratio));
-        // }
-        thTmp[0] = new boost::thread(attrs, boost::bind(&Chunker::Chunking, chunkerObj));
-        thTmp[1] = new boost::thread(attrs, boost::bind(&AbsMethod::ProcessTrace, absMethodObj));
-        for (auto it : thTmp)
-        {
-            it->join();
-        }
-        // chunkerObj->WriteBoundariesToFile();
-        // chunkerObj->ClearBoundaries();
-        for (auto it : thTmp)
-        {
-            delete it;
-        }
-        auto endTmp = std::chrono::high_resolution_clock::now();
-        auto TimeTmp = std::chrono::duration_cast<std::chrono::duration<double>>(endTmp - startTmp).count();
-        if (CmdLine.compressionMethod != 5)
-
-        {
-            if (CmdLine.chunkingType == MTAR)
-            {
-                absMethodObj->Version_log(TimeTmp + chunkerObj->MTarTime[i]);
-                MTarTime += chunkerObj->MTarTime[i];
-            }
-            else
-                absMethodObj->Version_log(TimeTmp);
-        }
-        else
-            absMethodObj->Version_log(TimeTmp, chunkerObj->ChunkTime.count());
-    }
-
-    auto endsum = std::chrono::high_resolution_clock::now();
-    auto sumTime = (endsum - startsum);
-    auto sumTimeInSeconds = std::chrono::duration_cast<std::chrono::duration<double>>(endsum - startsum).count();
-    std::cout << "Time taken by for loop: " << sumTimeInSeconds << " s " << std::endl;
-    if (CmdLine.chunkingType == MTAR)
-        sumTimeInSeconds += MTarTime;
-    tool::Logging(myName.c_str(), "logical Chunk Num is %d\n", absMethodObj->logicalchunkNum);
-    tool::Logging(myName.c_str(), "unique Chunk Num is %d\n", absMethodObj->uniquechunkNum);
-    tool::Logging(myName.c_str(), "Total logical size is %lu\n", absMethodObj->logicalchunkSize);
-    tool::Logging(myName.c_str(), "Total compressed size is %lu\n", absMethodObj->uniquechunkSize);
-    tool::Logging(myName.c_str(), "Compression ratio is %.4f\n", (double)absMethodObj->logicalchunkSize / (double)absMethodObj->uniquechunkSize);
-
-    cout << "logical read bytes: " << absMethodObj->dataWrite_->logicalReadBytes << endl;
-    cout << "physical read bytes: " << absMethodObj->dataWrite_->physicalReadBytes << endl;
-    cout << "read amplification: " << (double)absMethodObj->dataWrite_->physicalReadBytes / absMethodObj->dataWrite_->logicalReadBytes << endl;
-
+    auto endTmp = std::chrono::high_resolution_clock::now();
+    auto TimeTmp = std::chrono::duration_cast<std::chrono::duration<double>>(
+                       endTmp - startTmp)
+                       .count();
     if (CmdLine.compressionMethod != 5)
-        absMethodObj->PrintChunkInfo(sumTimeInSeconds, CmdLine);
-    else
-        absMethodObj->PrintChunkInfo(sumTimeInSeconds, CmdLine, chunkerObj->ChunkTime.count());
 
-    string fileName = "C" + to_string(CmdLine.chunkingType) + "_M" + to_string(CmdLine.compressionMethod);
-    // absMethodObj->dataWrite_->Save_to_File_unique(fileName);
+    {
+      if (CmdLine.chunkingType == MTAR) {
+        absMethodObj->Version_log(TimeTmp + chunkerObj->MTarTime[i]);
+        MTarTime += chunkerObj->MTarTime[i];
+      } else
+        absMethodObj->Version_log(TimeTmp);
+    } else
+      absMethodObj->Version_log(TimeTmp, chunkerObj->ChunkTime.count());
+  }
 
-    // offline processing
-    switch (CmdLine.offlineMethod)
-    {
-    case Offline_Greedy:
-    {
-        OfflineAbsMethodObj = new OfflineAllGreedy();
-        break;
-    }
-    case Offline_Tree_Cut:
-    {
-        OfflineAbsMethodObj = new OfflineTreeCut();
-        break;
-    }
-    case Offline_Tree_Cut_Layer:
-    {
-        OfflineAbsMethodObj = new OfflineTreeCutLayer();
-        break;
-    }
-    case Offline_Tree_Cache:
-    {
-        OfflineAbsMethodObj = new OfflineTreeCache();
-        break;
-    }
-    case Offline_Tree_Feature:
-    {
-        OfflineAbsMethodObj = new OfflineTreeFeature();
-        break;
-    }
-    case Offline_Tree_Cut_Layer_Ignore:
-    {
-        OfflineAbsMethodObj = new OfflineTreeCutLayerIgnore(); // 5
-        break;
-    }
-    case Offline_Tree_Feature_LRU:
-    {
-        OfflineAbsMethodObj = new OfflineTreeFeatureLru(); // 6
-        break;
-    }
-    case Greedy_:
-    {
-        OfflineAbsMethodObj = new Greedy();
-        break;
-    }
-    case Design1_:
-    {
-        OfflineAbsMethodObj = new Design1();
-        break;
-    }
-    case Design2_:
-    {
-        OfflineAbsMethodObj = new Design2();
-        break;
-    }
-    case Design3_:
-    {
-        OfflineAbsMethodObj = new Design3();
-        break;
-    }
-    default:
-        break;
-    }
-    // OfflineAbsMethodObj->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
-    if (CmdLine.offlineMethod >= 0)
-    {
-        OfflineAbsMethodObj->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
+  auto endsum = std::chrono::high_resolution_clock::now();
+  auto sumTime = (endsum - startsum);
+  auto sumTimeInSeconds =
+      std::chrono::duration_cast<std::chrono::duration<double>>(endsum -
+                                                                startsum)
+          .count();
+  std::cout << "Time taken by for loop: " << sumTimeInSeconds << " s "
+            << std::endl;
+  if (CmdLine.chunkingType == MTAR)
+    sumTimeInSeconds += MTarTime;
+  tool::Logging(myName.c_str(), "logical Chunk Num is %d\n",
+                absMethodObj->logicalchunkNum);
+  tool::Logging(myName.c_str(), "unique Chunk Num is %d\n",
+                absMethodObj->uniquechunkNum);
+  tool::Logging(myName.c_str(), "Total logical size is %lu\n",
+                absMethodObj->logicalchunkSize);
+  tool::Logging(myName.c_str(), "Total compressed size is %lu\n",
+                absMethodObj->uniquechunkSize);
+  tool::Logging(myName.c_str(), "Compression ratio is %.4f\n",
+                (double)absMethodObj->logicalchunkSize /
+                    (double)absMethodObj->uniquechunkSize);
 
-        OfflineAbsMethodObj->offline_dataWrite_ = new dataWrite();
-        OfflineAbsMethodObj->dataWrite_ = absMethodObj->dataWrite_;
-        OfflineAbsMethodObj->rootChunkMap = absMethodObj->rootChunkMap;
-        absMethodObj->rootChunkMap = nullptr;
-        OfflineAbsMethodObj->offline_dataWrite_->setContainerPath("./OfflineContainers/");
-        auto startTmp = std::chrono::high_resolution_clock::now();
-        OfflineAbsMethodObj->ProcessTrace();
-        auto endTmp = std::chrono::high_resolution_clock::now();
-        auto offlineTimeTmp = std::chrono::duration_cast<std::chrono::duration<double>>(endTmp - startTmp).count();
-        cout << "RestoreChunkTime: " << OfflineAbsMethodObj->RestoreChunkTime.count() << "s" << std::endl;
-        std::cout << "Time taken by for offline: " << offlineTimeTmp << " s " << std::endl;
-        std::cout << "Offline Compression ratio " << (double)absMethodObj->logicalchunkSize / (double)OfflineAbsMethodObj->uniquechunkSize << std::endl;
-        std::cout << "Offline Throughput " << (double)absMethodObj->logicalchunkSize / offlineTimeTmp / 1024 / 1024 << " MiB/s" << std::endl;
-        OfflineAbsMethodObj->PrintOffline(offlineTimeTmp, CmdLine);
-    }
+  cout << "logical read bytes: " << absMethodObj->dataWrite_->logicalReadBytes
+       << endl;
+  cout << "physical read bytes: " << absMethodObj->dataWrite_->physicalReadBytes
+       << endl;
+  cout << "read amplification: "
+       << (double)absMethodObj->dataWrite_->physicalReadBytes /
+              absMethodObj->dataWrite_->logicalReadBytes
+       << endl;
 
-    if (CmdLine.enableRestore)
-    {
-        double RestoreTimeSum = 0;
+  if (CmdLine.compressionMethod != 5)
+    absMethodObj->PrintChunkInfo(sumTimeInSeconds, CmdLine);
+  else
+    absMethodObj->PrintChunkInfo(sumTimeInSeconds, CmdLine,
+                                 chunkerObj->ChunkTime.count());
 
-        if(CmdLine.offlineMethod >= 0)
-        {
-            OfflineAbsMethodObj->offline_dataWrite_->physicalReadBytes = 0;
-            OfflineAbsMethodObj->offline_dataWrite_->logicalReadBytes = 0;
-            OfflineAbsMethodObj->offline_dataWrite_->restoreIOTime = std::chrono::duration<double>(0);
-            OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeTime = std::chrono::duration<double>(0);
-            OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeCount = 0;
-        }
-        else
-        {
-            absMethodObj->dataWrite_->physicalReadBytes = 0;
-            absMethodObj->dataWrite_->logicalReadBytes = 0;
-            absMethodObj->dataWrite_->restoreIOTime = std::chrono::duration<double>(0);
-            absMethodObj->dataWrite_->restoreDecodeTime = std::chrono::duration<double>(0);
-            absMethodObj->dataWrite_->restoreDecodeCount = 0;
-        }
+  string fileName = "C" + to_string(CmdLine.chunkingType) + "_M" +
+                    to_string(CmdLine.compressionMethod);
+  // absMethodObj->dataWrite_->Save_to_File_unique(fileName);
 
-        for (auto i = 0; i < CmdLine.backupNum; i++)
-        {
-            // 先清空cache，保证本轮统计独立
-            if (CmdLine.offlineMethod >= 0)
-                OfflineAbsMethodObj->offline_dataWrite_->ClearContainerCache();
-            else
-                absMethodObj->dataWrite_->ClearContainerCache();
+  // offline processing
+  switch (CmdLine.offlineMethod) {
+  case Offline_Greedy: {
+    OfflineAbsMethodObj = new OfflineAllGreedy();
+    break;
+  }
+  case Offline_Tree_Cut: {
+    OfflineAbsMethodObj = new OfflineTreeCut();
+    break;
+  }
+  case Offline_Tree_Cut_Layer: {
+    OfflineAbsMethodObj = new OfflineTreeCutLayer();
+    break;
+  }
+  case Offline_Tree_Cache: {
+    OfflineAbsMethodObj = new OfflineTreeCache();
+    break;
+  }
+  case Offline_Tree_Feature: {
+    OfflineAbsMethodObj = new OfflineTreeFeature();
+    break;
+  }
+  case Offline_Tree_Cut_Layer_Ignore: {
+    OfflineAbsMethodObj = new OfflineTreeCutLayerIgnore(); // 5
+    break;
+  }
+  case Offline_Tree_Feature_LRU: {
+    OfflineAbsMethodObj = new OfflineTreeFeatureLru(); // 6
+    break;
+  }
+  case Greedy_: {
+    OfflineAbsMethodObj = new Greedy();
+    break;
+  }
+  case Design1_: {
+    OfflineAbsMethodObj = new Design1();
+    break;
+  }
+  case Design2_: {
+    OfflineAbsMethodObj = new Design2();
+    break;
+  }
+  case Design3_: {
+    OfflineAbsMethodObj = new Design3();
+    break;
+  }
+  default:
+    break;
+  }
+  // OfflineAbsMethodObj->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
+  if (CmdLine.offlineMethod >= 0) {
+    OfflineAbsMethodObj->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
 
-            uint64_t prevPhysicalRead = 0, prevLogicalRead = 0;
-            if (CmdLine.offlineMethod >= 0)
-            {
-                prevPhysicalRead = OfflineAbsMethodObj->offline_dataWrite_->physicalReadBytes;
-                prevLogicalRead = OfflineAbsMethodObj->offline_dataWrite_->logicalReadBytes;
-            }
-            else
-            {
-                prevPhysicalRead = absMethodObj->dataWrite_->physicalReadBytes;
-                prevLogicalRead = absMethodObj->dataWrite_->logicalReadBytes;
-            }
+    OfflineAbsMethodObj->offline_dataWrite_ = new dataWrite();
+    OfflineAbsMethodObj->dataWrite_ = absMethodObj->dataWrite_;
+    OfflineAbsMethodObj->rootChunkMap = absMethodObj->rootChunkMap;
+    absMethodObj->rootChunkMap = nullptr;
+    OfflineAbsMethodObj->offline_dataWrite_->setContainerPath(
+        "./OfflineContainers/");
+    auto startTmp = std::chrono::high_resolution_clock::now();
+    OfflineAbsMethodObj->ProcessTrace();
+    auto endTmp = std::chrono::high_resolution_clock::now();
+    auto offlineTimeTmp =
+        std::chrono::duration_cast<std::chrono::duration<double>>(endTmp -
+                                                                  startTmp)
+            .count();
+    cout << "RestoreChunkTime: "
+         << OfflineAbsMethodObj->RestoreChunkTime.count() << "s" << std::endl;
+    std::cout << "Time taken by for offline: " << offlineTimeTmp << " s "
+              << std::endl;
+    std::cout << "Offline Compression ratio "
+              << (double)absMethodObj->logicalchunkSize /
+                     (double)OfflineAbsMethodObj->uniquechunkSize
+              << std::endl;
+    std::cout << "Offline Throughput "
+              << (double)absMethodObj->logicalchunkSize / offlineTimeTmp /
+                     1024 / 1024
+              << " MiB/s" << std::endl;
+    OfflineAbsMethodObj->PrintOffline(offlineTimeTmp, CmdLine);
+  }
 
-            auto startTmp = std::chrono::high_resolution_clock::now();
-            if (CmdLine.offlineMethod >= 0)
-            {
-                OfflineAbsMethodObj->offline_dataWrite_->RecipeMap = absMethodObj->dataWrite_->RecipeMap;
-                OfflineAbsMethodObj->offline_dataWrite_->restoreFile(readfileList[i]);
-            }
-            else
-                absMethodObj->dataWrite_->restoreFile(readfileList[i]);
-            auto endTmp = std::chrono::high_resolution_clock::now();
-            auto TimeTmp = std::chrono::duration_cast<std::chrono::duration<double>>(endTmp - startTmp).count();
-            RestoreTimeSum += TimeTmp;
+  if (CmdLine.enableRestore) {
+    double RestoreTimeSum = 0;
 
-            // 记录恢复后的物理/逻辑读字节
-            uint64_t curPhysicalRead = 0, curLogicalRead = 0;
-            if (CmdLine.offlineMethod >= 0)
-            {
-                curPhysicalRead = OfflineAbsMethodObj->offline_dataWrite_->physicalReadBytes;
-                curLogicalRead = OfflineAbsMethodObj->offline_dataWrite_->logicalReadBytes;
-            }
-            else
-            {
-                curPhysicalRead = absMethodObj->dataWrite_->physicalReadBytes;
-                curLogicalRead = absMethodObj->dataWrite_->logicalReadBytes;
-            }
-
-            uint64_t versionPhysicalRead = curPhysicalRead - prevPhysicalRead;
-            uint64_t versionLogicalRead = curLogicalRead - prevLogicalRead;
-            double versionReadAmplification = versionLogicalRead > 0 ? (double)versionPhysicalRead / versionLogicalRead : 0.0;
-
-            cout << "----------------------restore-------------------------" << std::endl;
-            cout << "Version " << i << endl;
-            cout << "Restore time: " << TimeTmp << " s" << endl;
-            cout << "Version logical read bytes: " << versionLogicalRead << endl;
-            cout << "Version physical read bytes: " << versionPhysicalRead << endl;
-            cout << "Version read amplification: " << versionReadAmplification << endl;
-            if (CmdLine.offlineMethod >= 0)
-            {
-                cout << "before visit container: " << OfflineAbsMethodObj->offline_dataWrite_->single << std::endl;
-                cout << "after visit container: " << OfflineAbsMethodObj->offline_dataWrite_->multi << std::endl;
-                cout << "total visit container: " << OfflineAbsMethodObj->offline_dataWrite_->single + OfflineAbsMethodObj->offline_dataWrite_->multi << std::endl;
-                cout << "IO in restore: " << OfflineAbsMethodObj->offline_dataWrite_->restoreIOTime.count() << " s " << std::endl;
-                cout << "Decode time in restore: " << OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeTime.count() << " s " << std::endl;
-                cout << "Decode count in restore: " << OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeCount << endl;
-                cout << "decode count / restore chunk: " << (double)OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeCount / OfflineAbsMethodObj->offline_dataWrite_->restoreChunkNum << endl;
-            }
-            else
-            {
-                cout << "before visit container: " << absMethodObj->dataWrite_->single << std::endl;
-                cout << "after visit container: " << absMethodObj->dataWrite_->multi << std::endl;
-                cout << "total visit container: " << absMethodObj->dataWrite_->single + absMethodObj->dataWrite_->multi << std::endl;
-                cout << "IO in restore: " << absMethodObj->dataWrite_->restoreIOTime.count() << " s " << std::endl;
-                cout << "Decode time in restore: " << absMethodObj->dataWrite_->restoreDecodeTime.count() << " s " << std::endl;
-                cout << "Decode count in restore: " << absMethodObj->dataWrite_->restoreDecodeCount << endl;
-                cout << "decode count / restore chunk: " << (double)absMethodObj->dataWrite_->restoreDecodeCount / absMethodObj->dataWrite_->restoreChunkNum << endl;
-            }
-        }
-        double overallReadAmplification;
-        double overallPhysicalRead;
-        double overallLogicalRead;
-        std::chrono::duration<double> restoreIoTime;
-        std::chrono::duration<double> restoreDecodeTime;
-        int restoreDecodeCount;
-        double avgDecode;
-        if(CmdLine.offlineMethod >= 0)
-        {
-            overallPhysicalRead = OfflineAbsMethodObj->offline_dataWrite_->physicalReadBytes;
-            overallLogicalRead = OfflineAbsMethodObj->offline_dataWrite_->logicalReadBytes;
-            overallReadAmplification = overallLogicalRead > 0 ? (double)overallPhysicalRead / overallLogicalRead : 0.0;
-            restoreIoTime = OfflineAbsMethodObj->offline_dataWrite_->restoreIOTime;
-            restoreDecodeTime = OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeTime;
-            restoreDecodeCount = OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeCount;
-            avgDecode = (double)OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeCount / OfflineAbsMethodObj->offline_dataWrite_->restoreChunkNum;
-        }
-        else
-        {
-            overallPhysicalRead = absMethodObj->dataWrite_->physicalReadBytes;
-            overallLogicalRead = absMethodObj->dataWrite_->logicalReadBytes;
-            overallReadAmplification = overallLogicalRead > 0 ? (double)overallPhysicalRead / overallLogicalRead : 0.0;
-            restoreIoTime = absMethodObj->dataWrite_->restoreIOTime;
-            restoreDecodeTime = absMethodObj->dataWrite_->restoreDecodeTime;
-            restoreDecodeCount = absMethodObj->dataWrite_->restoreDecodeCount;
-            avgDecode = (double)absMethodObj->dataWrite_->restoreDecodeCount / absMethodObj->dataWrite_->restoreChunkNum;
-        }
-
-        cout << "----------------------overall-------------------------" << std::endl;
-        cout << "Time taken by restoreFile: " << RestoreTimeSum << " s " << std::endl;
-        cout << "Avg Restore throughput: " << (double)absMethodObj->logicalchunkSize / RestoreTimeSum / 1024 / 1024 << " MiB/s" << endl;
-        cout << "Overall read amplification: " << overallReadAmplification << endl;
-        cout << "IO in restore: " << restoreIoTime.count() << " s " << std::endl;
-        cout << "Decode time in restore: " << restoreDecodeTime.count() << " s " << std::endl;
-        cout << "Decode count in restore: " << restoreDecodeCount << endl;
-        cout << "decode count / restore chunk: " << avgDecode << endl;
+    if (CmdLine.offlineMethod >= 0) {
+      OfflineAbsMethodObj->offline_dataWrite_->physicalReadBytes = 0;
+      OfflineAbsMethodObj->offline_dataWrite_->logicalReadBytes = 0;
+      OfflineAbsMethodObj->offline_dataWrite_->restoreIOTime =
+          std::chrono::duration<double>(0);
+      OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeTime =
+          std::chrono::duration<double>(0);
+      OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeCount = 0;
+    } else {
+      absMethodObj->dataWrite_->physicalReadBytes = 0;
+      absMethodObj->dataWrite_->logicalReadBytes = 0;
+      absMethodObj->dataWrite_->restoreIOTime =
+          std::chrono::duration<double>(0);
+      absMethodObj->dataWrite_->restoreDecodeTime =
+          std::chrono::duration<double>(0);
+      absMethodObj->dataWrite_->restoreDecodeCount = 0;
     }
 
-    cout << "----------------------inline container-------------------------" << std::endl;
-    if (absMethodObj && absMethodObj->dataWrite_)
-    {
-        absMethodObj->dataWrite_->PrintMetrics();
+    for (auto i = 0; i < CmdLine.backupNum; i++) {
+      // 先清空cache，保证本轮统计独立
+      if (CmdLine.offlineMethod >= 0)
+        OfflineAbsMethodObj->offline_dataWrite_->ClearContainerCache();
+      else
+        absMethodObj->dataWrite_->ClearContainerCache();
+
+      uint64_t prevPhysicalRead = 0, prevLogicalRead = 0;
+      if (CmdLine.offlineMethod >= 0) {
+        prevPhysicalRead =
+            OfflineAbsMethodObj->offline_dataWrite_->physicalReadBytes;
+        prevLogicalRead =
+            OfflineAbsMethodObj->offline_dataWrite_->logicalReadBytes;
+      } else {
+        prevPhysicalRead = absMethodObj->dataWrite_->physicalReadBytes;
+        prevLogicalRead = absMethodObj->dataWrite_->logicalReadBytes;
+      }
+
+      auto startTmp = std::chrono::high_resolution_clock::now();
+      if (CmdLine.offlineMethod >= 0) {
+        OfflineAbsMethodObj->offline_dataWrite_->RecipeMap =
+            absMethodObj->dataWrite_->RecipeMap;
+        OfflineAbsMethodObj->offline_dataWrite_->restoreFile(readfileList[i]);
+      } else
+        absMethodObj->dataWrite_->restoreFile(readfileList[i]);
+      auto endTmp = std::chrono::high_resolution_clock::now();
+      auto TimeTmp = std::chrono::duration_cast<std::chrono::duration<double>>(
+                         endTmp - startTmp)
+                         .count();
+      RestoreTimeSum += TimeTmp;
+
+      // 记录恢复后的物理/逻辑读字节
+      uint64_t curPhysicalRead = 0, curLogicalRead = 0;
+      if (CmdLine.offlineMethod >= 0) {
+        curPhysicalRead =
+            OfflineAbsMethodObj->offline_dataWrite_->physicalReadBytes;
+        curLogicalRead =
+            OfflineAbsMethodObj->offline_dataWrite_->logicalReadBytes;
+      } else {
+        curPhysicalRead = absMethodObj->dataWrite_->physicalReadBytes;
+        curLogicalRead = absMethodObj->dataWrite_->logicalReadBytes;
+      }
+
+      uint64_t versionPhysicalRead = curPhysicalRead - prevPhysicalRead;
+      uint64_t versionLogicalRead = curLogicalRead - prevLogicalRead;
+      double versionReadAmplification =
+          versionLogicalRead > 0
+              ? (double)versionPhysicalRead / versionLogicalRead
+              : 0.0;
+
+      cout << "----------------------restore-------------------------"
+           << std::endl;
+      cout << "Version " << i << endl;
+      cout << "Restore time: " << TimeTmp << " s" << endl;
+      cout << "Version logical read bytes: " << versionLogicalRead << endl;
+      cout << "Version physical read bytes: " << versionPhysicalRead << endl;
+      cout << "Version read amplification: " << versionReadAmplification
+           << endl;
+      if (CmdLine.offlineMethod >= 0) {
+        cout << "before visit container: "
+             << OfflineAbsMethodObj->offline_dataWrite_->single << std::endl;
+        cout << "after visit container: "
+             << OfflineAbsMethodObj->offline_dataWrite_->multi << std::endl;
+        cout << "total visit container: "
+             << OfflineAbsMethodObj->offline_dataWrite_->single +
+                    OfflineAbsMethodObj->offline_dataWrite_->multi
+             << std::endl;
+        cout << "IO in restore: "
+             << OfflineAbsMethodObj->offline_dataWrite_->restoreIOTime.count()
+             << " s " << std::endl;
+        cout << "Decode time in restore: "
+             << OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeTime
+                    .count()
+             << " s " << std::endl;
+        cout << "Decode count in restore: "
+             << OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeCount
+             << endl;
+        cout << "decode count / restore chunk: "
+             << (double)OfflineAbsMethodObj->offline_dataWrite_
+                        ->restoreDecodeCount /
+                    OfflineAbsMethodObj->offline_dataWrite_->restoreChunkNum
+             << endl;
+      } else {
+        cout << "before visit container: " << absMethodObj->dataWrite_->single
+             << std::endl;
+        cout << "after visit container: " << absMethodObj->dataWrite_->multi
+             << std::endl;
+        cout << "total visit container: "
+             << absMethodObj->dataWrite_->single +
+                    absMethodObj->dataWrite_->multi
+             << std::endl;
+        cout << "IO in restore: "
+             << absMethodObj->dataWrite_->restoreIOTime.count() << " s "
+             << std::endl;
+        cout << "Decode time in restore: "
+             << absMethodObj->dataWrite_->restoreDecodeTime.count() << " s "
+             << std::endl;
+        cout << "Decode count in restore: "
+             << absMethodObj->dataWrite_->restoreDecodeCount << endl;
+        cout << "decode count / restore chunk: "
+             << (double)absMethodObj->dataWrite_->restoreDecodeCount /
+                    absMethodObj->dataWrite_->restoreChunkNum
+             << endl;
+      }
     }
-    else
-    {
-        cout << "inline container dataWrite_ is nullptr!" << std::endl;
-    }
-    cout << "----------------------offline container-------------------------" << std::endl;
-    if (OfflineAbsMethodObj && OfflineAbsMethodObj->offline_dataWrite_)
-    {
-        OfflineAbsMethodObj->offline_dataWrite_->PrintMetrics();
-    }
-    else
-    {
-        cout << "offline container offline_dataWrite_ is nullptr!" << std::endl;
+    double overallReadAmplification;
+    double overallPhysicalRead;
+    double overallLogicalRead;
+    std::chrono::duration<double> restoreIoTime;
+    std::chrono::duration<double> restoreDecodeTime;
+    int restoreDecodeCount;
+    double avgDecode;
+    if (CmdLine.offlineMethod >= 0) {
+      overallPhysicalRead =
+          OfflineAbsMethodObj->offline_dataWrite_->physicalReadBytes;
+      overallLogicalRead =
+          OfflineAbsMethodObj->offline_dataWrite_->logicalReadBytes;
+      overallReadAmplification =
+          overallLogicalRead > 0
+              ? (double)overallPhysicalRead / overallLogicalRead
+              : 0.0;
+      restoreIoTime = OfflineAbsMethodObj->offline_dataWrite_->restoreIOTime;
+      restoreDecodeTime =
+          OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeTime;
+      restoreDecodeCount =
+          OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeCount;
+      avgDecode =
+          (double)OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeCount /
+          OfflineAbsMethodObj->offline_dataWrite_->restoreChunkNum;
+    } else {
+      overallPhysicalRead = absMethodObj->dataWrite_->physicalReadBytes;
+      overallLogicalRead = absMethodObj->dataWrite_->logicalReadBytes;
+      overallReadAmplification =
+          overallLogicalRead > 0
+              ? (double)overallPhysicalRead / overallLogicalRead
+              : 0.0;
+      restoreIoTime = absMethodObj->dataWrite_->restoreIOTime;
+      restoreDecodeTime = absMethodObj->dataWrite_->restoreDecodeTime;
+      restoreDecodeCount = absMethodObj->dataWrite_->restoreDecodeCount;
+      avgDecode = (double)absMethodObj->dataWrite_->restoreDecodeCount /
+                  absMethodObj->dataWrite_->restoreChunkNum;
     }
 
-    // clear
-    // delete absMethodObj->dataWrite_;
-    // delete absMethodObj->rootChunkMap;
-    delete chunkerObj;
-    delete absMethodObj;
-    if (OfflineAbsMethodObj)
-        delete OfflineAbsMethodObj;
-    return 0;
+    cout << "----------------------overall-------------------------"
+         << std::endl;
+    cout << "Time taken by restoreFile: " << RestoreTimeSum << " s "
+         << std::endl;
+    cout << "Avg Restore throughput: "
+         << (double)absMethodObj->logicalchunkSize / RestoreTimeSum / 1024 /
+                1024
+         << " MiB/s" << endl;
+    cout << "Overall read amplification: " << overallReadAmplification << endl;
+    cout << "IO in restore: " << restoreIoTime.count() << " s " << std::endl;
+    cout << "Decode time in restore: " << restoreDecodeTime.count() << " s "
+         << std::endl;
+    cout << "Decode count in restore: " << restoreDecodeCount << endl;
+    cout << "decode count / restore chunk: " << avgDecode << endl;
+  }
+
+  cout << "----------------------inline container-------------------------"
+       << std::endl;
+  if (absMethodObj && absMethodObj->dataWrite_) {
+    absMethodObj->dataWrite_->PrintMetrics();
+  } else {
+    cout << "inline container dataWrite_ is nullptr!" << std::endl;
+  }
+  cout << "----------------------offline container-------------------------"
+       << std::endl;
+  if (OfflineAbsMethodObj && OfflineAbsMethodObj->offline_dataWrite_) {
+    OfflineAbsMethodObj->offline_dataWrite_->PrintMetrics();
+  } else {
+    cout << "offline container offline_dataWrite_ is nullptr!" << std::endl;
+  }
+
+  // GC Simulation
+  if (CmdLine.enableGCSimulation) {
+    GCSimulator gc_sim;
+    dataWrite *gc_inline_dw = absMethodObj->dataWrite_;
+    dataWrite *gc_offline_dw = (OfflineAbsMethodObj != nullptr)
+                                   ? OfflineAbsMethodObj->offline_dataWrite_
+                                   : nullptr;
+    gc_sim.Init(gc_inline_dw, gc_offline_dw, CmdLine.backupNum,
+                CmdLine.gcDeletedVersions, readfileList);
+    gc_sim.RunAll();
+  }
+
+  // clear
+  // delete absMethodObj->dataWrite_;
+  // delete absMethodObj->rootChunkMap;
+  delete chunkerObj;
+  delete absMethodObj;
+  if (OfflineAbsMethodObj)
+    delete OfflineAbsMethodObj;
+  return 0;
 }

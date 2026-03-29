@@ -4,85 +4,83 @@
  * @LastEditors: Helix && 834991203@qq.com
  * @LastEditTime: 2024-01-31 21:04:39
  * @FilePath: /LocalDedupSim/include/struct.h
- * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置
+ * 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
 #ifndef MY_STRUCT_H
 #define MY_STRUCT_H
 
 #include "define.h"
 #include <cstdint>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
-typedef struct
-{
-    uint64_t chunkID;      // 8 bytes
-    uint64_t chunkSize;    // 8 bytes
-    uint64_t saveSize;     // 8 bytes
-    uint64_t offset;       // 8 bytes
-    uint64_t containerID;  // 8 bytes
-    uint8_t *chunkPtr;     // 8 bytes (assuming 64-bit pointer)
-    uint64_t name = 0;     // 8 bytes
-    int basechunkID;       // 4 bytes
-    int FirstChildID = -1; // 4 bytes
-    int FirstBroID = -1;   // 4 bytes
-    int BeforeFit = -1;
-    int HitCount = 0;
-    uint8_t deltaFlag = NO_DELTA; // 1 byte
-    bool loadFromDisk = false;    // 1 byte
-    bool HeaderFlag = false;      // 1 byte
-    bool NameExist = true;        // 1 byte
-    // 1 byte padding to align the structure to 8 bytes boundary
+typedef struct {
+  uint64_t chunkID;      // 8 bytes
+  uint64_t chunkSize;    // 8 bytes
+  uint64_t saveSize;     // 8 bytes
+  uint64_t offset;       // 8 bytes
+  uint64_t containerID;  // 8 bytes
+  uint8_t *chunkPtr;     // 8 bytes (assuming 64-bit pointer)
+  uint64_t name = 0;     // 8 bytes
+  int basechunkID;       // 4 bytes
+  int FirstChildID = -1; // 4 bytes
+  int FirstBroID = -1;   // 4 bytes
+  int BeforeFit = -1;
+  int HitCount = 0;
+  uint8_t deltaFlag = NO_DELTA; // 1 byte
+  bool loadFromDisk = false;    // 1 byte
+  bool HeaderFlag = false;      // 1 byte
+  bool NameExist = true;        // 1 byte
+  // 1 byte padding to align the structure to 8 bytes boundary
 } Chunk_t;
 
-typedef struct
-{
-    uint64_t chunkSize;           // 8 bytes
-    uint64_t saveSize;            // 8 bytes
-    uint64_t offset;              // 8 bytes
-    uint64_t containerID;         // 8 bytes
-    uint8_t *chunkPtr;            // 8 bytes
-    std::string basechunkFP;      // 32bytes
-    uint8_t deltaFlag = NO_DELTA; // 8 bytes
-    bool loadFromDisk = false;    // 1 bytes
-    // bool HeaderFlag = false;
-    //  bool NameExist = true;
-    // offset and containerId
+typedef struct {
+  uint64_t chunkSize;           // 8 bytes
+  uint64_t saveSize;            // 8 bytes
+  uint64_t offset;              // 8 bytes
+  uint64_t containerID;         // 8 bytes
+  uint8_t *chunkPtr;            // 8 bytes
+  std::string basechunkFP;      // 32bytes
+  uint8_t deltaFlag = NO_DELTA; // 8 bytes
+  bool loadFromDisk = false;    // 1 bytes
+                                // bool HeaderFlag = false;
+                                //  bool NameExist = true;
+                                // offset and containerId
 } Chunk_t_odess;
 
-typedef struct
-{
-    uint64_t size;
-    uint64_t chunkNum;
-    uint64_t containerID;
-    uint8_t data[CONTAINER_MAX_SIZE];
+typedef struct {
+  uint64_t size;
+  uint64_t chunkNum;
+  uint64_t containerID;
+  uint8_t data[CONTAINER_MAX_SIZE];
 } Container_t;
 
-typedef struct
-{
-    uint64_t headerSegmentId;
-    uint64_t dataSegmentId;
-    uint64_t blockTypeMask;
+typedef struct {
+  uint64_t headerSegmentId;
+  uint64_t dataSegmentId;
+  uint64_t blockTypeMask;
 } RecipeSeg_t;
 
 typedef uint64_t Recipe_t;
 
 typedef uint64_t Recipe_Header_t;
 
-typedef struct
-{
-    std::string dirName;
-    int chunkingType = -1;
-    int compressionMethod = -1;
-    int backupNum = -1;
-    double ratio = 10;
-    double AcceptThreshold = 0;
-    bool IsFalseFilter = false;
-    bool TurnOnNameHash = true;
-    int MultiHeaderChunk = 16; // num
-    int offlineMethod = -1;
-    bool enableRestore = false;
-    int Threshold = 64; // for design2
+typedef struct {
+  std::string dirName;
+  int chunkingType = -1;
+  int compressionMethod = -1;
+  int backupNum = -1;
+  double ratio = 10;
+  double AcceptThreshold = 0;
+  bool IsFalseFilter = false;
+  bool TurnOnNameHash = true;
+  int MultiHeaderChunk = 16; // num
+  int offlineMethod = -1;
+  bool enableRestore = false;
+  int Threshold = 64; // for design2
+  bool enableGCSimulation = false;
+  int gcDeletedVersions = 20; // 模拟删除最老的N个版本
 } CommandLine_t;
 
 #endif
