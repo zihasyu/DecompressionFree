@@ -29,6 +29,7 @@ private:
     uint8_t *chi_basechunk_ptr_cache = nullptr;
     uint8_t *basechunk_ptr_cache = nullptr;
     ChunkBufferPool<MAX_CHUNK_SIZE, 1024> chunkCache_;
+    bool HistoricalSourceHasChunk(uint64_t chunkId) const;
     dataWrite *GetSourceDataWrite(uint64_t chunkId) const;
     Chunk_t LoadSourceChunk(uint64_t chunkId);
 

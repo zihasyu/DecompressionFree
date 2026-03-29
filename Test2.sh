@@ -36,7 +36,7 @@ datasets=(
   # ["bash"]="/mnt/dataset2/bash_tarballs 44"
   # ["coreutils"]="/mnt/dataset2/coreutils_tarballs 28"
   # ["fdisk"]="/mnt/dataset2/fdisk_tarballs 22"
-  ["glibc"]="/home/public/Dataset/glibc_tarballs/glibc_tarballs 5"  #100
+  ["glibc"]="/home/public/Dataset/glibc_tarballs/glibc_tarballs 100"  #100
   # ["smalltalk"]="/mnt/dataset2/smalltalk_tarballs 40"
   # ["gcc"]="/mnt/dataset2/GNU_GCC/gcc-packed/tar 117"
   # ["chromium"]="/mnt/dataset2/chromium 107"
@@ -57,9 +57,10 @@ chunking=1
 
 # 只用修改这里
 online_methods=(3)          # 在线方法编号列表
-offline_methods=(12)       # -1表示不做离线，其他为离线方法编号
+offline_methods=(11)       # -1表示不做离线，其他为离线方法编号
 restore_options=(1)         # 是否恢复  0,1
 threshold=64              # 新增：阈值参数，可根据需要修改
+retention_backups=20      # 新增：保留最近多少个备份，-1 表示全部保留
 
 for dataset in "${!datasets[@]}"; do
   read -r path num <<< "${datasets[$dataset]}"
@@ -70,17 +71,23 @@ for dataset in "${!datasets[@]}"; do
         rm -rf restoreFile/*
 
         # 输出实验开始时间及当前实验信息
-        experiment_desc="dataset=${dataset} path=${path} n=${num} C${chunking} M${online} offline${offline} R${restore} T${threshold}"
-        echo "实验开始时间：$(date) - 正在执行：${experiment_desc}"
-
         offline_arg=""
         outname=""
         threshold_arg=""
+        retention_arg=""
+        retention_tag=""
         if [[ $offline -ge 0 ]]; then
           offline_arg="-o $offline"
           outname="offline${offline}_"
           threshold_arg="-T $threshold"
         fi
+        if [[ $retention_backups -ge 0 ]]; then
+          retention_arg="-k $retention_backups"
+          retention_tag="_K${retention_backups}"
+        fi
+
+        experiment_desc="dataset=${dataset} path=${path} n=${num} C${chunking} M${online} offline${offline} R${restore} T${threshold} K${retention_backups}"
+        echo "实验开始时间：$(date) - 正在执行：${experiment_desc}"
 
         sync
         if ! echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null; then
@@ -88,8 +95,15 @@ for dataset in "${!datasets[@]}"; do
           exit 1
         fi
 
-        ./DFree -i "$path" -c "$chunking" -m "$online" -n "$num" $offline_arg $threshold_arg -R "$restore" > "${outname}C${chunking}_M${online}_${dataset}_R${restore}_T${threshold}.txt"
-        echo "完成：$dataset 分块$chunking 在线$online 离线$offline 恢复$restore 阈值$threshold"
+        logfile="${outname}C${chunking}_M${online}_${dataset}_R${restore}_T${threshold}${retention_tag}.txt"
+        ./DFree -i "$path" -c "$chunking" -m "$online" -n "$num" $offline_arg $threshold_arg $retention_arg -R "$restore" > "$logfile" 2>&1
+        status=$?
+        if [[ $status -ne 0 ]]; then
+          echo "实验失败：${experiment_desc}" >&2
+          echo "错误日志：$PWD/$logfile" >&2
+          exit $status
+        fi
+        echo "完成：$dataset 分块$chunking 在线$online 离线$offline 恢复$restore 阈值$threshold 保留$retention_backups"
       done
     done
   done

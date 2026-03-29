@@ -83,6 +83,7 @@ typedef struct
     int offlineMethod = -1;
     bool enableRestore = false;
     int Threshold = 64; // for design2
+    int retentionBackups = -1;
 } CommandLine_t;
 
 #endif

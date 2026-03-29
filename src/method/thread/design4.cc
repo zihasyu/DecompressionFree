@@ -12,6 +12,20 @@ void ResetChunkForRebuild(Chunk_t &chunk)
     chunk.HitCount = 0;
     chunk.deltaFlag = NO_DELTA;
 }
+
+int FindNextLiveNode(const AbsMethod *method, const std::vector<Chunk_t> &chunklist, int startId)
+{
+    int currentId = startId;
+    while (currentId >= 0)
+    {
+        if (method->ShouldKeepChunk(static_cast<uint64_t>(currentId)))
+        {
+            return currentId;
+        }
+        currentId = chunklist[currentId].FirstBroID;
+    }
+    return -1;
+}
 } // namespace
 
 Design4::Design4()
@@ -33,6 +47,7 @@ Design4::~Design4()
     free(hashBuf);
     free(tmpDeltaBuffer);
     free(MinBaseBuffer);
+    delete[] SFindex;
     if (rootChunkMap != nullptr)
     {
         delete rootChunkMap;
@@ -45,9 +60,17 @@ void Design4::SetHistoricalSource(dataWrite *historicalDataWrite, uint64_t histo
     historicalChunkBoundary_ = historicalChunkBoundary;
 }
 
+bool Design4::HistoricalSourceHasChunk(uint64_t chunkId) const
+{
+    return historicalDataWrite_ != nullptr &&
+           chunkId < historicalChunkBoundary_ &&
+           chunkId < historicalDataWrite_->chunklist.size() &&
+           historicalDataWrite_->chunklist[chunkId].chunkSize > 0;
+}
+
 dataWrite *Design4::GetSourceDataWrite(uint64_t chunkId) const
 {
-    if (historicalDataWrite_ != nullptr && chunkId < historicalChunkBoundary_)
+    if (HistoricalSourceHasChunk(chunkId))
     {
         return historicalDataWrite_;
     }
@@ -142,11 +165,24 @@ void Design4::ProcessTrace()
     logicalRootMap.clear();
     ThreadSafeQueue4<RestoredChunk4> chunkQueue;
 
-    std::map<uint64_t, const std::vector<uint64_t> &> sortedRootChunkMap;
+    std::map<uint64_t, std::vector<uint64_t>> sortedRootChunkMap;
     for (const auto &pair : *rootChunkMap)
     {
-        sortedRootChunkMap.insert(pair);
-        logicalRootMap[pair.first] = pair.first;
+        std::vector<uint64_t> filteredChunkIds;
+        filteredChunkIds.reserve(pair.second.size());
+        for (uint64_t chunkId : pair.second)
+        {
+            if (ShouldKeepChunk(chunkId))
+            {
+                filteredChunkIds.push_back(chunkId);
+            }
+        }
+        if (filteredChunkIds.empty())
+        {
+            continue;
+        }
+        sortedRootChunkMap.emplace(pair.first, std::move(filteredChunkIds));
+        logicalRootMap[pair.first] = ShouldKeepChunk(pair.first) ? pair.first : static_cast<uint64_t>(-1);
     }
 
     std::thread restoreThread([&]()
@@ -206,11 +242,7 @@ void Design4::ProcessTrace()
 
         for (const auto &pair : sortedRootChunkMap)
         {
-            uint64_t rootId = pair.first;
-            const std::vector<uint64_t> &chunkIds = pair.second;
-            if (chunkIds.empty() || rootId != chunkIds[0])
-                continue;
-            process_tree(rootId);
+            process_tree(pair.first);
         }
         chunkQueue.set_finished(); });
 
@@ -224,6 +256,7 @@ void Design4::ProcessTrace()
             uint64_t basechunkid = logicalRootMap[item.initialRootId];
             if (cid == rootId)
                     basechunkid = -1;
+            const bool needsRootBootstrap = (logicalRootMap[item.initialRootId] == static_cast<uint64_t>(-1));
             Chunk_t &tmpChunk = item.tmpChunk;
             uint64_t initialRootId = item.initialRootId;
             ResetChunkForRebuild(tmpChunk);
@@ -315,6 +348,10 @@ void Design4::ProcessTrace()
             uniquechunkSize += tmpChunk.saveSize;
             logicalchunkNum++;
             logicalchunkSize += tmpChunk.chunkSize;
+            if (needsRootBootstrap)
+            {
+                logicalRootMap[item.initialRootId] = tmpChunk.chunkID;
+            }
         } });
 
     restoreThread.join();
@@ -394,7 +431,8 @@ Chunk_t Design4::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
         }
     }
 
-    if (basechunk.FirstChildID < 0)
+    int firstLiveChildId = FindNextLiveNode(this, offline_dataWrite_->chunklist, basechunk.FirstChildID);
+    if (firstLiveChildId < 0)
         return basechunk;
 
     memcpy(CombinedBuffer, basechunk.chunkPtr, basechunk.chunkSize);
@@ -403,7 +441,7 @@ Chunk_t Design4::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
     resultchunk.chunkPtr = MinBaseBuffer;
     resultchunk.loadFromDisk = false;
     resultchunk.chunkID = basechunk.chunkID;
-    resultchunk.FirstChildID = basechunk.FirstChildID;
+    resultchunk.FirstChildID = firstLiveChildId;
 
     xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk.chunkPtr, basechunk.chunkSize, &resultchunk.saveSize, deltaMaxChunkBuffer);
 
@@ -417,7 +455,11 @@ Chunk_t Design4::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
         uint64_t tmpFatherID = resultchunk.chunkID;
         uint64_t tmpChildID = resultchunk.chunkID;
 
-        uint64_t childId = resultchunk.FirstChildID;
+        int childId = FindNextLiveNode(this, offline_dataWrite_->chunklist, resultchunk.FirstChildID);
+        if (childId < 0)
+        {
+            break;
+        }
         Chunk_t TmpChildChunk = offline_dataWrite_->Get_Chunk_MetaInfo(childId);
         uint8_t *basechunk_ptr = nullptr;
         cacheAccessCount++;
@@ -455,9 +497,9 @@ Chunk_t Design4::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
             free(basechunk_ptr);
 
         Chunk_t TmpBroChunk = TmpChildChunk;
-        while (TmpBroChunk.FirstBroID >= 0)
+        int broId = FindNextLiveNode(this, offline_dataWrite_->chunklist, TmpBroChunk.FirstBroID);
+        while (broId >= 0)
         {
-            uint64_t broId = TmpBroChunk.FirstBroID;
             uint8_t *bro_basechunk_ptr = nullptr;
             bool NeedFreeBro = false;
 
@@ -494,6 +536,7 @@ Chunk_t Design4::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
                 free(TmpBroChunk.chunkPtr);
             if (NeedFreeBro)
                 free(bro_basechunk_ptr);
+            broId = FindNextLiveNode(this, offline_dataWrite_->chunklist, TmpBroChunk.FirstBroID);
         }
         StatsHit(tmpFatherID, resultchunk.chunkID, BasechunkId);
         if (resultchunk.chunkID == tmpChildID)

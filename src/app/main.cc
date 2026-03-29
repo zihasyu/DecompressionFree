@@ -44,7 +44,7 @@ int main(int argc, char **argv)
 
     vector<string> readfileList;
 
-    const char optString[] = "i:m:c:n:r:a:b:t:H:o:R:T:";
+    const char optString[] = "i:m:c:n:r:a:b:t:H:o:R:T:k:";
     // if (argc != sizeof(optString) && argc != sizeof(optString) - 2 && argc != sizeof(optString) - 4 && argc != sizeof(optString) - 6 && argc != sizeof(optString) - 8 && argc != sizeof(optString) - 10 && argc != sizeof(optString) - 12 && argc != sizeof(optString) - 14 && argc != sizeof(optString) - 16)
     // {
     //     cout << "argc is " << argc << endl;
@@ -93,6 +93,9 @@ int main(int argc, char **argv)
             break;
         case 'T':
             CmdLine.Threshold = atoi(optarg);
+            break;
+        case 'k':
+            CmdLine.retentionBackups = atoi(optarg);
             break;
         default:
             break;
@@ -263,6 +266,7 @@ int main(int argc, char **argv)
     double MTarTime = 0;
     double incrementalOfflineTime = 0;
     size_t compactedChunkBoundary = 0;
+    GCMarkState currentGCMarkState;
     if (CmdLine.chunkingType == MTAR || CmdLine.chunkingType == MTAROdess || CmdLine.chunkingType == MTARPalantir)
     {
         chunkerObj->MTar(readfileList, CmdLine.backupNum);
@@ -307,6 +311,27 @@ int main(int argc, char **argv)
         else
             absMethodObj->Version_log(TimeTmp, chunkerObj->ChunkTime.count());
 
+        const std::vector<std::string> processedBackups(readfileList.begin(), readfileList.begin() + i + 1);
+        currentGCMarkState = BuildGCMarkState(*absMethodObj->dataWrite_, processedBackups, CmdLine.retentionBackups);
+        if (incrementalOffline)
+        {
+            size_t keptChunkCount = 0;
+            size_t expiredChunkCount = 0;
+            for (uint8_t keep : currentGCMarkState.keepChunk)
+            {
+                if (keep != 0)
+                    keptChunkCount++;
+                else
+                    expiredChunkCount++;
+            }
+            cout << "----------------------gc mark-------------------------" << std::endl;
+            cout << "retention backups: " << ResolveRetentionWindow(CmdLine.retentionBackups, processedBackups.size()) << std::endl;
+            cout << "kept backups: " << currentGCMarkState.keptBackups.size() << std::endl;
+            cout << "expired backups: " << currentGCMarkState.expiredBackups.size() << std::endl;
+            cout << "kept chunks: " << keptChunkCount << std::endl;
+            cout << "expired chunks: " << expiredChunkCount << std::endl;
+        }
+
         if (incrementalOffline)
         {
             if (absMethodObj->rootChunkMap == nullptr || absMethodObj->dataWrite_->versionEndPoints.empty())
@@ -336,6 +361,7 @@ int main(int argc, char **argv)
                 nextOfflineMethod->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
                 nextOfflineMethod->dataWrite_ = absMethodObj->dataWrite_;
                 nextOfflineMethod->rootChunkMap = absMethodObj->rootChunkMap;
+                nextOfflineMethod->SetGCMarkState(&currentGCMarkState);
                 nextOfflineMethod->offline_dataWrite_ = new dataWrite();
                 nextOfflineMethod->offline_dataWrite_->setContainerPath(offlineGenerationPath);
 
@@ -375,6 +401,7 @@ int main(int argc, char **argv)
                 OfflineAbsMethodObj->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
                 OfflineAbsMethodObj->dataWrite_ = absMethodObj->dataWrite_;
                 OfflineAbsMethodObj->rootChunkMap = absMethodObj->rootChunkMap;
+                OfflineAbsMethodObj->SetGCMarkState(&currentGCMarkState);
                 restoreChunkTimeBefore = OfflineAbsMethodObj->RestoreChunkTime;
 
                 auto *nextDesign5 = static_cast<Design5 *>(OfflineAbsMethodObj);
@@ -531,6 +558,11 @@ int main(int argc, char **argv)
     if (CmdLine.enableRestore)
     {
         double RestoreTimeSum = 0;
+        size_t restoreBeginIndex = 0;
+        if (CmdLine.retentionBackups > 0 && static_cast<size_t>(CmdLine.retentionBackups) < readfileList.size())
+        {
+            restoreBeginIndex = readfileList.size() - static_cast<size_t>(CmdLine.retentionBackups);
+        }
 
         if(CmdLine.offlineMethod >= 0)
         {
@@ -539,6 +571,15 @@ int main(int argc, char **argv)
             OfflineAbsMethodObj->offline_dataWrite_->restoreIOTime = std::chrono::duration<double>(0);
             OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeTime = std::chrono::duration<double>(0);
             OfflineAbsMethodObj->offline_dataWrite_->restoreDecodeCount = 0;
+            OfflineAbsMethodObj->offline_dataWrite_->RecipeMap.clear();
+            for (const auto &backup : currentGCMarkState.keptBackups)
+            {
+                auto recipeIt = absMethodObj->dataWrite_->RecipeMap.find(backup);
+                if (recipeIt != absMethodObj->dataWrite_->RecipeMap.end())
+                {
+                    OfflineAbsMethodObj->offline_dataWrite_->RecipeMap[backup] = recipeIt->second;
+                }
+            }
         }
         else
         {
@@ -549,7 +590,7 @@ int main(int argc, char **argv)
             absMethodObj->dataWrite_->restoreDecodeCount = 0;
         }
 
-        for (auto i = 0; i < CmdLine.backupNum; i++)
+        for (size_t i = restoreBeginIndex; i < static_cast<size_t>(CmdLine.backupNum); i++)
         {
             // 先清空cache，保证本轮统计独立
             if (CmdLine.offlineMethod >= 0)

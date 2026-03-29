@@ -8,6 +8,7 @@
 #include "chunker.h"
 #include "lz4.h"
 #include "datawrite.h"
+#include "gcmark.h"
 #include "odess_similarity_detection.h"
 #include "XdeltaAddExtractor.h"
 extern "C"
@@ -131,11 +132,17 @@ public:
     uint8_t *DecodeBuffer;
     uint8_t *CombinedBuffer;
     FeatureIndexTable table;
+    const GCMarkState *gcMarkState_ = nullptr;
     AbsMethod();
     virtual ~AbsMethod();
     void SetFilename(string name);
     virtual void ProcessTrace() = 0;
     void SetInputMQ(MessageQueue<Chunk_t> *mq) { recieveQueue = mq; }
+    void SetGCMarkState(const GCMarkState *gcMarkState) { gcMarkState_ = gcMarkState; }
+    bool ShouldKeepChunk(uint64_t chunkId) const
+    {
+        return gcMarkState_ == nullptr || gcMarkState_->ShouldKeepChunk(chunkId);
+    }
 
     static bool compareNat(const std::string &a, const std::string &b);
     void GenerateHash(EVP_MD_CTX *mdCtx, uint8_t *dataBuffer, const int dataSize, uint8_t *hash);

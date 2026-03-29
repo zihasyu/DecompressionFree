@@ -12,6 +12,20 @@ void ResetChunkForAppend(Chunk_t &chunk)
     chunk.HitCount = 0;
     chunk.deltaFlag = NO_DELTA;
 }
+
+int FindNextLiveNode(const AbsMethod *method, const std::vector<Chunk_t> &chunklist, int startId)
+{
+    int currentId = startId;
+    while (currentId >= 0)
+    {
+        if (method->ShouldKeepChunk(static_cast<uint64_t>(currentId)))
+        {
+            return currentId;
+        }
+        currentId = chunklist[currentId].FirstBroID;
+    }
+    return -1;
+}
 } // namespace
 
 Design5::Design5()
@@ -78,6 +92,7 @@ Chunk_t Design5::LoadSourceChunk(uint64_t chunkId)
 void Design5::ResetSearchState()
 {
     logicalRootMap.clear();
+    lastChildMap.clear();
     chunkCache_.clear();
     cacheHitCount = 0;
     cacheAccessCount = 0;
@@ -96,7 +111,8 @@ void Design5::ResetSearchState()
 
 void Design5::AppendChild(uint64_t parentId, uint64_t childId)
 {
-    if (offline_dataWrite_->chunklist[parentId].FirstChildID < 0)
+    int firstLiveChildId = FindNextLiveNode(this, offline_dataWrite_->chunklist, offline_dataWrite_->chunklist[parentId].FirstChildID);
+    if (firstLiveChildId < 0)
     {
         offline_dataWrite_->chunklist[parentId].FirstChildID = childId;
         lastChildMap[parentId] = childId;
@@ -111,10 +127,12 @@ void Design5::AppendChild(uint64_t parentId, uint64_t childId)
     }
     else
     {
-        lastChildId = offline_dataWrite_->chunklist[parentId].FirstChildID;
-        while (offline_dataWrite_->chunklist[lastChildId].FirstBroID >= 0)
+        lastChildId = firstLiveChildId;
+        int nextLiveSiblingId = FindNextLiveNode(this, offline_dataWrite_->chunklist, offline_dataWrite_->chunklist[lastChildId].FirstBroID);
+        while (nextLiveSiblingId >= 0)
         {
-            lastChildId = offline_dataWrite_->chunklist[lastChildId].FirstBroID;
+            lastChildId = static_cast<uint64_t>(nextLiveSiblingId);
+            nextLiveSiblingId = FindNextLiveNode(this, offline_dataWrite_->chunklist, offline_dataWrite_->chunklist[lastChildId].FirstBroID);
         }
     }
 
@@ -196,7 +214,7 @@ void Design5::ProcessTrace()
         batchChunkIds.reserve(pair.second.size());
         for (uint64_t chunkId : pair.second)
         {
-            if (chunkId >= appendStart_ && chunkId < appendEnd_)
+            if (chunkId >= appendStart_ && chunkId < appendEnd_ && ShouldKeepChunk(chunkId))
             {
                 batchChunkIds.push_back(chunkId);
             }
@@ -204,7 +222,7 @@ void Design5::ProcessTrace()
         if (!batchChunkIds.empty())
         {
             sortedRootChunkMap.emplace(pair.first, std::move(batchChunkIds));
-            logicalRootMap[pair.first] = pair.first;
+            logicalRootMap[pair.first] = ShouldKeepChunk(pair.first) ? pair.first : static_cast<uint64_t>(-1);
         }
     }
 
@@ -288,6 +306,7 @@ void Design5::ProcessTrace()
             uint64_t basechunkid = logicalRootMap[item.initialRootId];
             if (cid == rootId)
                 basechunkid = -1;
+            const bool needsRootBootstrap = (logicalRootMap[item.initialRootId] == static_cast<uint64_t>(-1));
             Chunk_t &tmpChunk = item.tmpChunk;
             ResetChunkForAppend(tmpChunk);
 
@@ -368,6 +387,10 @@ void Design5::ProcessTrace()
             uniquechunkSize += tmpChunk.saveSize;
             logicalchunkNum++;
             logicalchunkSize += tmpChunk.chunkSize;
+            if (needsRootBootstrap)
+            {
+                logicalRootMap[item.initialRootId] = tmpChunk.chunkID;
+            }
         } });
 
     restoreThread.join();
@@ -448,7 +471,8 @@ Chunk_t Design5::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
         }
     }
 
-    if (basechunk.FirstChildID < 0)
+    int firstLiveChildId = FindNextLiveNode(this, offline_dataWrite_->chunklist, basechunk.FirstChildID);
+    if (firstLiveChildId < 0)
         return basechunk;
 
     memcpy(CombinedBuffer, basechunk.chunkPtr, basechunk.chunkSize);
@@ -457,7 +481,7 @@ Chunk_t Design5::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
     resultchunk.chunkPtr = MinBaseBuffer;
     resultchunk.loadFromDisk = false;
     resultchunk.chunkID = basechunk.chunkID;
-    resultchunk.FirstChildID = basechunk.FirstChildID;
+    resultchunk.FirstChildID = firstLiveChildId;
 
     xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk.chunkPtr, basechunk.chunkSize, &resultchunk.saveSize, deltaMaxChunkBuffer);
 
@@ -471,7 +495,11 @@ Chunk_t Design5::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
         uint64_t tmpFatherID = resultchunk.chunkID;
         uint64_t tmpChildID = resultchunk.chunkID;
 
-        uint64_t childId = resultchunk.FirstChildID;
+        int childId = FindNextLiveNode(this, offline_dataWrite_->chunklist, resultchunk.FirstChildID);
+        if (childId < 0)
+        {
+            break;
+        }
         Chunk_t TmpChildChunk = offline_dataWrite_->Get_Chunk_MetaInfo(childId);
         uint8_t *basechunk_ptr = nullptr;
         cacheAccessCount++;
@@ -509,9 +537,9 @@ Chunk_t Design5::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
             free(basechunk_ptr);
 
         Chunk_t TmpBroChunk = TmpChildChunk;
-        while (TmpBroChunk.FirstBroID >= 0)
+        int broId = FindNextLiveNode(this, offline_dataWrite_->chunklist, TmpBroChunk.FirstBroID);
+        while (broId >= 0)
         {
-            uint64_t broId = TmpBroChunk.FirstBroID;
             uint8_t *bro_basechunk_ptr = nullptr;
             bool NeedFreeBro = false;
 
@@ -548,6 +576,7 @@ Chunk_t Design5::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
                 free(TmpBroChunk.chunkPtr);
             if (NeedFreeBro)
                 free(bro_basechunk_ptr);
+            broId = FindNextLiveNode(this, offline_dataWrite_->chunklist, TmpBroChunk.FirstBroID);
         }
         StatsHit(tmpFatherID, resultchunk.chunkID, BasechunkId);
         if (resultchunk.chunkID == tmpChildID)
