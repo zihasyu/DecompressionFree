@@ -60,6 +60,70 @@ void Design4::SetHistoricalSource(dataWrite *historicalDataWrite, uint64_t histo
     historicalChunkBoundary_ = historicalChunkBoundary;
 }
 
+bool Design4::IsSearchableChunk(const Chunk_t &chunk) const
+{
+    if (chunk.chunkSize == 0)
+    {
+        return false;
+    }
+    if (chunk.basechunkID < 0)
+    {
+        return true;
+    }
+    return chunk.deltaFlag == DELTA && chunk.saveSize >= TREE_INSERT_SAVE_THRESHOLD;
+}
+
+void Design4::ResetRebuildLogStats()
+{
+    rebuildLogStats_ = RebuildLogStats{};
+}
+
+void Design4::FinalizeRebuildLogStats()
+{
+    rebuildLogStats_.searchableChunks = 0;
+    if (offline_dataWrite_ == nullptr)
+    {
+        rebuildLogStats_.sfEntries = table.Tree_SFIndex.size();
+        return;
+    }
+
+    for (const auto &chunk : offline_dataWrite_->chunklist)
+    {
+        if (IsSearchableChunk(chunk))
+        {
+            rebuildLogStats_.searchableChunks++;
+        }
+    }
+    rebuildLogStats_.sfEntries = table.Tree_SFIndex.size();
+    offlineLogSummary_.design4InputRoots += rebuildLogStats_.inputRoots;
+    offlineLogSummary_.design4InputChunks += rebuildLogStats_.inputChunks;
+    offlineLogSummary_.design4HistoricalSourceChunks += rebuildLogStats_.historicalSourceChunks;
+    offlineLogSummary_.design4InlineSourceChunks += rebuildLogStats_.inlineSourceChunks;
+    offlineLogSummary_.design4RebuiltBaseChunks += rebuildLogStats_.rebuiltBaseChunks;
+    offlineLogSummary_.design4RebuiltDeltaChunks += rebuildLogStats_.rebuiltDeltaChunks;
+    offlineLogSummary_.design4FallbackBaseChunks += rebuildLogStats_.fallbackBaseChunks;
+    offlineLogSummary_.design4SmallDeltaChunks += rebuildLogStats_.smallDeltaChunks;
+    offlineLogSummary_.design4TreeEdges += rebuildLogStats_.treeEdges;
+    offlineLogSummary_.currentSearchableChunks = rebuildLogStats_.searchableChunks;
+    offlineLogSummary_.currentTreeSFEntries = rebuildLogStats_.sfEntries;
+}
+
+void Design4::PrintRebuildLogStats() const
+{
+    cout << "----------------------design4 rebuild log-------------------------" << endl;
+    cout << "input roots: " << rebuildLogStats_.inputRoots << endl;
+    cout << "input chunks: " << rebuildLogStats_.inputChunks << endl;
+    cout << "historical source chunks: " << rebuildLogStats_.historicalSourceChunks << endl;
+    cout << "inline source chunks: " << rebuildLogStats_.inlineSourceChunks << endl;
+    cout << "rebuilt base chunks: " << rebuildLogStats_.rebuiltBaseChunks << endl;
+    cout << "rebuilt delta chunks: " << rebuildLogStats_.rebuiltDeltaChunks << endl;
+    cout << "delta fallback to base/lz4: " << rebuildLogStats_.fallbackBaseChunks << endl;
+    cout << "small delta kept out of tree: " << rebuildLogStats_.smallDeltaChunks << endl;
+    cout << "tree edges added: " << rebuildLogStats_.treeEdges << endl;
+    cout << "searchable chunks: " << rebuildLogStats_.searchableChunks << endl;
+    cout << "tree sf entries: " << rebuildLogStats_.sfEntries << endl;
+}
+
 bool Design4::HistoricalSourceHasChunk(uint64_t chunkId) const
 {
     return historicalDataWrite_ != nullptr &&
@@ -80,6 +144,14 @@ dataWrite *Design4::GetSourceDataWrite(uint64_t chunkId) const
 Chunk_t Design4::LoadSourceChunk(uint64_t chunkId)
 {
     dataWrite *source = GetSourceDataWrite(chunkId);
+    if (source == historicalDataWrite_)
+    {
+        rebuildLogStats_.historicalSourceChunks++;
+    }
+    else
+    {
+        rebuildLogStats_.inlineSourceChunks++;
+    }
     Chunk_t metaChunk = source->Get_Chunk_MetaInfo(chunkId);
     Chunk_t restoredChunk;
 
@@ -162,6 +234,7 @@ void Design4::ProcessTrace()
         return;
     }
 
+    ResetRebuildLogStats();
     logicalRootMap.clear();
     ThreadSafeQueue4<RestoredChunk4> chunkQueue;
 
@@ -183,6 +256,8 @@ void Design4::ProcessTrace()
         }
         sortedRootChunkMap.emplace(pair.first, std::move(filteredChunkIds));
         logicalRootMap[pair.first] = ShouldKeepChunk(pair.first) ? pair.first : static_cast<uint64_t>(-1);
+        rebuildLogStats_.inputRoots++;
+        rebuildLogStats_.inputChunks += sortedRootChunkMap[pair.first].size();
     }
 
     std::thread restoreThread([&]()
@@ -258,7 +333,6 @@ void Design4::ProcessTrace()
                     basechunkid = -1;
             const bool needsRootBootstrap = (logicalRootMap[item.initialRootId] == static_cast<uint64_t>(-1));
             Chunk_t &tmpChunk = item.tmpChunk;
-            uint64_t initialRootId = item.initialRootId;
             ResetChunkForRebuild(tmpChunk);
 
             if (basechunkid != -1)
@@ -286,6 +360,8 @@ void Design4::ProcessTrace()
 
                     basechunkNum++;
                     basechunkSize += tmpChunk.saveSize;
+                    rebuildLogStats_.rebuiltBaseChunks++;
+                    rebuildLogStats_.fallbackBaseChunks++;
                     free(deltachunk);
 
                     if (tmpChunk.deltaFlag == NO_LZ4)
@@ -297,6 +373,7 @@ void Design4::ProcessTrace()
                 {
                     tmpChunk.deltaFlag = DELTA;
                     tmpChunk.basechunkID = RestoreBasechunk.chunkID;
+                    rebuildLogStats_.rebuiltDeltaChunks++;
 
                     if (tmpChunk.saveSize >= TREE_INSERT_SAVE_THRESHOLD)
                     {
@@ -311,6 +388,11 @@ void Design4::ProcessTrace()
                                 broID = offline_dataWrite_->chunklist[broID].FirstBroID;
                             offline_dataWrite_->chunklist[broID].FirstBroID = tmpChunk.chunkID;
                         }
+                        rebuildLogStats_.treeEdges++;
+                    }
+                    else
+                    {
+                        rebuildLogStats_.smallDeltaChunks++;
                     }
 
                     memcpy(tmpChunk.chunkPtr, deltachunk, tmpChunk.saveSize);
@@ -337,6 +419,7 @@ void Design4::ProcessTrace()
 
                 basechunkNum++;
                 basechunkSize += tmpChunk.saveSize;
+                rebuildLogStats_.rebuiltBaseChunks++;
 
                 if (tmpChunk.deltaFlag == NO_LZ4)
                     offline_dataWrite_->Chunk_Insert(tmpChunk);
@@ -357,6 +440,8 @@ void Design4::ProcessTrace()
     restoreThread.join();
     processThread.join();
 
+    FinalizeRebuildLogStats();
+    PrintRebuildLogStats();
     cout << "lru cache hit rate: " << (double)cacheHitCount / (double)cacheAccessCount << " cacheHitCount " << cacheHitCount << " cacheAccessCount " << cacheAccessCount << endl;
     return;
 }

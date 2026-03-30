@@ -12,6 +12,21 @@ using namespace std;
 class Design4 : public AbsMethod
 {
 private:
+    struct RebuildLogStats
+    {
+        uint64_t inputRoots = 0;
+        uint64_t inputChunks = 0;
+        uint64_t historicalSourceChunks = 0;
+        uint64_t inlineSourceChunks = 0;
+        uint64_t rebuiltBaseChunks = 0;
+        uint64_t rebuiltDeltaChunks = 0;
+        uint64_t fallbackBaseChunks = 0;
+        uint64_t smallDeltaChunks = 0;
+        uint64_t treeEdges = 0;
+        uint64_t searchableChunks = 0;
+        uint64_t sfEntries = 0;
+    };
+
     string myName_ = "Design4";
     int PrevDedupChunkid = -1;
     int Version = 0;
@@ -29,9 +44,14 @@ private:
     uint8_t *chi_basechunk_ptr_cache = nullptr;
     uint8_t *basechunk_ptr_cache = nullptr;
     ChunkBufferPool<MAX_CHUNK_SIZE, 1024> chunkCache_;
+    RebuildLogStats rebuildLogStats_;
     bool HistoricalSourceHasChunk(uint64_t chunkId) const;
     dataWrite *GetSourceDataWrite(uint64_t chunkId) const;
     Chunk_t LoadSourceChunk(uint64_t chunkId);
+    bool IsSearchableChunk(const Chunk_t &chunk) const;
+    void ResetRebuildLogStats();
+    void FinalizeRebuildLogStats();
+    void PrintRebuildLogStats() const;
 
 public:
     Design4();

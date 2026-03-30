@@ -12,6 +12,35 @@ using namespace std;
 class Design5 : public AbsMethod
 {
 private:
+    struct HistoricalRewriteLogStats
+    {
+        uint64_t keptChunks = 0;
+        uint64_t sourcedFromOffline = 0;
+        uint64_t recoveredFromInline = 0;
+        uint64_t missingFromBoth = 0;
+        uint64_t invalidBaseChains = 0;
+        uint64_t restoreFailures = 0;
+        uint64_t rewrittenAsBase = 0;
+        uint64_t rewrittenWithOriginalBase = 0;
+        uint64_t rewrittenWithReplacementBase = 0;
+        uint64_t rewrittenAsLz4Fallback = 0;
+        uint64_t treeEdges = 0;
+        uint64_t sfRetained = 0;
+        uint64_t sfRemapped = 0;
+        uint64_t sfRemoved = 0;
+    };
+
+    struct AppendLogStats
+    {
+        uint64_t inputRoots = 0;
+        uint64_t inputChunks = 0;
+        uint64_t appendedBaseChunks = 0;
+        uint64_t appendedDeltaChunks = 0;
+        uint64_t appendedLz4FallbackChunks = 0;
+        uint64_t appendedSmallDeltaChunks = 0;
+        uint64_t treeEdges = 0;
+    };
+
     string myName_ = "Design5";
     int PrevDedupChunkid = -1;
     int Version = 0;
@@ -32,6 +61,9 @@ private:
     uint8_t *chi_basechunk_ptr_cache = nullptr;
     uint8_t *basechunk_ptr_cache = nullptr;
     ChunkBufferPool<MAX_CHUNK_SIZE, 1024> chunkCache_;
+    HistoricalRewriteLogStats historicalLogStats_;
+    AppendLogStats appendLogStats_;
+    uint64_t searchableChunkCount_ = 0;
 
     Chunk_t LoadSourceChunk(uint64_t chunkId);
     Chunk_t RestoreChunkFromWriter(dataWrite *writer, uint64_t chunkId);
@@ -54,6 +86,9 @@ private:
                                             const std::unordered_map<super_feature_t, uint64_t> &oldTreeIndex);
     void RegisterNewSearchableChunk(uint64_t chunkId, const Chunk_t &rawChunk);
     void ResetOfflineStatsForRebuild();
+    void ResetRebuildLogStats();
+    void FinalizeRebuildLogStats();
+    void PrintRebuildLogStats() const;
 
 public:
     Design5();

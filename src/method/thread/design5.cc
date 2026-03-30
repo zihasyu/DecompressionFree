@@ -71,6 +71,82 @@ void Design5::SetAppendRange(uint64_t appendStart, uint64_t appendEnd)
     appendEnd_ = appendEnd;
 }
 
+void Design5::ResetRebuildLogStats()
+{
+    historicalLogStats_ = HistoricalRewriteLogStats{};
+    appendLogStats_ = AppendLogStats{};
+    searchableChunkCount_ = 0;
+}
+
+void Design5::FinalizeRebuildLogStats()
+{
+    searchableChunkCount_ = 0;
+    if (offline_dataWrite_ == nullptr)
+    {
+        return;
+    }
+    for (const auto &chunk : offline_dataWrite_->chunklist)
+    {
+        if (IsSearchableChunk(chunk))
+        {
+            searchableChunkCount_++;
+        }
+    }
+    offlineLogSummary_.design5KeptHistoricalChunks += historicalLogStats_.keptChunks;
+    offlineLogSummary_.design5HistoricalFromOffline += historicalLogStats_.sourcedFromOffline;
+    offlineLogSummary_.design5HistoricalFromInline += historicalLogStats_.recoveredFromInline;
+    offlineLogSummary_.design5MissingFromBoth += historicalLogStats_.missingFromBoth;
+    offlineLogSummary_.design5InvalidBaseChains += historicalLogStats_.invalidBaseChains;
+    offlineLogSummary_.design5RestoreFailures += historicalLogStats_.restoreFailures;
+    offlineLogSummary_.design5RewrittenAsBase += historicalLogStats_.rewrittenAsBase;
+    offlineLogSummary_.design5RewrittenWithOriginalBase += historicalLogStats_.rewrittenWithOriginalBase;
+    offlineLogSummary_.design5RewrittenWithReplacementBase += historicalLogStats_.rewrittenWithReplacementBase;
+    offlineLogSummary_.design5RewrittenAsLz4Fallback += historicalLogStats_.rewrittenAsLz4Fallback;
+    offlineLogSummary_.design5HistoricalTreeEdges += historicalLogStats_.treeEdges;
+    offlineLogSummary_.design5SfRetained += historicalLogStats_.sfRetained;
+    offlineLogSummary_.design5SfRemapped += historicalLogStats_.sfRemapped;
+    offlineLogSummary_.design5SfRemoved += historicalLogStats_.sfRemoved;
+    offlineLogSummary_.design5AppendRoots += appendLogStats_.inputRoots;
+    offlineLogSummary_.design5AppendChunks += appendLogStats_.inputChunks;
+    offlineLogSummary_.design5AppendedBaseChunks += appendLogStats_.appendedBaseChunks;
+    offlineLogSummary_.design5AppendedDeltaChunks += appendLogStats_.appendedDeltaChunks;
+    offlineLogSummary_.design5AppendFallbackChunks += appendLogStats_.appendedLz4FallbackChunks;
+    offlineLogSummary_.design5AppendSmallDeltaChunks += appendLogStats_.appendedSmallDeltaChunks;
+    offlineLogSummary_.design5AppendTreeEdges += appendLogStats_.treeEdges;
+    offlineLogSummary_.currentSearchableChunks = searchableChunkCount_;
+    offlineLogSummary_.currentTreeSFEntries = table.Tree_SFIndex.size();
+}
+
+void Design5::PrintRebuildLogStats() const
+{
+    cout << "----------------------design5 historical rewrite log-------------------------" << endl;
+    cout << "kept historical chunks: " << historicalLogStats_.keptChunks << endl;
+    cout << "historical chunks reused from offline: " << historicalLogStats_.sourcedFromOffline << endl;
+    cout << "historical chunks recovered from inline: " << historicalLogStats_.recoveredFromInline << endl;
+    cout << "historical chunks missing from both sources: " << historicalLogStats_.missingFromBoth << endl;
+    cout << "historical invalid base chains: " << historicalLogStats_.invalidBaseChains << endl;
+    cout << "historical restore failures: " << historicalLogStats_.restoreFailures << endl;
+    cout << "historical chunks rewritten as base: " << historicalLogStats_.rewrittenAsBase << endl;
+    cout << "historical deltas kept on original base: " << historicalLogStats_.rewrittenWithOriginalBase << endl;
+    cout << "historical deltas moved to replacement base: " << historicalLogStats_.rewrittenWithReplacementBase << endl;
+    cout << "historical chunks downgraded to lz4/base: " << historicalLogStats_.rewrittenAsLz4Fallback << endl;
+    cout << "historical tree edges added: " << historicalLogStats_.treeEdges << endl;
+    cout << "sf entries retained: " << historicalLogStats_.sfRetained << endl;
+    cout << "sf entries remapped: " << historicalLogStats_.sfRemapped << endl;
+    cout << "sf entries removed: " << historicalLogStats_.sfRemoved << endl;
+    cout << "----------------------design5 append log-------------------------" << endl;
+    cout << "append range: [" << appendStart_ << ", " << appendEnd_ << ")" << endl;
+    cout << "append roots: " << appendLogStats_.inputRoots << endl;
+    cout << "append chunks: " << appendLogStats_.inputChunks << endl;
+    cout << "appended base chunks: " << appendLogStats_.appendedBaseChunks << endl;
+    cout << "appended delta chunks: " << appendLogStats_.appendedDeltaChunks << endl;
+    cout << "appended lz4/base fallbacks: " << appendLogStats_.appendedLz4FallbackChunks << endl;
+    cout << "appended small deltas kept out of tree: " << appendLogStats_.appendedSmallDeltaChunks << endl;
+    cout << "append tree edges added: " << appendLogStats_.treeEdges << endl;
+    cout << "current searchable chunks: " << searchableChunkCount_ << endl;
+    cout << "current tree sf entries: " << table.Tree_SFIndex.size() << endl;
+}
+
 std::string Design5::PrepareNextGenerationPath()
 {
     const std::string path = "./OfflineContainers/gen" + std::to_string(generationId_ % 2) + "/";
@@ -542,6 +618,7 @@ void Design5::RepairTreeIndexFromHistoricalState(dataWrite *sourceWriter,
             OwnsSuperFeature(oldEntry, sf))
         {
             table.Tree_SFIndex[sf] = oldEntry;
+            historicalLogStats_.sfRetained++;
             continue;
         }
 
@@ -551,6 +628,11 @@ void Design5::RepairTreeIndexFromHistoricalState(dataWrite *sourceWriter,
             IsSearchableChunk(offline_dataWrite_->Get_Chunk_MetaInfo(replacementId)))
         {
             table.Tree_SFIndex[sf] = static_cast<uint64_t>(replacementId);
+            historicalLogStats_.sfRemapped++;
+        }
+        else
+        {
+            historicalLogStats_.sfRemoved++;
         }
     }
 }
@@ -584,19 +666,33 @@ void Design5::RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
         }
 
         rewriteState[chunkId] = 1;
+        historicalLogStats_.keptChunks++;
         const bool hasHistoricalChunk = ChunkExists(sourceWriter, chunkId);
         const bool hasInlineChunk = ChunkExists(dataWrite_, chunkId);
         if (!hasHistoricalChunk && !hasInlineChunk)
         {
             cout << "design5 rewrite error, chunk " << chunkId
                  << " is kept but missing from both offline and inline sources" << endl;
+            historicalLogStats_.missingFromBoth++;
             rewriteState[chunkId] = 2;
             return;
+        }
+        if (hasHistoricalChunk)
+        {
+            historicalLogStats_.sourcedFromOffline++;
+        }
+        else
+        {
+            historicalLogStats_.recoveredFromInline++;
         }
 
         dataWrite *metaWriter = hasHistoricalChunk ? sourceWriter : dataWrite_;
         const Chunk_t sourceMeta = metaWriter->Get_Chunk_MetaInfo(chunkId);
         const bool hasValidSourceChain = sourceMeta.basechunkID < 0 || HasAcyclicBaseChain(metaWriter, chunkId);
+        if (!hasValidSourceChain)
+        {
+            historicalLogStats_.invalidBaseChains++;
+        }
         if (sourceMeta.basechunkID >= 0 &&
             ShouldKeepChunk(static_cast<uint64_t>(sourceMeta.basechunkID)))
         {
@@ -615,6 +711,7 @@ void Design5::RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
                 cout << "design5 rewrite warning, historical chunk " << chunkId
                      << " has invalid base chain and cannot be restored for rewrite" << endl;
             }
+            historicalLogStats_.restoreFailures++;
             rewriteState[chunkId] = 2;
             return;
         }
@@ -627,7 +724,7 @@ void Design5::RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
             hasRawSF = true;
         }
         const bool baseAlive = sourceMeta.basechunkID >= 0 &&
-                               ChunkExists(sourceWriter, static_cast<uint64_t>(sourceMeta.basechunkID)) &&
+                               ChunkExists(metaWriter, static_cast<uint64_t>(sourceMeta.basechunkID)) &&
                                ShouldKeepChunk(static_cast<uint64_t>(sourceMeta.basechunkID));
 
         if (sourceMeta.basechunkID >= 0 && sourceMeta.deltaFlag == DELTA)
@@ -650,6 +747,30 @@ void Design5::RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
         }
 
         const Chunk_t rebuiltMeta = offline_dataWrite_->Get_Chunk_MetaInfo(chunkId);
+        if (sourceMeta.basechunkID < 0 || sourceMeta.deltaFlag != DELTA)
+        {
+            historicalLogStats_.rewrittenAsBase++;
+        }
+        else if (rebuiltMeta.deltaFlag == DELTA)
+        {
+            if (rebuiltMeta.basechunkID == sourceMeta.basechunkID)
+            {
+                historicalLogStats_.rewrittenWithOriginalBase++;
+            }
+            else
+            {
+                historicalLogStats_.rewrittenWithReplacementBase++;
+            }
+            if (rebuiltMeta.saveSize >= TREE_INSERT_SAVE_THRESHOLD)
+            {
+                historicalLogStats_.treeEdges++;
+            }
+        }
+        else
+        {
+            historicalLogStats_.rewrittenAsLz4Fallback++;
+        }
+
         if (IsSearchableChunk(rebuiltMeta) && hasRawSF)
         {
             searchableChunkSFs_[chunkId] = rawSuperFeatures;
@@ -746,6 +867,7 @@ void Design5::ProcessTrace()
     offline_dataWrite_ = nextWriter;
 
     ResetOfflineStatsForRebuild();
+    ResetRebuildLogStats();
     ResetSearchState();
 
     if (sourceWriter != nullptr && !sourceWriter->chunklist.empty())
@@ -775,6 +897,8 @@ void Design5::ProcessTrace()
         {
             sortedRootChunkMap.emplace(pair.first, std::move(batchChunkIds));
             logicalRootMap[pair.first] = ShouldKeepChunk(pair.first) ? pair.first : static_cast<uint64_t>(-1);
+            appendLogStats_.inputRoots++;
+            appendLogStats_.inputChunks += sortedRootChunkMap[pair.first].size();
         }
     }
 
@@ -895,6 +1019,8 @@ void Design5::ProcessTrace()
 
                     basechunkNum++;
                     basechunkSize += tmpChunk.saveSize;
+                    appendLogStats_.appendedBaseChunks++;
+                    appendLogStats_.appendedLz4FallbackChunks++;
                     free(deltachunk);
 
                     if (tmpChunk.deltaFlag == NO_LZ4)
@@ -906,10 +1032,16 @@ void Design5::ProcessTrace()
                 {
                     tmpChunk.deltaFlag = DELTA;
                     tmpChunk.basechunkID = RestoreBasechunk.chunkID;
+                    appendLogStats_.appendedDeltaChunks++;
 
                     if (tmpChunk.saveSize >= TREE_INSERT_SAVE_THRESHOLD)
                     {
                         AppendChild(tmpChunk.basechunkID, tmpChunk.chunkID);
+                        appendLogStats_.treeEdges++;
+                    }
+                    else
+                    {
+                        appendLogStats_.appendedSmallDeltaChunks++;
                     }
 
                     memcpy(tmpChunk.chunkPtr, deltachunk, tmpChunk.saveSize);
@@ -936,6 +1068,7 @@ void Design5::ProcessTrace()
 
                 basechunkNum++;
                 basechunkSize += tmpChunk.saveSize;
+                appendLogStats_.appendedBaseChunks++;
 
                 if (tmpChunk.deltaFlag == NO_LZ4)
                     offline_dataWrite_->Chunk_Insert(tmpChunk);
@@ -972,6 +1105,8 @@ void Design5::ProcessTrace()
         delete sourceWriter;
     }
 
+    FinalizeRebuildLogStats();
+    PrintRebuildLogStats();
     const double cacheHitRate = cacheAccessCount == 0 ? 0.0 : (double)cacheHitCount / (double)cacheAccessCount;
     cout << "lru cache hit rate: " << cacheHitRate << " cacheHitCount " << cacheHitCount << " cacheAccessCount " << cacheAccessCount << endl;
     return;

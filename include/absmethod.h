@@ -23,6 +23,51 @@ class AbsMethod
 {
 protected:
 public:
+    struct OfflineOverallLogSummary
+    {
+        size_t retentionWindow = 0;
+        size_t keptBackups = 0;
+        size_t expiredBackups = 0;
+        size_t keptChunks = 0;
+        size_t expiredChunks = 0;
+        uint64_t keptBackupLogicalSize = 0;
+        uint64_t finalStoredSize = 0;
+        uint64_t currentSearchableChunks = 0;
+        uint64_t currentTreeSFEntries = 0;
+
+        uint64_t design4InputRoots = 0;
+        uint64_t design4InputChunks = 0;
+        uint64_t design4HistoricalSourceChunks = 0;
+        uint64_t design4InlineSourceChunks = 0;
+        uint64_t design4RebuiltBaseChunks = 0;
+        uint64_t design4RebuiltDeltaChunks = 0;
+        uint64_t design4FallbackBaseChunks = 0;
+        uint64_t design4SmallDeltaChunks = 0;
+        uint64_t design4TreeEdges = 0;
+
+        uint64_t design5KeptHistoricalChunks = 0;
+        uint64_t design5HistoricalFromOffline = 0;
+        uint64_t design5HistoricalFromInline = 0;
+        uint64_t design5MissingFromBoth = 0;
+        uint64_t design5InvalidBaseChains = 0;
+        uint64_t design5RestoreFailures = 0;
+        uint64_t design5RewrittenAsBase = 0;
+        uint64_t design5RewrittenWithOriginalBase = 0;
+        uint64_t design5RewrittenWithReplacementBase = 0;
+        uint64_t design5RewrittenAsLz4Fallback = 0;
+        uint64_t design5HistoricalTreeEdges = 0;
+        uint64_t design5SfRetained = 0;
+        uint64_t design5SfRemapped = 0;
+        uint64_t design5SfRemoved = 0;
+        uint64_t design5AppendRoots = 0;
+        uint64_t design5AppendChunks = 0;
+        uint64_t design5AppendedBaseChunks = 0;
+        uint64_t design5AppendedDeltaChunks = 0;
+        uint64_t design5AppendFallbackChunks = 0;
+        uint64_t design5AppendSmallDeltaChunks = 0;
+        uint64_t design5AppendTreeEdges = 0;
+    };
+
     // time motivation
     std::chrono::time_point<std::chrono::high_resolution_clock> startIO, endIO;
     std::chrono::duration<double> IOTime;
@@ -133,6 +178,7 @@ public:
     uint8_t *CombinedBuffer;
     FeatureIndexTable table;
     const GCMarkState *gcMarkState_ = nullptr;
+    OfflineOverallLogSummary offlineLogSummary_;
     AbsMethod();
     virtual ~AbsMethod();
     void SetFilename(string name);
@@ -168,6 +214,25 @@ public:
     virtual void PrintChunkInfo(double time, CommandLine_t CmdLine);
     virtual void PrintChunkInfo(double time, CommandLine_t CmdLine, double chunktime);
     virtual void PrintOffline(double time, CommandLine_t CmdLine);
+    void CopyOfflineLogSummaryFrom(const AbsMethod &other) { offlineLogSummary_ = other.offlineLogSummary_; }
+    void SetOfflineGCLogSummary(size_t retentionWindow,
+                                size_t keptBackups,
+                                size_t expiredBackups,
+                                size_t keptChunks,
+                                size_t expiredChunks)
+    {
+        offlineLogSummary_.retentionWindow = retentionWindow;
+        offlineLogSummary_.keptBackups = keptBackups;
+        offlineLogSummary_.expiredBackups = expiredBackups;
+        offlineLogSummary_.keptChunks = keptChunks;
+        offlineLogSummary_.expiredChunks = expiredChunks;
+    }
+    void SetOfflineOverallSizeSummary(uint64_t keptBackupLogicalSize,
+                                      uint64_t finalStoredSize)
+    {
+        offlineLogSummary_.keptBackupLogicalSize = keptBackupLogicalSize;
+        offlineLogSummary_.finalStoredSize = finalStoredSize;
+    }
 
     void StatsDelta(Chunk_t &tmpChunk);
     void StatsDeltaFeature(Chunk_t &tmpChunk);

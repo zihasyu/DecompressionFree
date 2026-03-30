@@ -7,6 +7,36 @@ std::chrono::duration<double> GetBaseReconstructionTime(const AbsMethod &method)
     return method.IOTime + method.DecodeTime + method.RestoreMemcpyTime + method.BestBaseCopyTime;
 }
 
+double SafeRatio(uint64_t numerator, uint64_t denominator)
+{
+    if (denominator == 0)
+    {
+        return 0.0;
+    }
+    return static_cast<double>(numerator) / static_cast<double>(denominator);
+}
+
+uint64_t GetOfflineOverallLogicalSize(const AbsMethod &method, const CommandLine_t &cmdLine)
+{
+    if ((cmdLine.offlineMethod == Design4_ || cmdLine.offlineMethod == Design5_) &&
+        (method.offlineLogSummary_.retentionWindow > 0 || method.offlineLogSummary_.keptBackups > 0 ||
+         method.offlineLogSummary_.expiredBackups > 0))
+    {
+        return method.offlineLogSummary_.keptBackupLogicalSize;
+    }
+    return method.logicalchunkSize;
+}
+
+uint64_t GetOfflineOverallStoredSize(const AbsMethod &method, const CommandLine_t &cmdLine)
+{
+    if ((cmdLine.offlineMethod == Design4_ || cmdLine.offlineMethod == Design5_) &&
+        method.offlineLogSummary_.finalStoredSize > 0)
+    {
+        return method.offlineLogSummary_.finalStoredSize;
+    }
+    return method.uniquechunkSize;
+}
+
 std::chrono::duration<double> GetOtherTime(double total_time, const AbsMethod &method)
 {
     auto other = std::chrono::duration<double>(total_time) - method.EncodeTime - GetBaseReconstructionTime(method);
@@ -914,6 +944,10 @@ void AbsMethod::PrintChunkInfo(double time, CommandLine_t CmdLine)
 
 void AbsMethod::PrintOffline(double time, CommandLine_t CmdLine)
 {
+    const uint64_t overallLogicalSize = GetOfflineOverallLogicalSize(*this, CmdLine);
+    const uint64_t overallStoredSize = GetOfflineOverallStoredSize(*this, CmdLine);
+    const double overallCompressionRatio = SafeRatio(overallLogicalSize, overallStoredSize);
+
     ofstream out;
     string fileName = "./offlineLog.txt";
     if (!tool::FileExist(fileName))
@@ -925,7 +959,7 @@ void AbsMethod::PrintOffline(double time, CommandLine_t CmdLine)
         out.open(fileName, ios::app);
     }
     out << "-----------------INSTRUCTION----------------------" << endl;
-    out << "./DFree -i " << CmdLine.dirName << " -c " << CmdLine.chunkingType << " -m " << CmdLine.compressionMethod << " -n " << CmdLine.backupNum << " -r " << CmdLine.ratio << " -a " << CmdLine.AcceptThreshold << " -b " << CmdLine.IsFalseFilter << " -t " << CmdLine.TurnOnNameHash << " -H " << CmdLine.MultiHeaderChunk << " -o " << CmdLine.offlineMethod << " -T " << CmdLine.Threshold << endl;
+    out << "./DFree -i " << CmdLine.dirName << " -c " << CmdLine.chunkingType << " -m " << CmdLine.compressionMethod << " -n " << CmdLine.backupNum << " -r " << CmdLine.ratio << " -a " << CmdLine.AcceptThreshold << " -b " << CmdLine.IsFalseFilter << " -t " << CmdLine.TurnOnNameHash << " -H " << CmdLine.MultiHeaderChunk << " -o " << CmdLine.offlineMethod << " -T " << CmdLine.Threshold << " -k " << CmdLine.retentionBackups << endl;
     out << "-----------------CHUNK NUM-----------------------" << endl;
     out << "logical chunk num: " << logicalchunkNum << endl;
     out << "unique chunk num: " << uniquechunkNum << endl;
@@ -937,7 +971,7 @@ void AbsMethod::PrintOffline(double time, CommandLine_t CmdLine)
     out << "base chunk size: " << basechunkSize << endl;
     out << "delta chunk size: " << deltachunkSize << endl;
     out << "-----------------METRICS-------------------------" << endl;
-    out << "Overall Compression Ratio: " << (double)logicalchunkSize / (double)uniquechunkSize << endl;
+    out << "Overall Compression Ratio: " << overallCompressionRatio << endl;
     out << "DCC: " << (double)deltachunkNum / (double)uniquechunkNum << endl;
     out << "DCR: " << (double)deltachunkOriSize / (double)deltachunkSize << endl;
     out << "DCE: " << DCESum / (double)deltachunkNum << endl;
@@ -959,6 +993,57 @@ void AbsMethod::PrintOffline(double time, CommandLine_t CmdLine)
     out << "SF Overhead: " << (double)(basechunkNum * 120) / 1024 / 1024 << "MiB" << endl; //(3*(8+32)=120B)
     out << "Recipe Overhead: " << (double)logicalchunkNum * 8 / 1024 / 1024 << "MiB" << endl;
     out << "SF number: " << SFnum << endl;
+    if (CmdLine.offlineMethod == Design4_ || CmdLine.offlineMethod == Design5_)
+    {
+        out << "-----------------GC SUMMARY------------------------" << endl;
+        out << "Retention backups: " << offlineLogSummary_.retentionWindow << endl;
+        out << "Kept backups: " << offlineLogSummary_.keptBackups << endl;
+        out << "Expired backups: " << offlineLogSummary_.expiredBackups << endl;
+        out << "Kept chunks: " << offlineLogSummary_.keptChunks << endl;
+        out << "Expired chunks: " << offlineLogSummary_.expiredChunks << endl;
+        out << "Kept backup logical size: " << offlineLogSummary_.keptBackupLogicalSize << endl;
+        out << "Final stored size: " << overallStoredSize << endl;
+        out << "Current searchable chunks: " << offlineLogSummary_.currentSearchableChunks << endl;
+        out << "Current tree sf entries: " << offlineLogSummary_.currentTreeSFEntries << endl;
+    }
+    if (CmdLine.offlineMethod == Design4_)
+    {
+        out << "-----------------DESIGN4 SUMMARY-------------------" << endl;
+        out << "Rebuild input roots: " << offlineLogSummary_.design4InputRoots << endl;
+        out << "Rebuild input chunks: " << offlineLogSummary_.design4InputChunks << endl;
+        out << "Historical source chunks: " << offlineLogSummary_.design4HistoricalSourceChunks << endl;
+        out << "Inline source chunks: " << offlineLogSummary_.design4InlineSourceChunks << endl;
+        out << "Rebuilt base chunks: " << offlineLogSummary_.design4RebuiltBaseChunks << endl;
+        out << "Rebuilt delta chunks: " << offlineLogSummary_.design4RebuiltDeltaChunks << endl;
+        out << "Delta fallback to base/lz4: " << offlineLogSummary_.design4FallbackBaseChunks << endl;
+        out << "Small delta kept out of tree: " << offlineLogSummary_.design4SmallDeltaChunks << endl;
+        out << "Tree edges added: " << offlineLogSummary_.design4TreeEdges << endl;
+    }
+    if (CmdLine.offlineMethod == Design5_)
+    {
+        out << "-----------------DESIGN5 SUMMARY-------------------" << endl;
+        out << "Kept historical chunks: " << offlineLogSummary_.design5KeptHistoricalChunks << endl;
+        out << "Historical chunks reused from offline: " << offlineLogSummary_.design5HistoricalFromOffline << endl;
+        out << "Historical chunks recovered from inline: " << offlineLogSummary_.design5HistoricalFromInline << endl;
+        out << "Historical chunks missing from both sources: " << offlineLogSummary_.design5MissingFromBoth << endl;
+        out << "Historical invalid base chains: " << offlineLogSummary_.design5InvalidBaseChains << endl;
+        out << "Historical restore failures: " << offlineLogSummary_.design5RestoreFailures << endl;
+        out << "Historical chunks rewritten as base: " << offlineLogSummary_.design5RewrittenAsBase << endl;
+        out << "Historical deltas kept on original base: " << offlineLogSummary_.design5RewrittenWithOriginalBase << endl;
+        out << "Historical deltas moved to replacement base: " << offlineLogSummary_.design5RewrittenWithReplacementBase << endl;
+        out << "Historical chunks downgraded to lz4/base: " << offlineLogSummary_.design5RewrittenAsLz4Fallback << endl;
+        out << "Historical tree edges added: " << offlineLogSummary_.design5HistoricalTreeEdges << endl;
+        out << "SF entries retained: " << offlineLogSummary_.design5SfRetained << endl;
+        out << "SF entries remapped: " << offlineLogSummary_.design5SfRemapped << endl;
+        out << "SF entries removed: " << offlineLogSummary_.design5SfRemoved << endl;
+        out << "Append roots: " << offlineLogSummary_.design5AppendRoots << endl;
+        out << "Append chunks: " << offlineLogSummary_.design5AppendChunks << endl;
+        out << "Appended base chunks: " << offlineLogSummary_.design5AppendedBaseChunks << endl;
+        out << "Appended delta chunks: " << offlineLogSummary_.design5AppendedDeltaChunks << endl;
+        out << "Appended lz4/base fallbacks: " << offlineLogSummary_.design5AppendFallbackChunks << endl;
+        out << "Appended small deltas kept out of tree: " << offlineLogSummary_.design5AppendSmallDeltaChunks << endl;
+        out << "Append tree edges added: " << offlineLogSummary_.design5AppendTreeEdges << endl;
+    }
     out << "-----------------Reduct----------------------------" << endl;
     out << "Dedup ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct) << endl;
     out << "Lossless ratio : " << (double)logicalchunkSize / (double)(logicalchunkSize - DedupReduct - LocalReduct) << endl;

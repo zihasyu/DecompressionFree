@@ -13,6 +13,48 @@ namespace fs = std::filesystem;
 
 namespace
 {
+double SafeRatio(uint64_t numerator, uint64_t denominator)
+{
+    if (denominator == 0)
+    {
+        return 0.0;
+    }
+    return static_cast<double>(numerator) / static_cast<double>(denominator);
+}
+
+uint64_t ComputeBackupsLogicalSize(const dataWrite *writer, const std::vector<std::string> &backups)
+{
+    if (writer == nullptr)
+    {
+        return 0;
+    }
+
+    uint64_t logicalSize = 0;
+    for (const auto &backup : backups)
+    {
+        auto recipeIt = writer->RecipeMap.find(backup);
+        if (recipeIt == writer->RecipeMap.end())
+        {
+            continue;
+        }
+
+        for (uint64_t chunkId : recipeIt->second)
+        {
+            if (chunkId >= writer->chunklist.size())
+            {
+                continue;
+            }
+            logicalSize += writer->chunklist[chunkId].chunkSize;
+        }
+    }
+    return logicalSize;
+}
+
+uint64_t ComputeKeptBackupLogicalSize(const GCMarkState &markState, const dataWrite *writer)
+{
+    return ComputeBackupsLogicalSize(writer, markState.keptBackups);
+}
+
 Chunk_t RestoreChunkById(dataWrite *writer, uint64_t chunkId)
 {
     Chunk_t emptyChunk{};
@@ -367,6 +409,7 @@ int main(int argc, char **argv)
     double incrementalOfflineTime = 0;
     size_t compactedChunkBoundary = 0;
     GCMarkState currentGCMarkState;
+    uint64_t currentKeptBackupLogicalSize = 0;
     if (CmdLine.chunkingType == MTAR || CmdLine.chunkingType == MTAROdess || CmdLine.chunkingType == MTARPalantir)
     {
         chunkerObj->MTar(readfileList, CmdLine.backupNum);
@@ -413,6 +456,7 @@ int main(int argc, char **argv)
 
         const std::vector<std::string> processedBackups(readfileList.begin(), readfileList.begin() + i + 1);
         currentGCMarkState = BuildGCMarkState(*absMethodObj->dataWrite_, processedBackups, CmdLine.retentionBackups);
+        currentKeptBackupLogicalSize = ComputeKeptBackupLogicalSize(currentGCMarkState, absMethodObj->dataWrite_);
         if (incrementalOffline)
         {
             size_t keptChunkCount = 0;
@@ -468,6 +512,7 @@ int main(int argc, char **argv)
                 auto *nextDesign4 = static_cast<Design4 *>(nextOfflineMethod);
                 if (OfflineAbsMethodObj != nullptr && OfflineAbsMethodObj->offline_dataWrite_ != nullptr && compactedChunkBoundary > 0)
                 {
+                    nextOfflineMethod->CopyOfflineLogSummaryFrom(*OfflineAbsMethodObj);
                     nextDesign4->SetHistoricalSource(OfflineAbsMethodObj->offline_dataWrite_, compactedChunkBoundary);
                 }
 
@@ -519,7 +564,7 @@ int main(int argc, char **argv)
             cout << "batch " << i << " processed" << std::endl;
             cout << "RestoreChunkTime: " << restoreChunkTimeDelta.count() << "s" << std::endl;
             cout << "Time taken by incremental offline: " << offlineBatchTime << " s " << std::endl;
-            cout << "Offline Compression ratio " << (double)absMethodObj->logicalchunkSize / (double)OfflineAbsMethodObj->uniquechunkSize << std::endl;
+            cout << "Offline Compression ratio " << SafeRatio(currentKeptBackupLogicalSize, OfflineAbsMethodObj->uniquechunkSize) << std::endl;
             cout << "Offline Throughput " << (double)absMethodObj->logicalchunkSize / offlineBatchTime / 1024 / 1024 << " MiB/s" << std::endl;
 
             compactedChunkBoundary = currentVersionEnd;
@@ -626,6 +671,16 @@ int main(int argc, char **argv)
         // OfflineAbsMethodObj->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
         if (CmdLine.offlineMethod >= 0)
         {
+            const size_t processedBackupCount = std::min(readfileList.size(), static_cast<size_t>(CmdLine.backupNum));
+            size_t keptChunkCount = 0;
+            size_t expiredChunkCount = 0;
+            for (uint8_t keep : currentGCMarkState.keepChunk)
+            {
+                if (keep != 0)
+                    keptChunkCount++;
+                else
+                    expiredChunkCount++;
+            }
             OfflineAbsMethodObj->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
 
             OfflineAbsMethodObj->offline_dataWrite_ = new dataWrite();
@@ -639,18 +694,46 @@ int main(int argc, char **argv)
             OfflineAbsMethodObj->offline_dataWrite_->ProcessLastContainer();
             auto endTmp = std::chrono::high_resolution_clock::now();
             auto offlineTimeTmp = std::chrono::duration_cast<std::chrono::duration<double>>(endTmp - startTmp).count();
+            OfflineAbsMethodObj->SetOfflineGCLogSummary(
+                ResolveRetentionWindow(CmdLine.retentionBackups, processedBackupCount),
+                currentGCMarkState.keptBackups.size(),
+                currentGCMarkState.expiredBackups.size(),
+                keptChunkCount,
+                expiredChunkCount);
+            OfflineAbsMethodObj->SetOfflineOverallSizeSummary(
+                currentKeptBackupLogicalSize,
+                OfflineAbsMethodObj->uniquechunkSize);
             cout << "RestoreChunkTime: " << OfflineAbsMethodObj->RestoreChunkTime.count() << "s" << std::endl;
             std::cout << "Time taken by for offline: " << offlineTimeTmp << " s " << std::endl;
-            std::cout << "Offline Compression ratio " << (double)absMethodObj->logicalchunkSize / (double)OfflineAbsMethodObj->uniquechunkSize << std::endl;
+            std::cout << "Offline Compression ratio " << SafeRatio(currentKeptBackupLogicalSize, OfflineAbsMethodObj->uniquechunkSize) << std::endl;
             std::cout << "Offline Throughput " << (double)absMethodObj->logicalchunkSize / offlineTimeTmp / 1024 / 1024 << " MiB/s" << std::endl;
             OfflineAbsMethodObj->PrintOffline(offlineTimeTmp, CmdLine);
         }
     }
     else if (OfflineAbsMethodObj != nullptr)
     {
+        const size_t processedBackupCount = std::min(readfileList.size(), static_cast<size_t>(CmdLine.backupNum));
+        size_t keptChunkCount = 0;
+        size_t expiredChunkCount = 0;
+        for (uint8_t keep : currentGCMarkState.keepChunk)
+        {
+            if (keep != 0)
+                keptChunkCount++;
+            else
+                expiredChunkCount++;
+        }
+        OfflineAbsMethodObj->SetOfflineGCLogSummary(
+            ResolveRetentionWindow(CmdLine.retentionBackups, processedBackupCount),
+            currentGCMarkState.keptBackups.size(),
+            currentGCMarkState.expiredBackups.size(),
+            keptChunkCount,
+            expiredChunkCount);
+        OfflineAbsMethodObj->SetOfflineOverallSizeSummary(
+            currentKeptBackupLogicalSize,
+            OfflineAbsMethodObj->uniquechunkSize);
         cout << "RestoreChunkTime: " << OfflineAbsMethodObj->RestoreChunkTime.count() << "s" << std::endl;
         std::cout << "Time taken by incremental offline: " << incrementalOfflineTime << " s " << std::endl;
-        std::cout << "Offline Compression ratio " << (double)absMethodObj->logicalchunkSize / (double)OfflineAbsMethodObj->uniquechunkSize << std::endl;
+        std::cout << "Offline Compression ratio " << SafeRatio(currentKeptBackupLogicalSize, OfflineAbsMethodObj->uniquechunkSize) << std::endl;
         std::cout << "Offline Throughput " << (double)absMethodObj->logicalchunkSize / incrementalOfflineTime / 1024 / 1024 << " MiB/s" << std::endl;
         OfflineAbsMethodObj->PrintOffline(incrementalOfflineTime, CmdLine);
     }
