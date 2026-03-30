@@ -4,11 +4,111 @@
 #include <sstream>
 #include <chrono>
 #include <filesystem>
+#include <cstdlib>
 
 #include "../../include/allmethod.h"
 
 using namespace std;
 namespace fs = std::filesystem;
+
+namespace
+{
+Chunk_t RestoreChunkById(dataWrite *writer, uint64_t chunkId)
+{
+    Chunk_t emptyChunk{};
+    emptyChunk.chunkID = chunkId;
+    emptyChunk.chunkPtr = nullptr;
+    emptyChunk.chunkSize = 0;
+    emptyChunk.basechunkID = -1;
+    emptyChunk.loadFromDisk = false;
+
+    if (writer == nullptr || chunkId >= writer->chunklist.size() || writer->chunklist[chunkId].chunkSize == 0)
+    {
+        return emptyChunk;
+    }
+
+    Chunk_t meta = writer->Get_Chunk_MetaInfo(static_cast<int>(chunkId));
+    if (meta.basechunkID >= 0)
+    {
+        return writer->xd3_recursive_restore_offline_time(chunkId);
+    }
+    return writer->Get_Chunk_Info(static_cast<int>(chunkId));
+}
+
+void ValidateOfflineChunks(const GCMarkState &markState,
+                           dataWrite *onlineWriter,
+                           dataWrite *offlineWriter)
+{
+    if (onlineWriter == nullptr || offlineWriter == nullptr)
+    {
+        return;
+    }
+
+    cout << "----------------------offline chunk validation-------------------------" << endl;
+    for (const auto &backup : markState.keptBackups)
+    {
+        auto recipeIt = onlineWriter->RecipeMap.find(backup);
+        if (recipeIt == onlineWriter->RecipeMap.end())
+        {
+            cout << "validation skip missing recipe: " << backup << endl;
+            continue;
+        }
+
+        uint64_t logicalOffset = 0;
+        bool backupOk = true;
+        for (uint64_t chunkId : recipeIt->second)
+        {
+            Chunk_t onlineMeta = onlineWriter->Get_Chunk_MetaInfo(static_cast<int>(chunkId));
+            Chunk_t offlineMeta{};
+            if (chunkId < offlineWriter->chunklist.size())
+            {
+                offlineMeta = offlineWriter->Get_Chunk_MetaInfo(static_cast<int>(chunkId));
+            }
+
+            Chunk_t onlineChunk = RestoreChunkById(onlineWriter, chunkId);
+            Chunk_t offlineChunk = RestoreChunkById(offlineWriter, chunkId);
+
+            bool match = onlineChunk.chunkPtr != nullptr &&
+                         offlineChunk.chunkPtr != nullptr &&
+                         onlineChunk.chunkSize == offlineChunk.chunkSize &&
+                         memcmp(onlineChunk.chunkPtr, offlineChunk.chunkPtr, onlineChunk.chunkSize) == 0;
+
+            if (onlineChunk.loadFromDisk && onlineChunk.chunkPtr != nullptr)
+            {
+                free(onlineChunk.chunkPtr);
+            }
+            if (offlineChunk.loadFromDisk && offlineChunk.chunkPtr != nullptr)
+            {
+                free(offlineChunk.chunkPtr);
+            }
+
+            if (!match)
+            {
+                cout << "validation mismatch backup: " << backup << endl;
+                cout << "logical offset: " << logicalOffset << endl;
+                cout << "chunk id: " << chunkId << endl;
+                cout << "online meta: base=" << onlineMeta.basechunkID
+                     << " size=" << onlineMeta.chunkSize
+                     << " save=" << onlineMeta.saveSize
+                     << " flag=" << static_cast<int>(onlineMeta.deltaFlag) << endl;
+                cout << "offline meta: base=" << offlineMeta.basechunkID
+                     << " size=" << offlineMeta.chunkSize
+                     << " save=" << offlineMeta.saveSize
+                     << " flag=" << static_cast<int>(offlineMeta.deltaFlag) << endl;
+                backupOk = false;
+                break;
+            }
+
+            logicalOffset += onlineMeta.chunkSize;
+        }
+
+        if (backupOk)
+        {
+            cout << "validation ok: " << backup << endl;
+        }
+    }
+}
+} // namespace
 
 void signalHandler(int signum)
 {
@@ -557,6 +657,11 @@ int main(int argc, char **argv)
 
     if (CmdLine.enableRestore)
     {
+        if (CmdLine.offlineMethod >= 0 && std::getenv("DFREE_VALIDATE_CHUNKS") != nullptr)
+        {
+            ValidateOfflineChunks(currentGCMarkState, absMethodObj->dataWrite_, OfflineAbsMethodObj->offline_dataWrite_);
+        }
+
         double RestoreTimeSum = 0;
         size_t restoreBeginIndex = 0;
         const size_t processedBackupCount = std::min(readfileList.size(), static_cast<size_t>(CmdLine.backupNum));

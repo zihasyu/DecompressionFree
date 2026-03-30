@@ -536,14 +536,19 @@ void Design5::RepairTreeIndexFromHistoricalState(dataWrite *sourceWriter,
             continue;
         }
 
-        if (ShouldKeepChunk(oldEntry) && OwnsSuperFeature(oldEntry, sf))
+        if (ShouldKeepChunk(oldEntry) &&
+            ChunkExists(offline_dataWrite_, oldEntry) &&
+            IsSearchableChunk(offline_dataWrite_->Get_Chunk_MetaInfo(oldEntry)) &&
+            OwnsSuperFeature(oldEntry, sf))
         {
             table.Tree_SFIndex[sf] = oldEntry;
             continue;
         }
 
         const int replacementId = FindReplacementEntryInSubtree(sourceWriter, oldEntry, sf);
-        if (replacementId >= 0)
+        if (replacementId >= 0 &&
+            ChunkExists(offline_dataWrite_, static_cast<uint64_t>(replacementId)) &&
+            IsSearchableChunk(offline_dataWrite_->Get_Chunk_MetaInfo(replacementId)))
         {
             table.Tree_SFIndex[sf] = static_cast<uint64_t>(replacementId);
         }
@@ -561,9 +566,13 @@ void Design5::RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
     std::vector<uint8_t> rewriteState(sourceWriter->chunklist.size(), 0);
     std::function<void(uint64_t)> rewriteChunk = [&](uint64_t chunkId)
     {
-        if (!ChunkExists(sourceWriter, chunkId) || !ShouldKeepChunk(chunkId))
+        if (!ShouldKeepChunk(chunkId))
         {
             return;
+        }
+        if (chunkId >= rewriteState.size())
+        {
+            rewriteState.resize(chunkId + 1, 0);
         }
         if (rewriteState[chunkId] == 2)
         {
@@ -575,16 +584,26 @@ void Design5::RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
         }
 
         rewriteState[chunkId] = 1;
-        const Chunk_t sourceMeta = sourceWriter->Get_Chunk_MetaInfo(chunkId);
-        const bool hasValidSourceChain = sourceMeta.basechunkID < 0 || HasAcyclicBaseChain(sourceWriter, chunkId);
+        const bool hasHistoricalChunk = ChunkExists(sourceWriter, chunkId);
+        const bool hasInlineChunk = ChunkExists(dataWrite_, chunkId);
+        if (!hasHistoricalChunk && !hasInlineChunk)
+        {
+            cout << "design5 rewrite error, chunk " << chunkId
+                 << " is kept but missing from both offline and inline sources" << endl;
+            rewriteState[chunkId] = 2;
+            return;
+        }
+
+        dataWrite *metaWriter = hasHistoricalChunk ? sourceWriter : dataWrite_;
+        const Chunk_t sourceMeta = metaWriter->Get_Chunk_MetaInfo(chunkId);
+        const bool hasValidSourceChain = sourceMeta.basechunkID < 0 || HasAcyclicBaseChain(metaWriter, chunkId);
         if (sourceMeta.basechunkID >= 0 &&
-            ChunkExists(sourceWriter, static_cast<uint64_t>(sourceMeta.basechunkID)) &&
             ShouldKeepChunk(static_cast<uint64_t>(sourceMeta.basechunkID)))
         {
             rewriteChunk(static_cast<uint64_t>(sourceMeta.basechunkID));
         }
 
-        Chunk_t rawChunk = RestoreChunkFromWriter(sourceWriter, chunkId);
+        Chunk_t rawChunk = LoadSourceChunk(chunkId);
         if (rawChunk.chunkPtr == nullptr || rawChunk.chunkSize == 0)
         {
             if (hasValidSourceChain)
@@ -616,12 +635,12 @@ void Design5::RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
             const bool baseReady = hasValidSourceChain &&
                                    baseAlive &&
                                    ChunkExists(offline_dataWrite_, static_cast<uint64_t>(sourceMeta.basechunkID));
-            if (baseReady && RewriteChunkWithOriginalDelta(sourceWriter, sourceMeta, rawChunk))
+            if (baseReady && RewriteChunkWithReplacementBase(sourceMeta, rawChunk, sourceMeta.basechunkID))
             {
             }
             else
             {
-                const int replacementBaseId = ResolveReplacementBase(sourceWriter, sourceMeta.basechunkID);
+                const int replacementBaseId = ResolveReplacementBase(metaWriter, sourceMeta.basechunkID);
                 RewriteChunkWithReplacementBase(sourceMeta, rawChunk, replacementBaseId);
             }
         }
