@@ -559,9 +559,10 @@ int main(int argc, char **argv)
     {
         double RestoreTimeSum = 0;
         size_t restoreBeginIndex = 0;
-        if (CmdLine.retentionBackups > 0 && static_cast<size_t>(CmdLine.retentionBackups) < readfileList.size())
+        const size_t processedBackupCount = std::min(readfileList.size(), static_cast<size_t>(CmdLine.backupNum));
+        if (CmdLine.retentionBackups > 0 && static_cast<size_t>(CmdLine.retentionBackups) < processedBackupCount)
         {
-            restoreBeginIndex = readfileList.size() - static_cast<size_t>(CmdLine.retentionBackups);
+            restoreBeginIndex = processedBackupCount - static_cast<size_t>(CmdLine.retentionBackups);
         }
 
         if(CmdLine.offlineMethod >= 0)
@@ -590,7 +591,7 @@ int main(int argc, char **argv)
             absMethodObj->dataWrite_->restoreDecodeCount = 0;
         }
 
-        for (size_t i = restoreBeginIndex; i < static_cast<size_t>(CmdLine.backupNum); i++)
+        for (size_t i = restoreBeginIndex; i < processedBackupCount; i++)
         {
             // 先清空cache，保证本轮统计独立
             if (CmdLine.offlineMethod >= 0)
@@ -613,7 +614,6 @@ int main(int argc, char **argv)
             auto startTmp = std::chrono::high_resolution_clock::now();
             if (CmdLine.offlineMethod >= 0)
             {
-                OfflineAbsMethodObj->offline_dataWrite_->RecipeMap = absMethodObj->dataWrite_->RecipeMap;
                 OfflineAbsMethodObj->offline_dataWrite_->restoreFile(readfileList[i]);
             }
             else

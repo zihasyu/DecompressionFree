@@ -19,12 +19,14 @@ private:
     uint8_t *tmpDeltaBuffer = nullptr;
     uint64_t appendStart_ = 0;
     uint64_t appendEnd_ = 0;
+    size_t generationId_ = 0;
 
     size_t cacheHitCount = 0;
     size_t cacheAccessCount = 0;
     std::unordered_map<uint64_t, int> chunkHotMap;
     std::unordered_map<uint64_t, uint64_t> logicalRootMap;
     std::unordered_map<uint64_t, uint64_t> lastChildMap;
+    std::unordered_map<uint64_t, SuperFeatures> searchableChunkSFs_;
 
     uint8_t *bro_basechunk_ptr_cache = nullptr;
     uint8_t *chi_basechunk_ptr_cache = nullptr;
@@ -32,8 +34,26 @@ private:
     ChunkBufferPool<MAX_CHUNK_SIZE, 1024> chunkCache_;
 
     Chunk_t LoadSourceChunk(uint64_t chunkId);
+    Chunk_t RestoreChunkFromWriter(dataWrite *writer, uint64_t chunkId);
     void ResetSearchState();
     void AppendChild(uint64_t parentId, uint64_t childId);
+    std::string PrepareNextGenerationPath();
+    bool ChunkExists(const dataWrite *writer, uint64_t chunkId) const;
+    bool IsSearchableChunk(const Chunk_t &chunk) const;
+    bool HasAcyclicBaseChain(dataWrite *writer, uint64_t chunkId) const;
+    bool OwnsSuperFeature(uint64_t chunkId, super_feature_t sf) const;
+    void RecordSearchableChunkSF(uint64_t chunkId, const Chunk_t &rawChunk);
+    int ResolveReplacementBase(dataWrite *writer, int baseChunkId) const;
+    int FindReplacementEntryInSubtree(dataWrite *writer, uint64_t rootId, super_feature_t sf) const;
+    bool RewriteChunkAsLz4Base(const Chunk_t &sourceMeta, Chunk_t &rawChunk);
+    bool RewriteChunkWithOriginalDelta(dataWrite *sourceWriter, const Chunk_t &sourceMeta, const Chunk_t &rawChunk);
+    bool RewriteChunkWithReplacementBase(const Chunk_t &sourceMeta, Chunk_t &rawChunk, int replacementBaseId);
+    void RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
+                                     const std::unordered_map<super_feature_t, uint64_t> &oldTreeIndex);
+    void RepairTreeIndexFromHistoricalState(dataWrite *sourceWriter,
+                                            const std::unordered_map<super_feature_t, uint64_t> &oldTreeIndex);
+    void RegisterNewSearchableChunk(uint64_t chunkId, const Chunk_t &rawChunk);
+    void ResetOfflineStatsForRebuild();
 
 public:
     Design5();

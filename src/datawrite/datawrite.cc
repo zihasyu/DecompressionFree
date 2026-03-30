@@ -1,4 +1,5 @@
 #include "../../include/datawrite.h"
+#include <unordered_set>
 
 dataWrite::dataWrite()
 {
@@ -1333,9 +1334,24 @@ void dataWrite::Save_to_File_unique(string methodname)
 Chunk_t dataWrite::xd3_recursive_restore_offline_time(uint64_t BasechunkId)
 {
     // SetTime(startMiDelta);
+    Chunk_t emptyChunk{};
+    emptyChunk.chunkID = BasechunkId;
+    emptyChunk.chunkPtr = nullptr;
+    emptyChunk.chunkSize = 0;
+    emptyChunk.saveSize = 0;
+    emptyChunk.basechunkID = -1;
+    emptyChunk.loadFromDisk = false;
+
+    if (BasechunkId >= chunklist.size() || chunklist[BasechunkId].chunkSize == 0)
+    {
+        cout << "xd3 recursive restore error, invalid start chunk id " << BasechunkId << endl;
+        return emptyChunk;
+    }
+
     std::vector<Chunk_t> chunkChain;
-    Chunk_t basechunk;
+    Chunk_t basechunk{};
     size_t basechunk_size = 0;
+    std::unordered_set<uint64_t> visitedChain;
     chunkChain.push_back(Get_Chunk_MetaInfo(BasechunkId));
     // if only one layer
     if (chunkChain.back().basechunkID < 0)
@@ -1348,7 +1364,24 @@ Chunk_t dataWrite::xd3_recursive_restore_offline_time(uint64_t BasechunkId)
 
     // collect all delta chain blocks
     while (chunkChain.back().basechunkID >= 0)
-        chunkChain.push_back(Get_Chunk_MetaInfo(chunkChain.back().basechunkID));
+    {
+        const uint64_t currentChunkId = chunkChain.back().chunkID;
+        if (!visitedChain.insert(currentChunkId).second)
+        {
+            cout << "xd3 recursive restore error, cycle detected in base chain" << endl;
+            cout << "cycle chunk id " << currentChunkId << endl;
+            return emptyChunk;
+        }
+
+        const int nextBaseId = chunkChain.back().basechunkID;
+        if (nextBaseId < 0 || static_cast<size_t>(nextBaseId) >= chunklist.size())
+        {
+            cout << "xd3 recursive restore error, invalid base chunk id " << nextBaseId << endl;
+            return emptyChunk;
+        }
+
+        chunkChain.push_back(Get_Chunk_MetaInfo(nextBaseId));
+    }
     // push the last chunk
     auto startIO = std::chrono::high_resolution_clock::now();
     chunkChain.back() = Get_Chunk_Info(chunkChain.back().chunkID);

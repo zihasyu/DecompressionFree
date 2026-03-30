@@ -57,7 +57,7 @@ chunking=1
 
 # 只用修改这里
 online_methods=(3)          # 在线方法编号列表
-offline_methods=(11)       # -1表示不做离线，其他为离线方法编号
+offline_methods=(12)       # -1表示不做离线，其他为离线方法编号
 restore_options=(1)         # 是否恢复  0,1
 threshold=64              # 新增：阈值参数，可根据需要修改
 retention_backups=20      # 新增：保留最近多少个备份，-1 表示全部保留
