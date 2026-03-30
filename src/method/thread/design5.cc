@@ -518,7 +518,7 @@ bool Design5::RewriteChunkWithReplacementBase(const Chunk_t &sourceMeta, Chunk_t
         free(replacementBase.chunkPtr);
     }
 
-    if (rewrittenSize <= 0 || rewrittenSize >= rawChunk.chunkSize || rewrittenSize < TREE_INSERT_SAVE_THRESHOLD)
+    if (rewrittenSize <= 0 || rewrittenSize >= rawChunk.chunkSize)
     {
         if (deltaChunk != nullptr)
         {
@@ -540,7 +540,10 @@ bool Design5::RewriteChunkWithReplacementBase(const Chunk_t &sourceMeta, Chunk_t
     memcpy(rewritten.chunkPtr, deltaChunk, rewrittenSize);
     free(deltaChunk);
 
-    AppendChild(rewritten.basechunkID, rewritten.chunkID);
+    if (rewritten.saveSize >= TREE_INSERT_SAVE_THRESHOLD)
+    {
+        AppendChild(rewritten.basechunkID, rewritten.chunkID);
+    }
     offline_dataWrite_->Chunk_Insert(rewritten);
 
     deltachunkNum++;
