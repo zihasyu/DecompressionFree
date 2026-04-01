@@ -186,7 +186,7 @@ int main(int argc, char **argv)
 
     vector<string> readfileList;
 
-    const char optString[] = "i:m:c:n:r:a:b:t:H:o:R:T:k:";
+    const char optString[] = "i:m:c:n:r:a:b:t:H:o:R:T:k:P:";
     // if (argc != sizeof(optString) && argc != sizeof(optString) - 2 && argc != sizeof(optString) - 4 && argc != sizeof(optString) - 6 && argc != sizeof(optString) - 8 && argc != sizeof(optString) - 10 && argc != sizeof(optString) - 12 && argc != sizeof(optString) - 14 && argc != sizeof(optString) - 16)
     // {
     //     cout << "argc is " << argc << endl;
@@ -239,6 +239,9 @@ int main(int argc, char **argv)
         case 'k':
             CmdLine.retentionBackups = atoi(optarg);
             break;
+        case 'P':
+            CmdLine.offlineBatchPeriod = atoi(optarg);
+            break;
         default:
             break;
         }
@@ -251,6 +254,11 @@ int main(int argc, char **argv)
         cout << "  -c: Chunking type (integer)" << endl;
         cout << "  -m: Compression method (integer)" << endl;
         cout << "  -n: Number of versions/backups to process" << endl;
+        return 1;
+    }
+    if (CmdLine.offlineBatchPeriod <= 0)
+    {
+        cerr << "Offline batch period must be >= 1." << endl;
         return 1;
     }
 
@@ -371,8 +379,24 @@ int main(int argc, char **argv)
         break;
     }
 
+    if (!fs::exists(CmdLine.dirName))
+    {
+        cerr << "Input path does not exist: " << CmdLine.dirName << endl;
+        return 1;
+    }
     tool::traverse_dir(CmdLine.dirName, readfileList, nofilter);
     sort(readfileList.begin(), readfileList.end(), AbsMethod::compareNat);
+    if (readfileList.empty())
+    {
+        cerr << "No input files found under: " << CmdLine.dirName << endl;
+        return 1;
+    }
+    if (readfileList.size() < static_cast<size_t>(CmdLine.backupNum))
+    {
+        cerr << "Requested " << CmdLine.backupNum << " backups, but only found "
+             << readfileList.size() << " input files under: " << CmdLine.dirName << endl;
+        return 1;
+    }
 
     boost::thread *thTmp[2] = {nullptr};
     boost::thread::attributes attrs;
@@ -408,6 +432,7 @@ int main(int argc, char **argv)
     double MTarTime = 0;
     double incrementalOfflineTime = 0;
     size_t compactedChunkBoundary = 0;
+    size_t lastOfflineProcessedBackupCount = 0;
     GCMarkState currentGCMarkState;
     uint64_t currentKeptBackupLogicalSize = 0;
     if (CmdLine.chunkingType == MTAR || CmdLine.chunkingType == MTAROdess || CmdLine.chunkingType == MTARPalantir)
@@ -454,11 +479,23 @@ int main(int argc, char **argv)
         else
             absMethodObj->Version_log(TimeTmp, chunkerObj->ChunkTime.count());
 
-        const std::vector<std::string> processedBackups(readfileList.begin(), readfileList.begin() + i + 1);
-        currentGCMarkState = BuildGCMarkState(*absMethodObj->dataWrite_, processedBackups, CmdLine.retentionBackups);
-        currentKeptBackupLogicalSize = ComputeKeptBackupLogicalSize(currentGCMarkState, absMethodObj->dataWrite_);
         if (incrementalOffline)
         {
+            const bool reachedOfflinePeriod = ((i + 1) % CmdLine.offlineBatchPeriod) == 0;
+            const bool isLastBackup = (i + 1) == CmdLine.backupNum;
+            if (!reachedOfflinePeriod && !isLastBackup)
+            {
+                cout << "----------------------incremental offline-------------------------" << std::endl;
+                cout << "batch " << i << " deferred" << std::endl;
+                cout << "processed backups since last offline: " << ((i + 1) - lastOfflineProcessedBackupCount) << std::endl;
+                cout << "offline batch period: " << CmdLine.offlineBatchPeriod << std::endl;
+                continue;
+            }
+
+            const std::vector<std::string> processedBackups(readfileList.begin(), readfileList.begin() + i + 1);
+            currentGCMarkState = BuildGCMarkState(*absMethodObj->dataWrite_, processedBackups, CmdLine.retentionBackups);
+            currentKeptBackupLogicalSize = ComputeKeptBackupLogicalSize(currentGCMarkState, absMethodObj->dataWrite_);
+
             size_t keptChunkCount = 0;
             size_t expiredChunkCount = 0;
             for (uint8_t keep : currentGCMarkState.keepChunk)
@@ -474,10 +511,7 @@ int main(int argc, char **argv)
             cout << "expired backups: " << currentGCMarkState.expiredBackups.size() << std::endl;
             cout << "kept chunks: " << keptChunkCount << std::endl;
             cout << "expired chunks: " << expiredChunkCount << std::endl;
-        }
 
-        if (incrementalOffline)
-        {
             if (absMethodObj->rootChunkMap == nullptr || absMethodObj->dataWrite_->versionEndPoints.empty())
             {
                 cerr << "Incremental Design4/Design5 offline processing requires a valid rootChunkMap and versionEndPoints." << endl;
@@ -562,12 +596,20 @@ int main(int argc, char **argv)
 
             cout << "----------------------incremental offline-------------------------" << std::endl;
             cout << "batch " << i << " processed" << std::endl;
+            cout << "offline batch period: " << CmdLine.offlineBatchPeriod << std::endl;
             cout << "RestoreChunkTime: " << restoreChunkTimeDelta.count() << "s" << std::endl;
             cout << "Time taken by incremental offline: " << offlineBatchTime << " s " << std::endl;
             cout << "Offline Compression ratio " << SafeRatio(currentKeptBackupLogicalSize, OfflineAbsMethodObj->uniquechunkSize) << std::endl;
             cout << "Offline Throughput " << (double)absMethodObj->logicalchunkSize / offlineBatchTime / 1024 / 1024 << " MiB/s" << std::endl;
 
             compactedChunkBoundary = currentVersionEnd;
+            lastOfflineProcessedBackupCount = i + 1;
+        }
+        else
+        {
+            const std::vector<std::string> processedBackups(readfileList.begin(), readfileList.begin() + i + 1);
+            currentGCMarkState = BuildGCMarkState(*absMethodObj->dataWrite_, processedBackups, CmdLine.retentionBackups);
+            currentKeptBackupLogicalSize = ComputeKeptBackupLogicalSize(currentGCMarkState, absMethodObj->dataWrite_);
         }
     }
 
