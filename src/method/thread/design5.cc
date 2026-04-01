@@ -334,17 +334,6 @@ void Design5::ResetSearchState()
     searchableChunkSFs_.clear();
     cacheHitCount = 0;
     cacheAccessCount = 0;
-
-    if (offline_dataWrite_ == nullptr)
-    {
-        return;
-    }
-
-    for (auto &chunk : offline_dataWrite_->chunklist)
-    {
-        chunk.BeforeFit = -1;
-        chunk.HitCount = 0;
-    }
 }
 
 void Design5::AppendChild(uint64_t parentId, uint64_t childId)
@@ -404,6 +393,8 @@ bool Design5::RewriteChunkAsLz4Base(const Chunk_t &sourceMeta, Chunk_t &rawChunk
     rewritten.chunkID = sourceMeta.chunkID;
     rewritten.chunkSize = sourceMeta.chunkSize;
     rewritten.basechunkID = -1;
+    rewritten.BeforeFit = sourceMeta.BeforeFit;
+    rewritten.HitCount = sourceMeta.HitCount;
     rewritten.loadFromDisk = rawChunk.loadFromDisk;
     rewritten.chunkPtr = rawChunk.chunkPtr;
 
@@ -449,6 +440,8 @@ bool Design5::RewriteChunkWithOriginalDelta(dataWrite *sourceWriter, const Chunk
     rewritten.chunkSize = sourceMeta.chunkSize;
     rewritten.saveSize = sourceMeta.saveSize;
     rewritten.basechunkID = sourceMeta.basechunkID;
+    rewritten.BeforeFit = sourceMeta.BeforeFit;
+    rewritten.HitCount = sourceMeta.HitCount;
     rewritten.deltaFlag = DELTA;
     rewritten.chunkPtr = static_cast<uint8_t *>(malloc(sourceMeta.saveSize));
     rewritten.loadFromDisk = true;
@@ -533,6 +526,8 @@ bool Design5::RewriteChunkWithReplacementBase(const Chunk_t &sourceMeta, Chunk_t
     rewritten.chunkSize = sourceMeta.chunkSize;
     rewritten.saveSize = rewrittenSize;
     rewritten.basechunkID = replacementBaseId;
+    rewritten.BeforeFit = sourceMeta.BeforeFit;
+    rewritten.HitCount = sourceMeta.HitCount;
     rewritten.deltaFlag = DELTA;
     rewritten.chunkPtr = rawChunk.chunkPtr;
     rewritten.loadFromDisk = rawChunk.loadFromDisk;
