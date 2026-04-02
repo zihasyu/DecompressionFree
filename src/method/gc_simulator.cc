@@ -237,6 +237,45 @@ void GCSimulator::EvaluateFragmentation() {
                ? (double)fragmented_containers / total_containers * 100.0
                : 0)
        << "%" << endl;
+
+  // ========= 3. GC Compaction Write Amplification Factor =========
+  // 对每个非全满容器，计算 Compact 它需要的 I/O 和回收的空间
+  //   I/O cost = container_total (读) + container_alive (写搬活块)
+  //   reclaimed = container_total - container_alive (释放的死块空间)
+  //   WAF = total_io / total_reclaimed
+  uint64_t gc_total_io = 0;
+  uint64_t gc_total_reclaimed = 0;
+  int compactable_containers = 0;
+
+  for (auto &[cont_id, total] : container_total_size) {
+    uint64_t alive = container_alive_size[cont_id];
+    if (alive > 0 && alive < total) {
+      // 非空且非全满的容器才需要 Compact
+      uint64_t dead = total - alive;
+      gc_total_io += total + alive; // 读整个容器 + 写出活块
+      gc_total_reclaimed += dead;
+      compactable_containers++;
+    } else if (alive == 0) {
+      // 全空容器：直接删除，零搬迁成本
+      gc_total_reclaimed += total;
+      // I/O cost = 0 (直接删元数据即可)
+    }
+  }
+
+  double gc_waf = (gc_total_reclaimed > 0)
+                      ? (double)gc_total_io / (double)gc_total_reclaimed
+                      : 0.0;
+
+  cout << endl;
+  cout << "========== GC Compaction Cost ==========" << endl;
+  cout << "Compactable containers:     " << compactable_containers << endl;
+  cout << "Total I/O for compaction:   " << gc_total_io << " bytes ("
+       << (double)gc_total_io / (1024.0 * 1024.0) << " MB)" << endl;
+  cout << "Total reclaimable by compaction: " << gc_total_reclaimed
+       << " bytes (" << (double)gc_total_reclaimed / (1024.0 * 1024.0) << " MB)"
+       << endl;
+  cout << "GC Compaction WAF:          " << gc_waf << endl;
+  cout << "========================================" << endl;
 }
 
 void GCSimulator::RunAll() {

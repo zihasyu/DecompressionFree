@@ -38,6 +38,12 @@ if [ ! -d "build" ]; then
     echo "Done!"
 fi
 
+if [ ! -d "lib" ]; then
+    echo "build the lib directory"
+    mkdir -p lib
+    echo "Done!"
+fi
+
 
 cd ./build
 cmake ..
