@@ -155,6 +155,74 @@ std::string Design5::PrepareNextGenerationPath()
     return path;
 }
 
+int64_t Design5::ResolveInitialLogicalRootEntry(uint64_t rootId) const
+{
+    auto persistedIt = persistedLogicalRootMap_.find(rootId);
+    if (persistedIt != persistedLogicalRootMap_.end())
+    {
+        const uint64_t persistedEntry = persistedIt->second;
+        if (ShouldKeepChunk(persistedEntry) &&
+            ChunkExists(offline_dataWrite_, persistedEntry) &&
+            IsSearchableChunk(offline_dataWrite_->Get_Chunk_MetaInfo(persistedEntry)))
+        {
+            return static_cast<int64_t>(persistedEntry);
+        }
+    }
+
+    if (!ShouldKeepChunk(rootId))
+    {
+        return -1;
+    }
+
+    if (!ChunkExists(offline_dataWrite_, rootId))
+    {
+        // The root may belong to the current append range and will be materialized later in this batch.
+        return static_cast<int64_t>(rootId);
+    }
+
+    const Chunk_t rootMeta = offline_dataWrite_->Get_Chunk_MetaInfo(rootId);
+    if (IsSearchableChunk(rootMeta))
+    {
+        return static_cast<int64_t>(rootId);
+    }
+    return -1;
+}
+
+void Design5::PersistLogicalRootEntries()
+{
+    std::unordered_map<uint64_t, uint64_t> nextPersisted;
+
+    if (offline_dataWrite_ != nullptr)
+    {
+        for (const auto &[rootId, entry] : persistedLogicalRootMap_)
+        {
+            if (ShouldKeepChunk(rootId) &&
+                ChunkExists(offline_dataWrite_, entry) &&
+                IsSearchableChunk(offline_dataWrite_->Get_Chunk_MetaInfo(entry)))
+            {
+                nextPersisted[rootId] = entry;
+            }
+        }
+
+        for (const auto &[rootId, entry] : logicalRootMap)
+        {
+            if (entry == static_cast<uint64_t>(-1))
+            {
+                nextPersisted.erase(rootId);
+                continue;
+            }
+
+            if (ChunkExists(offline_dataWrite_, entry) &&
+                IsSearchableChunk(offline_dataWrite_->Get_Chunk_MetaInfo(entry)))
+            {
+                nextPersisted[rootId] = entry;
+            }
+        }
+    }
+
+    persistedLogicalRootMap_.swap(nextPersisted);
+}
+
 bool Design5::ChunkExists(const dataWrite *writer, uint64_t chunkId) const
 {
     return writer != nullptr &&
@@ -894,7 +962,7 @@ void Design5::ProcessTrace()
         if (!batchChunkIds.empty())
         {
             sortedRootChunkMap.emplace(pair.first, std::move(batchChunkIds));
-            logicalRootMap[pair.first] = ShouldKeepChunk(pair.first) ? pair.first : static_cast<uint64_t>(-1);
+            logicalRootMap[pair.first] = static_cast<uint64_t>(ResolveInitialLogicalRootEntry(pair.first));
             appendLogStats_.inputRoots++;
             appendLogStats_.inputChunks += sortedRootChunkMap[pair.first].size();
         }
@@ -1097,6 +1165,7 @@ void Design5::ProcessTrace()
 
     restoreThread.join();
     processThread.join();
+    PersistLogicalRootEntries();
 
     if (sourceWriter != nullptr && sourceWriter != offline_dataWrite_)
     {

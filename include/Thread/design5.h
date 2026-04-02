@@ -54,6 +54,7 @@ private:
     size_t cacheAccessCount = 0;
     std::unordered_map<uint64_t, int> chunkHotMap;
     std::unordered_map<uint64_t, uint64_t> logicalRootMap;
+    std::unordered_map<uint64_t, uint64_t> persistedLogicalRootMap_;
     std::unordered_map<uint64_t, uint64_t> lastChildMap;
     std::unordered_map<uint64_t, SuperFeatures> searchableChunkSFs_;
 
@@ -89,6 +90,8 @@ private:
     void ResetRebuildLogStats();
     void FinalizeRebuildLogStats();
     void PrintRebuildLogStats() const;
+    int64_t ResolveInitialLogicalRootEntry(uint64_t rootId) const;
+    void PersistLogicalRootEntries();
 
 public:
     Design5();
