@@ -12,8 +12,6 @@ Design2::Design2()
     SFindex = new unordered_map<string, vector<int>>[FINESSE_SF_NUM];
     tmpDeltaBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
     MinBaseBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
-    // [NEW] Allocate buffer for CutGreedy if needed
-    CombinedBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
 }
 
 Design2::~Design2()
@@ -24,8 +22,7 @@ Design2::~Design2()
     free(hashBuf);
     free(tmpDeltaBuffer);
     free(MinBaseBuffer);
-    // [NEW] Free the allocated buffer
-    free(CombinedBuffer);
+    delete[] SFindex;
 }
 
 // 线程安全队列

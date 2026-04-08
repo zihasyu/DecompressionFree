@@ -32,8 +32,16 @@ public:
         size_t expiredChunks = 0;
         uint64_t keptBackupLogicalSize = 0;
         uint64_t finalStoredSize = 0;
+        uint64_t offlineProcessedLogicalSize = 0;
+        uint64_t preGCStoredSize = 0;
+        uint64_t expiredChunkStoredSize = 0;
+        uint64_t gcReclaimedStoredSize = 0;
         uint64_t currentSearchableChunks = 0;
         uint64_t currentTreeSFEntries = 0;
+        uint64_t currentTreeEdgeCount = 0;
+        uint64_t sfIndexPayloadBytes = 0;
+        uint64_t sfIndexEstimatedBytes = 0;
+        uint64_t treeMetadataBytes = 0;
 
         uint64_t design4InputRoots = 0;
         uint64_t design4InputChunks = 0;
@@ -232,6 +240,28 @@ public:
     {
         offlineLogSummary_.keptBackupLogicalSize = keptBackupLogicalSize;
         offlineLogSummary_.finalStoredSize = finalStoredSize;
+    }
+    void AddOfflineProcessedLogicalSize(uint64_t processedLogicalSize)
+    {
+        offlineLogSummary_.offlineProcessedLogicalSize += processedLogicalSize;
+    }
+    void SetOfflineGCSpaceSummary(uint64_t preGCStoredSize,
+                                  uint64_t expiredChunkStoredSize,
+                                  uint64_t gcReclaimedStoredSize)
+    {
+        offlineLogSummary_.preGCStoredSize = preGCStoredSize;
+        offlineLogSummary_.expiredChunkStoredSize = expiredChunkStoredSize;
+        offlineLogSummary_.gcReclaimedStoredSize = gcReclaimedStoredSize;
+    }
+    void SetOfflineStructureOverheadSummary(uint64_t currentTreeEdgeCount,
+                                            uint64_t sfIndexPayloadBytes,
+                                            uint64_t sfIndexEstimatedBytes,
+                                            uint64_t treeMetadataBytes)
+    {
+        offlineLogSummary_.currentTreeEdgeCount = currentTreeEdgeCount;
+        offlineLogSummary_.sfIndexPayloadBytes = sfIndexPayloadBytes;
+        offlineLogSummary_.sfIndexEstimatedBytes = sfIndexEstimatedBytes;
+        offlineLogSummary_.treeMetadataBytes = treeMetadataBytes;
     }
 
     void StatsDelta(Chunk_t &tmpChunk);

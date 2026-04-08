@@ -81,6 +81,7 @@ void Design5::ResetRebuildLogStats()
 void Design5::FinalizeRebuildLogStats()
 {
     searchableChunkCount_ = 0;
+    uint64_t currentTreeEdgeCount = 0;
     if (offline_dataWrite_ == nullptr)
     {
         return;
@@ -90,6 +91,10 @@ void Design5::FinalizeRebuildLogStats()
         if (IsSearchableChunk(chunk))
         {
             searchableChunkCount_++;
+            if (chunk.basechunkID >= 0)
+            {
+                currentTreeEdgeCount++;
+            }
         }
     }
     offlineLogSummary_.design5KeptHistoricalChunks += historicalLogStats_.keptChunks;
@@ -115,6 +120,12 @@ void Design5::FinalizeRebuildLogStats()
     offlineLogSummary_.design5AppendTreeEdges += appendLogStats_.treeEdges;
     offlineLogSummary_.currentSearchableChunks = searchableChunkCount_;
     offlineLogSummary_.currentTreeSFEntries = table.Tree_SFIndex.size();
+    SetOfflineStructureOverheadSummary(
+        currentTreeEdgeCount,
+        table.Tree_SFIndex.size() * sizeof(decltype(table.Tree_SFIndex)::value_type),
+        table.Tree_SFIndex.size() * sizeof(decltype(table.Tree_SFIndex)::value_type) +
+            table.Tree_SFIndex.bucket_count() * sizeof(void *),
+        searchableChunkCount_ * (sizeof(int) * 2));
 }
 
 void Design5::PrintRebuildLogStats() const

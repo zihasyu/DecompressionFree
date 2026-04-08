@@ -6,3 +6,5 @@ bin/
 build/
 .vscode/
 .cache/
+scripts/
+analysis/

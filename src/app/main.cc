@@ -55,6 +55,49 @@ uint64_t ComputeKeptBackupLogicalSize(const GCMarkState &markState, const dataWr
     return ComputeBackupsLogicalSize(writer, markState.keptBackups);
 }
 
+uint64_t ComputeStoredSize(const dataWrite *writer)
+{
+    if (writer == nullptr)
+    {
+        return 0;
+    }
+
+    uint64_t storedSize = 0;
+    for (const auto &chunk : writer->chunklist)
+    {
+        if (chunk.chunkSize == 0)
+        {
+            continue;
+        }
+        storedSize += chunk.saveSize;
+    }
+    return storedSize;
+}
+
+uint64_t ComputeExpiredChunkStoredSize(const GCMarkState &markState, const dataWrite *writer)
+{
+    if (writer == nullptr)
+    {
+        return 0;
+    }
+
+    uint64_t storedSize = 0;
+    const size_t limit = std::min(markState.keepChunk.size(), writer->chunklist.size());
+    for (size_t i = 0; i < limit; ++i)
+    {
+        if (markState.keepChunk[i] != 0)
+        {
+            continue;
+        }
+        if (writer->chunklist[i].chunkSize == 0)
+        {
+            continue;
+        }
+        storedSize += writer->chunklist[i].saveSize;
+    }
+    return storedSize;
+}
+
 Chunk_t RestoreChunkById(dataWrite *writer, uint64_t chunkId)
 {
     Chunk_t emptyChunk{};
@@ -593,6 +636,14 @@ int main(int argc, char **argv)
             auto offlineBatchTime = std::chrono::duration_cast<std::chrono::duration<double>>(offlineEnd - offlineStart).count();
             incrementalOfflineTime += offlineBatchTime;
             const auto restoreChunkTimeDelta = OfflineAbsMethodObj->RestoreChunkTime - restoreChunkTimeBefore;
+            const uint64_t batchProcessedLogicalSize = OfflineAbsMethodObj->logicalchunkSize;
+            const uint64_t preGCStoredSize = ComputeStoredSize(absMethodObj->dataWrite_);
+            const uint64_t expiredChunkStoredSize = ComputeExpiredChunkStoredSize(currentGCMarkState, absMethodObj->dataWrite_);
+            const uint64_t gcReclaimedStoredSize =
+                preGCStoredSize > OfflineAbsMethodObj->uniquechunkSize ? preGCStoredSize - OfflineAbsMethodObj->uniquechunkSize : 0;
+
+            OfflineAbsMethodObj->AddOfflineProcessedLogicalSize(batchProcessedLogicalSize);
+            OfflineAbsMethodObj->SetOfflineGCSpaceSummary(preGCStoredSize, expiredChunkStoredSize, gcReclaimedStoredSize);
 
             cout << "----------------------incremental offline-------------------------" << std::endl;
             cout << "batch " << i << " processed" << std::endl;
@@ -600,7 +651,7 @@ int main(int argc, char **argv)
             cout << "RestoreChunkTime: " << restoreChunkTimeDelta.count() << "s" << std::endl;
             cout << "Time taken by incremental offline: " << offlineBatchTime << " s " << std::endl;
             cout << "Offline Compression ratio " << SafeRatio(currentKeptBackupLogicalSize, OfflineAbsMethodObj->uniquechunkSize) << std::endl;
-            cout << "Offline Throughput " << (double)absMethodObj->logicalchunkSize / offlineBatchTime / 1024 / 1024 << " MiB/s" << std::endl;
+            cout << "Offline Throughput " << (double)batchProcessedLogicalSize / offlineBatchTime / 1024 / 1024 << " MiB/s" << std::endl;
 
             compactedChunkBoundary = currentVersionEnd;
             lastOfflineProcessedBackupCount = i + 1;
@@ -742,6 +793,14 @@ int main(int argc, char **argv)
                 currentGCMarkState.expiredBackups.size(),
                 keptChunkCount,
                 expiredChunkCount);
+            OfflineAbsMethodObj->AddOfflineProcessedLogicalSize(OfflineAbsMethodObj->logicalchunkSize);
+            {
+                const uint64_t preGCStoredSize = ComputeStoredSize(absMethodObj->dataWrite_);
+                const uint64_t expiredChunkStoredSize = ComputeExpiredChunkStoredSize(currentGCMarkState, absMethodObj->dataWrite_);
+                const uint64_t gcReclaimedStoredSize =
+                    preGCStoredSize > OfflineAbsMethodObj->uniquechunkSize ? preGCStoredSize - OfflineAbsMethodObj->uniquechunkSize : 0;
+                OfflineAbsMethodObj->SetOfflineGCSpaceSummary(preGCStoredSize, expiredChunkStoredSize, gcReclaimedStoredSize);
+            }
             OfflineAbsMethodObj->SetOfflineOverallSizeSummary(
                 currentKeptBackupLogicalSize,
                 OfflineAbsMethodObj->uniquechunkSize);
@@ -770,6 +829,13 @@ int main(int argc, char **argv)
             currentGCMarkState.expiredBackups.size(),
             keptChunkCount,
             expiredChunkCount);
+        {
+            const uint64_t preGCStoredSize = ComputeStoredSize(absMethodObj->dataWrite_);
+            const uint64_t expiredChunkStoredSize = ComputeExpiredChunkStoredSize(currentGCMarkState, absMethodObj->dataWrite_);
+            const uint64_t gcReclaimedStoredSize =
+                preGCStoredSize > OfflineAbsMethodObj->uniquechunkSize ? preGCStoredSize - OfflineAbsMethodObj->uniquechunkSize : 0;
+            OfflineAbsMethodObj->SetOfflineGCSpaceSummary(preGCStoredSize, expiredChunkStoredSize, gcReclaimedStoredSize);
+        }
         OfflineAbsMethodObj->SetOfflineOverallSizeSummary(
             currentKeptBackupLogicalSize,
             OfflineAbsMethodObj->uniquechunkSize);

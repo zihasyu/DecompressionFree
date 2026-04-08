@@ -947,6 +947,8 @@ void AbsMethod::PrintOffline(double time, CommandLine_t CmdLine)
     const uint64_t overallLogicalSize = GetOfflineOverallLogicalSize(*this, CmdLine);
     const uint64_t overallStoredSize = GetOfflineOverallStoredSize(*this, CmdLine);
     const double overallCompressionRatio = SafeRatio(overallLogicalSize, overallStoredSize);
+    const uint64_t offlineProcessedLogicalSize =
+        offlineLogSummary_.offlineProcessedLogicalSize > 0 ? offlineLogSummary_.offlineProcessedLogicalSize : logicalchunkSize;
 
     ofstream out;
     string fileName = "./offlineLog.txt";
@@ -978,7 +980,7 @@ void AbsMethod::PrintOffline(double time, CommandLine_t CmdLine)
     out << "-----------------Time------------------------------" << endl;
     // out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
     out << "total time: " << time << "s" << endl;
-    out << "Throughput: " << (double)logicalchunkSize / time / 1024 / 1024 << "MiB/s" << endl;
+    out << "Throughput: " << (double)offlineProcessedLogicalSize / time / 1024 / 1024 << "MiB/s" << endl;
     out << "Reduce data speed: " << (double)(logicalchunkSize - uniquechunkSize) / time / 1024 / 1024 << "MiB/s" << endl;
     out << "SF generation time: " << SFTime.count() << "s" << endl;
     out << "SF generation throughput: " << (double)logicalchunkSize / SFTime.count() / 1024 / 1024 << "MiB/s" << endl;
@@ -993,6 +995,12 @@ void AbsMethod::PrintOffline(double time, CommandLine_t CmdLine)
     out << "SF Overhead: " << (double)(basechunkNum * 120) / 1024 / 1024 << "MiB" << endl; //(3*(8+32)=120B)
     out << "Recipe Overhead: " << (double)logicalchunkNum * 8 / 1024 / 1024 << "MiB" << endl;
     out << "SF number: " << SFnum << endl;
+    if (CmdLine.offlineMethod == Design5_)
+    {
+        out << "SF Index Payload Overhead: " << (double)offlineLogSummary_.sfIndexPayloadBytes / 1024 / 1024 << "MiB" << endl;
+        out << "SF Index Estimated Overhead: " << (double)offlineLogSummary_.sfIndexEstimatedBytes / 1024 / 1024 << "MiB" << endl;
+        out << "Tree Metadata Overhead: " << (double)offlineLogSummary_.treeMetadataBytes / 1024 / 1024 << "MiB" << endl;
+    }
     if (CmdLine.offlineMethod == Design4_ || CmdLine.offlineMethod == Design5_)
     {
         out << "-----------------GC SUMMARY------------------------" << endl;
@@ -1002,9 +1010,13 @@ void AbsMethod::PrintOffline(double time, CommandLine_t CmdLine)
         out << "Kept chunks: " << offlineLogSummary_.keptChunks << endl;
         out << "Expired chunks: " << offlineLogSummary_.expiredChunks << endl;
         out << "Kept backup logical size: " << offlineLogSummary_.keptBackupLogicalSize << endl;
+        out << "Pre-GC stored size: " << offlineLogSummary_.preGCStoredSize << endl;
+        out << "Expired chunk stored size: " << offlineLogSummary_.expiredChunkStoredSize << endl;
+        out << "GC reclaimed stored size: " << offlineLogSummary_.gcReclaimedStoredSize << endl;
         out << "Final stored size: " << overallStoredSize << endl;
         out << "Current searchable chunks: " << offlineLogSummary_.currentSearchableChunks << endl;
         out << "Current tree sf entries: " << offlineLogSummary_.currentTreeSFEntries << endl;
+        out << "Current tree edge count: " << offlineLogSummary_.currentTreeEdgeCount << endl;
     }
     if (CmdLine.offlineMethod == Design4_)
     {
