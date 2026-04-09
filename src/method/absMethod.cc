@@ -1001,23 +1001,6 @@ void AbsMethod::PrintOffline(double time, CommandLine_t CmdLine)
         out << "SF Index Estimated Overhead: " << (double)offlineLogSummary_.sfIndexEstimatedBytes / 1024 / 1024 << "MiB" << endl;
         out << "Tree Metadata Overhead: " << (double)offlineLogSummary_.treeMetadataBytes / 1024 / 1024 << "MiB" << endl;
     }
-    if (CmdLine.offlineMethod == Design4_ || CmdLine.offlineMethod == Design5_)
-    {
-        out << "-----------------GC SUMMARY------------------------" << endl;
-        out << "Retention backups: " << offlineLogSummary_.retentionWindow << endl;
-        out << "Kept backups: " << offlineLogSummary_.keptBackups << endl;
-        out << "Expired backups: " << offlineLogSummary_.expiredBackups << endl;
-        out << "Kept chunks: " << offlineLogSummary_.keptChunks << endl;
-        out << "Expired chunks: " << offlineLogSummary_.expiredChunks << endl;
-        out << "Kept backup logical size: " << offlineLogSummary_.keptBackupLogicalSize << endl;
-        out << "Pre-GC stored size: " << offlineLogSummary_.preGCStoredSize << endl;
-        out << "Expired chunk stored size: " << offlineLogSummary_.expiredChunkStoredSize << endl;
-        out << "GC reclaimed stored size: " << offlineLogSummary_.gcReclaimedStoredSize << endl;
-        out << "Final stored size: " << overallStoredSize << endl;
-        out << "Current searchable chunks: " << offlineLogSummary_.currentSearchableChunks << endl;
-        out << "Current tree sf entries: " << offlineLogSummary_.currentTreeSFEntries << endl;
-        out << "Current tree edge count: " << offlineLogSummary_.currentTreeEdgeCount << endl;
-    }
     if (CmdLine.offlineMethod == Design4_)
     {
         out << "-----------------DESIGN4 SUMMARY-------------------" << endl;

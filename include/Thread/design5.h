@@ -64,6 +64,7 @@ private:
     HistoricalRewriteLogStats historicalLogStats_;
     AppendLogStats appendLogStats_;
     uint64_t searchableChunkCount_ = 0;
+    uint64_t historicalOnlyStoredSize_ = 0;
 
     Chunk_t LoadSourceChunk(uint64_t chunkId);
     Chunk_t RestoreChunkFromWriter(dataWrite *writer, uint64_t chunkId);
@@ -94,6 +95,7 @@ public:
     Design5();
     ~Design5();
     void SetAppendRange(uint64_t appendStart, uint64_t appendEnd);
+    uint64_t GetHistoricalOnlyStoredSize() const { return historicalOnlyStoredSize_; }
     void ProcessTrace();
     uint8_t *xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer);
     Chunk_t xd3_recursive_restore_BL_time(uint64_t BasechunkId);

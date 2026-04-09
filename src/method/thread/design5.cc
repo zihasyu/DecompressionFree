@@ -76,6 +76,7 @@ void Design5::ResetRebuildLogStats()
     historicalLogStats_ = HistoricalRewriteLogStats{};
     appendLogStats_ = AppendLogStats{};
     searchableChunkCount_ = 0;
+    historicalOnlyStoredSize_ = 0;
 }
 
 void Design5::FinalizeRebuildLogStats()
@@ -891,6 +892,19 @@ void Design5::ProcessTrace()
     else
     {
         table.Tree_SFIndex.clear();
+    }
+
+    historicalOnlyStoredSize_ = 0;
+    if (offline_dataWrite_ != nullptr)
+    {
+        for (const auto &chunk : offline_dataWrite_->chunklist)
+        {
+            if (chunk.chunkSize == 0)
+            {
+                continue;
+            }
+            historicalOnlyStoredSize_ += chunk.saveSize;
+        }
     }
 
     ThreadSafeQueue5<RestoredChunk5> chunkQueue;
