@@ -79,7 +79,7 @@ private:
     int ResolveReplacementBase(dataWrite *writer, int baseChunkId, uint64_t currentChunkId) const;
     int FindReplacementEntryInSubtree(dataWrite *writer, uint64_t rootId, super_feature_t sf) const;
     bool RewriteChunkAsLz4Base(const Chunk_t &sourceMeta, Chunk_t &rawChunk);
-    bool RewriteChunkWithOriginalDelta(dataWrite *sourceWriter, const Chunk_t &sourceMeta, const Chunk_t &rawChunk);
+    bool RewriteChunkWithOriginalDelta(dataWrite *sourceWriter, const Chunk_t &sourceMeta);
     bool RewriteChunkWithReplacementBase(const Chunk_t &sourceMeta, Chunk_t &rawChunk, int replacementBaseId);
     void RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
                                      const std::unordered_map<super_feature_t, uint64_t> &oldTreeIndex);

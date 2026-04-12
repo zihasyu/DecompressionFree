@@ -460,7 +460,7 @@ bool Design5::RewriteChunkAsLz4Base(const Chunk_t &sourceMeta, Chunk_t &rawChunk
     return true;
 }
 
-bool Design5::RewriteChunkWithOriginalDelta(dataWrite *sourceWriter, const Chunk_t &sourceMeta, const Chunk_t &rawChunk)
+bool Design5::RewriteChunkWithOriginalDelta(dataWrite *sourceWriter, const Chunk_t &sourceMeta)
 {
     if (sourceMeta.basechunkID < 0 ||
         !ChunkExists(offline_dataWrite_, static_cast<uint64_t>(sourceMeta.basechunkID)))
@@ -669,6 +669,13 @@ void Design5::RepairTreeIndexFromHistoricalState(dataWrite *sourceWriter,
 void Design5::RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
                                           const std::unordered_map<super_feature_t, uint64_t> &oldTreeIndex)
 {
+    std::unordered_map<uint64_t, SuperFeatures> historicalOwnedSFs;
+    historicalOwnedSFs.reserve(oldTreeIndex.size());
+    for (const auto &[sf, chunkId] : oldTreeIndex)
+    {
+        historicalOwnedSFs[chunkId].push_back(sf);
+    }
+
     std::vector<uint8_t> rewriteState(sourceWriter->chunklist.size(), 0);
     std::function<void(uint64_t)> rewriteChunk = [&](uint64_t chunkId)
     {
@@ -701,36 +708,71 @@ void Design5::RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
             rewriteChunk(static_cast<uint64_t>(sourceMeta.basechunkID));
         }
 
-        Chunk_t rawChunk = LoadSourceChunk(chunkId);
-        if (rawChunk.chunkPtr == nullptr || rawChunk.chunkSize == 0)
-        {
-            cout << "design5 rewrite error, failed to restore historical chunk " << chunkId << endl;
-            historicalLogStats_.restoreFailures++;
-            rewriteState[chunkId] = 2;
-            return;
-        }
         bool hasRawSF = false;
         SuperFeatures rawSuperFeatures;
-        if (rawChunk.chunkPtr != nullptr && rawChunk.chunkSize > 60)
-        {
-            const std::string rawChunkContent(reinterpret_cast<const char *>(rawChunk.chunkPtr), rawChunk.chunkSize);
-            rawSuperFeatures = table.feature_generator_.GenerateSuperFeatures(rawChunkContent);
-            hasRawSF = true;
-        }
         const bool baseAlive = sourceMeta.basechunkID >= 0 &&
                                ChunkExists(sourceWriter, static_cast<uint64_t>(sourceMeta.basechunkID)) &&
                                ShouldKeepChunk(static_cast<uint64_t>(sourceMeta.basechunkID));
+        bool rewritten = false;
+        bool loadedRawChunk = false;
+        Chunk_t rawChunk{};
+        rawChunk.chunkPtr = nullptr;
+        rawChunk.chunkSize = 0;
+        rawChunk.loadFromDisk = false;
+        auto ensureRawChunkLoaded = [&]() -> bool
+        {
+            if (loadedRawChunk)
+            {
+                return rawChunk.chunkPtr != nullptr && rawChunk.chunkSize > 0;
+            }
+            rawChunk = LoadSourceChunk(chunkId);
+            loadedRawChunk = true;
+            if (rawChunk.chunkPtr == nullptr || rawChunk.chunkSize == 0)
+            {
+                return false;
+            }
+            if (rawChunk.chunkSize > 60)
+            {
+                const std::string rawChunkContent(reinterpret_cast<const char *>(rawChunk.chunkPtr), rawChunk.chunkSize);
+                rawSuperFeatures = table.feature_generator_.GenerateSuperFeatures(rawChunkContent);
+                hasRawSF = true;
+            }
+            return true;
+        };
 
         if (sourceMeta.basechunkID >= 0 && sourceMeta.deltaFlag == DELTA)
         {
             const bool baseReady = baseAlive &&
                                    ChunkExists(offline_dataWrite_, static_cast<uint64_t>(sourceMeta.basechunkID));
-            if (baseReady && RewriteChunkWithOriginalDelta(sourceWriter, sourceMeta, rawChunk))
+            if (baseReady && RewriteChunkWithOriginalDelta(sourceWriter, sourceMeta))
             {
+                rewritten = true;
+                if (IsSearchableChunk(sourceMeta))
+                {
+                    auto sfIt = historicalOwnedSFs.find(chunkId);
+                    if (sfIt != historicalOwnedSFs.end())
+                    {
+                        searchableChunkSFs_[chunkId] = sfIt->second;
+                    }
+                    else
+                    {
+                        searchableChunkSFs_.erase(chunkId);
+                    }
+                }
+                else
+                {
+                    searchableChunkSFs_.erase(chunkId);
+                }
             }
             else
             {
-                bool rewritten = false;
+                if (!ensureRawChunkLoaded())
+                {
+                    cout << "design5 rewrite error, failed to restore historical chunk " << chunkId << endl;
+                    historicalLogStats_.restoreFailures++;
+                    rewriteState[chunkId] = 2;
+                    return;
+                }
                 if (!baseReady)
                 {
                     const int anchorId = ResolveChildAnchor(sourceWriter, sourceMeta.basechunkID);
@@ -759,13 +801,26 @@ void Design5::RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
                 if (!rewritten)
                 {
                     const int replacementBaseId = ResolveReplacementBase(sourceWriter, sourceMeta.basechunkID, chunkId);
-                    RewriteChunkWithReplacementBase(sourceMeta, rawChunk, replacementBaseId);
+                    rewritten = RewriteChunkWithReplacementBase(sourceMeta, rawChunk, replacementBaseId);
                 }
             }
         }
         else
         {
-            RewriteChunkAsLz4Base(sourceMeta, rawChunk);
+            if (!ensureRawChunkLoaded())
+            {
+                cout << "design5 rewrite error, failed to restore historical chunk " << chunkId << endl;
+                historicalLogStats_.restoreFailures++;
+                rewriteState[chunkId] = 2;
+                return;
+            }
+            rewritten = RewriteChunkAsLz4Base(sourceMeta, rawChunk);
+        }
+
+        if (!rewritten)
+        {
+            rewriteState[chunkId] = 2;
+            return;
         }
 
         const Chunk_t rebuiltMeta = offline_dataWrite_->Get_Chunk_MetaInfo(chunkId);
@@ -804,7 +859,7 @@ void Design5::RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
             searchableChunkSFs_.erase(chunkId);
         }
 
-        if (rawChunk.loadFromDisk && rawChunk.chunkPtr != nullptr)
+        if (loadedRawChunk && rawChunk.loadFromDisk && rawChunk.chunkPtr != nullptr)
         {
             free(rawChunk.chunkPtr);
         }
