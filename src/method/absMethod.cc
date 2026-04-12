@@ -1019,14 +1019,19 @@ void AbsMethod::PrintOffline(double time, CommandLine_t CmdLine)
         out << "-----------------DESIGN5 SUMMARY-------------------" << endl;
         out << "Kept historical chunks: " << offlineLogSummary_.design5KeptHistoricalChunks << endl;
         out << "Historical chunks reused from offline: " << offlineLogSummary_.design5HistoricalFromOffline << endl;
-        out << "Historical chunks recovered from inline: " << offlineLogSummary_.design5HistoricalFromInline << endl;
         out << "Historical chunks missing from both sources: " << offlineLogSummary_.design5MissingFromBoth << endl;
-        out << "Historical invalid base chains: " << offlineLogSummary_.design5InvalidBaseChains << endl;
         out << "Historical restore failures: " << offlineLogSummary_.design5RestoreFailures << endl;
         out << "Historical chunks rewritten as base: " << offlineLogSummary_.design5RewrittenAsBase << endl;
         out << "Historical deltas kept on original base: " << offlineLogSummary_.design5RewrittenWithOriginalBase << endl;
         out << "Historical deltas moved to replacement base: " << offlineLogSummary_.design5RewrittenWithReplacementBase << endl;
         out << "Historical chunks downgraded to lz4/base: " << offlineLogSummary_.design5RewrittenAsLz4Fallback << endl;
+        out << "Historical downgraded old stored size: " << offlineLogSummary_.design5DowngradedOldStoredSize << endl;
+        out << "Historical downgraded new stored size: " << offlineLogSummary_.design5DowngradedNewStoredSize << endl;
+        out << "Historical downgraded storage overhead: "
+            << (offlineLogSummary_.design5DowngradedNewStoredSize >= offlineLogSummary_.design5DowngradedOldStoredSize
+                    ? offlineLogSummary_.design5DowngradedNewStoredSize - offlineLogSummary_.design5DowngradedOldStoredSize
+                    : 0)
+            << endl;
         out << "Historical tree edges added: " << offlineLogSummary_.design5HistoricalTreeEdges << endl;
         out << "SF entries retained: " << offlineLogSummary_.design5SfRetained << endl;
         out << "SF entries remapped: " << offlineLogSummary_.design5SfRemapped << endl;

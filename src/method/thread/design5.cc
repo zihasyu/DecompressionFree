@@ -1,4 +1,5 @@
 #include "../../../include/Thread/design5.h"
+#include <cassert>
 #include <cstdint>
 #include <filesystem>
 #include <unordered_set>
@@ -100,14 +101,14 @@ void Design5::FinalizeRebuildLogStats()
     }
     offlineLogSummary_.design5KeptHistoricalChunks += historicalLogStats_.keptChunks;
     offlineLogSummary_.design5HistoricalFromOffline += historicalLogStats_.sourcedFromOffline;
-    offlineLogSummary_.design5HistoricalFromInline += historicalLogStats_.recoveredFromInline;
     offlineLogSummary_.design5MissingFromBoth += historicalLogStats_.missingFromBoth;
-    offlineLogSummary_.design5InvalidBaseChains += historicalLogStats_.invalidBaseChains;
     offlineLogSummary_.design5RestoreFailures += historicalLogStats_.restoreFailures;
     offlineLogSummary_.design5RewrittenAsBase += historicalLogStats_.rewrittenAsBase;
     offlineLogSummary_.design5RewrittenWithOriginalBase += historicalLogStats_.rewrittenWithOriginalBase;
     offlineLogSummary_.design5RewrittenWithReplacementBase += historicalLogStats_.rewrittenWithReplacementBase;
     offlineLogSummary_.design5RewrittenAsLz4Fallback += historicalLogStats_.rewrittenAsLz4Fallback;
+    offlineLogSummary_.design5DowngradedOldStoredSize += historicalLogStats_.downgradedOldStoredSize;
+    offlineLogSummary_.design5DowngradedNewStoredSize += historicalLogStats_.downgradedNewStoredSize;
     offlineLogSummary_.design5HistoricalTreeEdges += historicalLogStats_.treeEdges;
     offlineLogSummary_.design5SfRetained += historicalLogStats_.sfRetained;
     offlineLogSummary_.design5SfRemapped += historicalLogStats_.sfRemapped;
@@ -134,14 +135,14 @@ void Design5::PrintRebuildLogStats() const
     cout << "----------------------design5 historical rewrite log-------------------------" << endl;
     cout << "kept historical chunks: " << historicalLogStats_.keptChunks << endl;
     cout << "historical chunks reused from offline: " << historicalLogStats_.sourcedFromOffline << endl;
-    cout << "historical chunks recovered from inline: " << historicalLogStats_.recoveredFromInline << endl;
     cout << "historical chunks missing from both sources: " << historicalLogStats_.missingFromBoth << endl;
-    cout << "historical invalid base chains: " << historicalLogStats_.invalidBaseChains << endl;
     cout << "historical restore failures: " << historicalLogStats_.restoreFailures << endl;
     cout << "historical chunks rewritten as base: " << historicalLogStats_.rewrittenAsBase << endl;
     cout << "historical deltas kept on original base: " << historicalLogStats_.rewrittenWithOriginalBase << endl;
     cout << "historical deltas moved to replacement base: " << historicalLogStats_.rewrittenWithReplacementBase << endl;
     cout << "historical chunks downgraded to lz4/base: " << historicalLogStats_.rewrittenAsLz4Fallback << endl;
+    cout << "historical downgraded old stored size: " << historicalLogStats_.downgradedOldStoredSize << endl;
+    cout << "historical downgraded new stored size: " << historicalLogStats_.downgradedNewStoredSize << endl;
     cout << "historical tree edges added: " << historicalLogStats_.treeEdges << endl;
     cout << "sf entries retained: " << historicalLogStats_.sfRetained << endl;
     cout << "sf entries remapped: " << historicalLogStats_.sfRemapped << endl;
@@ -185,32 +186,6 @@ bool Design5::IsSearchableChunk(const Chunk_t &chunk) const
         return true;
     }
     return chunk.deltaFlag == DELTA && chunk.saveSize >= TREE_INSERT_SAVE_THRESHOLD;
-}
-
-bool Design5::HasAcyclicBaseChain(dataWrite *writer, uint64_t chunkId) const
-{
-    if (!ChunkExists(writer, chunkId))
-    {
-        return false;
-    }
-
-    std::unordered_set<uint64_t> visited;
-    int currentId = static_cast<int>(chunkId);
-    while (currentId >= 0)
-    {
-        const uint64_t current = static_cast<uint64_t>(currentId);
-        if (!ChunkExists(writer, current))
-        {
-            return false;
-        }
-        if (!visited.insert(current).second)
-        {
-            return false;
-        }
-
-        currentId = writer->Get_Chunk_MetaInfo(currentId).basechunkID;
-    }
-    return true;
 }
 
 bool Design5::OwnsSuperFeature(uint64_t chunkId, super_feature_t sf) const
@@ -264,9 +239,42 @@ void Design5::RegisterNewSearchableChunk(uint64_t chunkId, const Chunk_t &rawChu
     }
 }
 
-int Design5::ResolveReplacementBase(dataWrite *writer, int baseChunkId) const
+int Design5::ResolveChildAnchor(dataWrite *writer, int baseChunkId) const
 {
-    int currentId = baseChunkId;
+    if (writer == nullptr || baseChunkId < 0 || !ChunkExists(writer, static_cast<uint64_t>(baseChunkId)))
+    {
+        return -1;
+    }
+
+    const Chunk_t baseMeta = writer->Get_Chunk_MetaInfo(baseChunkId);
+    int childId = baseMeta.FirstChildID;
+    while (childId >= 0)
+    {
+        const uint64_t candidateId = static_cast<uint64_t>(childId);
+        if (!ChunkExists(writer, candidateId))
+        {
+            return -1;
+        }
+
+        if (ShouldKeepChunk(candidateId))
+        {
+            return childId;
+        }
+
+        childId = writer->Get_Chunk_MetaInfo(candidateId).FirstBroID;
+    }
+    return -1;
+}
+
+int Design5::ResolveReplacementBase(dataWrite *writer, int baseChunkId, uint64_t currentChunkId) const
+{
+    if (writer == nullptr || baseChunkId < 0 || !ChunkExists(writer, static_cast<uint64_t>(baseChunkId)))
+    {
+        return -1;
+    }
+
+    const Chunk_t baseMeta = writer->Get_Chunk_MetaInfo(baseChunkId);
+    int currentId = baseMeta.basechunkID;
     while (currentId >= 0)
     {
         if (!ChunkExists(writer, static_cast<uint64_t>(currentId)))
@@ -274,10 +282,16 @@ int Design5::ResolveReplacementBase(dataWrite *writer, int baseChunkId) const
             return -1;
         }
 
-        if (ShouldKeepChunk(static_cast<uint64_t>(currentId)))
+        if (static_cast<uint64_t>(currentId) == currentChunkId)
         {
-            const Chunk_t currentMeta = writer->Get_Chunk_MetaInfo(currentId);
-            return IsSearchableChunk(currentMeta) ? currentId : -1;
+            currentId = writer->Get_Chunk_MetaInfo(currentId).basechunkID;
+            continue;
+        }
+
+        if (ShouldKeepChunk(static_cast<uint64_t>(currentId)) &&
+            ChunkExists(offline_dataWrite_, static_cast<uint64_t>(currentId)))
+        {
+            return currentId;
         }
 
         currentId = writer->Get_Chunk_MetaInfo(currentId).basechunkID;
@@ -655,11 +669,6 @@ void Design5::RepairTreeIndexFromHistoricalState(dataWrite *sourceWriter,
 void Design5::RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
                                           const std::unordered_map<super_feature_t, uint64_t> &oldTreeIndex)
 {
-    if (sourceWriter == nullptr)
-    {
-        return;
-    }
-
     std::vector<uint8_t> rewriteState(sourceWriter->chunklist.size(), 0);
     std::function<void(uint64_t)> rewriteChunk = [&](uint64_t chunkId)
     {
@@ -682,32 +691,10 @@ void Design5::RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
 
         rewriteState[chunkId] = 1;
         historicalLogStats_.keptChunks++;
-        const bool hasHistoricalChunk = ChunkExists(sourceWriter, chunkId);
-        const bool hasInlineChunk = ChunkExists(dataWrite_, chunkId);
-        if (!hasHistoricalChunk && !hasInlineChunk)
-        {
-            cout << "design5 rewrite error, chunk " << chunkId
-                 << " is kept but missing from both offline and inline sources" << endl;
-            historicalLogStats_.missingFromBoth++;
-            rewriteState[chunkId] = 2;
-            return;
-        }
-        if (hasHistoricalChunk)
-        {
-            historicalLogStats_.sourcedFromOffline++;
-        }
-        else
-        {
-            historicalLogStats_.recoveredFromInline++;
-        }
+        assert(ChunkExists(sourceWriter, chunkId));
+        historicalLogStats_.sourcedFromOffline++;
 
-        dataWrite *metaWriter = hasHistoricalChunk ? sourceWriter : dataWrite_;
-        const Chunk_t sourceMeta = metaWriter->Get_Chunk_MetaInfo(chunkId);
-        const bool hasValidSourceChain = sourceMeta.basechunkID < 0 || HasAcyclicBaseChain(metaWriter, chunkId);
-        if (!hasValidSourceChain)
-        {
-            historicalLogStats_.invalidBaseChains++;
-        }
+        const Chunk_t sourceMeta = sourceWriter->Get_Chunk_MetaInfo(chunkId);
         if (sourceMeta.basechunkID >= 0 &&
             ShouldKeepChunk(static_cast<uint64_t>(sourceMeta.basechunkID)))
         {
@@ -717,15 +704,7 @@ void Design5::RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
         Chunk_t rawChunk = LoadSourceChunk(chunkId);
         if (rawChunk.chunkPtr == nullptr || rawChunk.chunkSize == 0)
         {
-            if (hasValidSourceChain)
-            {
-                cout << "design5 rewrite error, failed to restore historical chunk " << chunkId << endl;
-            }
-            else
-            {
-                cout << "design5 rewrite warning, historical chunk " << chunkId
-                     << " has invalid base chain and cannot be restored for rewrite" << endl;
-            }
+            cout << "design5 rewrite error, failed to restore historical chunk " << chunkId << endl;
             historicalLogStats_.restoreFailures++;
             rewriteState[chunkId] = 2;
             return;
@@ -739,21 +718,49 @@ void Design5::RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
             hasRawSF = true;
         }
         const bool baseAlive = sourceMeta.basechunkID >= 0 &&
-                               ChunkExists(metaWriter, static_cast<uint64_t>(sourceMeta.basechunkID)) &&
+                               ChunkExists(sourceWriter, static_cast<uint64_t>(sourceMeta.basechunkID)) &&
                                ShouldKeepChunk(static_cast<uint64_t>(sourceMeta.basechunkID));
 
         if (sourceMeta.basechunkID >= 0 && sourceMeta.deltaFlag == DELTA)
         {
-            const bool baseReady = hasValidSourceChain &&
-                                   baseAlive &&
+            const bool baseReady = baseAlive &&
                                    ChunkExists(offline_dataWrite_, static_cast<uint64_t>(sourceMeta.basechunkID));
-            if (baseReady && RewriteChunkWithReplacementBase(sourceMeta, rawChunk, sourceMeta.basechunkID))
+            if (baseReady && RewriteChunkWithOriginalDelta(sourceWriter, sourceMeta, rawChunk))
             {
             }
             else
             {
-                const int replacementBaseId = ResolveReplacementBase(metaWriter, sourceMeta.basechunkID);
-                RewriteChunkWithReplacementBase(sourceMeta, rawChunk, replacementBaseId);
+                bool rewritten = false;
+                if (!baseReady)
+                {
+                    const int anchorId = ResolveChildAnchor(sourceWriter, sourceMeta.basechunkID);
+                    if (anchorId >= 0)
+                    {
+                        if (static_cast<uint64_t>(anchorId) == chunkId)
+                        {
+                            // The first kept child becomes the anchor. It first tries to
+                            // stay as a delta on an ancestor of the invalidated base.
+                            const int replacementBaseId =
+                                ResolveReplacementBase(sourceWriter, sourceMeta.basechunkID, chunkId);
+                            rewritten = RewriteChunkWithReplacementBase(sourceMeta, rawChunk, replacementBaseId);
+                        }
+                        else
+                        {
+                            // Other kept siblings try to attach to the rewritten anchor child.
+                            rewriteChunk(static_cast<uint64_t>(anchorId));
+                            if (ChunkExists(offline_dataWrite_, static_cast<uint64_t>(anchorId)))
+                            {
+                                rewritten = RewriteChunkWithReplacementBase(sourceMeta, rawChunk, anchorId);
+                            }
+                        }
+                    }
+                }
+
+                if (!rewritten)
+                {
+                    const int replacementBaseId = ResolveReplacementBase(sourceWriter, sourceMeta.basechunkID, chunkId);
+                    RewriteChunkWithReplacementBase(sourceMeta, rawChunk, replacementBaseId);
+                }
             }
         }
         else
@@ -784,6 +791,8 @@ void Design5::RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
         else
         {
             historicalLogStats_.rewrittenAsLz4Fallback++;
+            historicalLogStats_.downgradedOldStoredSize += sourceMeta.saveSize;
+            historicalLogStats_.downgradedNewStoredSize += rebuiltMeta.saveSize;
         }
 
         if (IsSearchableChunk(rebuiltMeta) && hasRawSF)

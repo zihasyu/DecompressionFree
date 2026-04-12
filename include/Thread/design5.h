@@ -16,14 +16,14 @@ private:
     {
         uint64_t keptChunks = 0;
         uint64_t sourcedFromOffline = 0;
-        uint64_t recoveredFromInline = 0;
         uint64_t missingFromBoth = 0;
-        uint64_t invalidBaseChains = 0;
         uint64_t restoreFailures = 0;
         uint64_t rewrittenAsBase = 0;
         uint64_t rewrittenWithOriginalBase = 0;
         uint64_t rewrittenWithReplacementBase = 0;
         uint64_t rewrittenAsLz4Fallback = 0;
+        uint64_t downgradedOldStoredSize = 0;
+        uint64_t downgradedNewStoredSize = 0;
         uint64_t treeEdges = 0;
         uint64_t sfRetained = 0;
         uint64_t sfRemapped = 0;
@@ -73,10 +73,10 @@ private:
     std::string PrepareNextGenerationPath();
     bool ChunkExists(const dataWrite *writer, uint64_t chunkId) const;
     bool IsSearchableChunk(const Chunk_t &chunk) const;
-    bool HasAcyclicBaseChain(dataWrite *writer, uint64_t chunkId) const;
     bool OwnsSuperFeature(uint64_t chunkId, super_feature_t sf) const;
     void RecordSearchableChunkSF(uint64_t chunkId, const Chunk_t &rawChunk);
-    int ResolveReplacementBase(dataWrite *writer, int baseChunkId) const;
+    int ResolveChildAnchor(dataWrite *writer, int baseChunkId) const;
+    int ResolveReplacementBase(dataWrite *writer, int baseChunkId, uint64_t currentChunkId) const;
     int FindReplacementEntryInSubtree(dataWrite *writer, uint64_t rootId, super_feature_t sf) const;
     bool RewriteChunkAsLz4Base(const Chunk_t &sourceMeta, Chunk_t &rawChunk);
     bool RewriteChunkWithOriginalDelta(dataWrite *sourceWriter, const Chunk_t &sourceMeta, const Chunk_t &rawChunk);

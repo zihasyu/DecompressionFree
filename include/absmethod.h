@@ -55,14 +55,14 @@ public:
 
         uint64_t design5KeptHistoricalChunks = 0;
         uint64_t design5HistoricalFromOffline = 0;
-        uint64_t design5HistoricalFromInline = 0;
         uint64_t design5MissingFromBoth = 0;
-        uint64_t design5InvalidBaseChains = 0;
         uint64_t design5RestoreFailures = 0;
         uint64_t design5RewrittenAsBase = 0;
         uint64_t design5RewrittenWithOriginalBase = 0;
         uint64_t design5RewrittenWithReplacementBase = 0;
         uint64_t design5RewrittenAsLz4Fallback = 0;
+        uint64_t design5DowngradedOldStoredSize = 0;
+        uint64_t design5DowngradedNewStoredSize = 0;
         uint64_t design5HistoricalTreeEdges = 0;
         uint64_t design5SfRetained = 0;
         uint64_t design5SfRemapped = 0;
