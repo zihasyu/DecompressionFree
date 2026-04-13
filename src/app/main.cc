@@ -559,6 +559,7 @@ int main(int argc, char **argv)
     double incrementalOfflineTime = 0;
     size_t compactedChunkBoundary = 0;
     size_t lastOfflineProcessedBackupCount = 0;
+    size_t design4GenerationSlot = 0;
     GCMarkState currentGCMarkState;
     uint64_t currentKeptBackupLogicalSize = 0;
     if (CmdLine.chunkingType == MTAR || CmdLine.chunkingType == MTAROdess || CmdLine.chunkingType == MTARPalantir)
@@ -660,7 +661,7 @@ int main(int argc, char **argv)
             {
                 // Only the previous generation is needed for the next incremental rebuild,
                 // so reuse two slots instead of retaining one directory per batch.
-                const string offlineGenerationPath = "./OfflineContainers/gen" + to_string(i % 2) + "/";
+                const string offlineGenerationPath = "./OfflineContainers/gen" + to_string(design4GenerationSlot % 2) + "/";
                 ResetDirectory(offlineGenerationPath);
 
                 auto *nextOfflineMethod = new Design4();
@@ -683,6 +684,7 @@ int main(int argc, char **argv)
                 nextOfflineMethod->ProcessTrace();
                 nextOfflineMethod->offline_dataWrite_->ProcessLastContainer();
                 nextDesign4->SetHistoricalSource(nullptr, 0);
+                design4GenerationSlot++;
 
                 if (OfflineAbsMethodObj != nullptr)
                 {
