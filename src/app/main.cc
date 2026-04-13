@@ -99,6 +99,26 @@ uint64_t ComputeExpiredChunkStoredSize(const GCMarkState &markState, const dataW
     return storedSize;
 }
 
+uint64_t ComputeStoredSizeBeforeBoundary(const dataWrite *writer, size_t chunkBoundary)
+{
+    if (writer == nullptr || chunkBoundary == 0)
+    {
+        return 0;
+    }
+
+    uint64_t storedSize = 0;
+    const size_t limit = std::min(chunkBoundary, writer->chunklist.size());
+    for (size_t i = 0; i < limit; ++i)
+    {
+        if (writer->chunklist[i].chunkSize == 0)
+        {
+            continue;
+        }
+        storedSize += writer->chunklist[i].saveSize;
+    }
+    return storedSize;
+}
+
 void UpdateOfflineGCSpaceSummary(AbsMethod *offlineMethod,
                                  uint64_t preGCStoredSize,
                                  uint64_t expiredChunkStoredSize)
@@ -732,7 +752,9 @@ int main(int argc, char **argv)
             const auto restoreChunkTimeDelta = OfflineAbsMethodObj->RestoreChunkTime - restoreChunkTimeBefore;
             const uint64_t batchProcessedLogicalSize = OfflineAbsMethodObj->logicalchunkSize;
             const uint64_t finalOfflineStoredSize = ComputeStoredSize(OfflineAbsMethodObj->offline_dataWrite_);
-            uint64_t historicalOnlyStoredSize = finalOfflineStoredSize;
+            uint64_t historicalOnlyStoredSize = incrementalDesign4
+                                                    ? ComputeStoredSizeBeforeBoundary(OfflineAbsMethodObj->offline_dataWrite_, compactedChunkBoundary)
+                                                    : finalOfflineStoredSize;
             double historicalRewriteTime = 0.0;
             if (auto *design5 = dynamic_cast<Design5 *>(OfflineAbsMethodObj))
             {

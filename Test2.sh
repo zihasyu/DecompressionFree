@@ -36,12 +36,12 @@ datasets=(
   # ["bash"]="/mnt/dataset2/bash_tarballs 44"
   # ["coreutils"]="/mnt/dataset2/coreutils_tarballs 28"
   # ["fdisk"]="/mnt/dataset2/fdisk_tarballs 22"
-  ["glibc"]="/home/public/Dataset/glibc_tarballs/glibc_tarballs 100"  #100
+  # ["glibc"]="/home/public/Dataset/glibc_tarballs/glibc_tarballs 100"  #100
   # ["smalltalk"]="/mnt/dataset2/smalltalk_tarballs 40"
   # ["gcc"]="/mnt/dataset2/GNU_GCC/gcc-packed/tar 117"
   # ["chromium"]="/mnt/dataset2/chromium 107"
   # ["linux-100"]="/mnt/dataset2/linux 100"
-  # ["linux"]="/home/public/Dataset/linux 270"
+  ["linux"]="/home/public/Dataset/linux 270"
   # ["cassandra"]="/mnt/dataset2/cassandra 97"   
   # ["vmdk"]="/mnt/dataset2/vmdk 50"  #10
   # ["WEB"]="/home/public/Dataset/WEB 50"   # 102
@@ -57,11 +57,11 @@ chunking=1
 
 # 只用修改这里
 online_methods=(3)          # 在线方法编号列表
-offline_methods=(12)       # -1表示不做离线，其他为离线方法编号
+offline_methods=(11)       # -1表示不做离线，其他为离线方法编号
 restore_options=(0)         # 是否恢复  0,1
 threshold_values=(64)   # threshold 敏感性实验时在这里配置多个阈值
-retention_backups=80      # 新增：保留最近多少个备份，-1 表示全部保留
-offline_batch_period=80    # design4/design5 每累计多少个 backup 触发一次离线处理
+retention_backups=216      # 新增：保留最近多少个备份，-1 表示全部保留
+offline_batch_period=216    # design4/design5 每累计多少个 backup 触发一次离线处理
 
 for dataset in "${!datasets[@]}"; do
   read -r path num <<< "${datasets[$dataset]}"
