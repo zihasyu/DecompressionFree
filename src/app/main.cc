@@ -126,6 +126,7 @@ void AppendOfflineBatchLog(const CommandLine_t &cmdLine,
                            uint64_t oldOfflineStoredSize,
                            uint64_t expiredChunkStoredSize,
                            uint64_t historicalOnlyStoredSize,
+                           double historicalRewriteTime,
                            uint64_t finalOfflineStoredSize,
                            double offlineBatchTime,
                            double restoreChunkTime,
@@ -172,6 +173,7 @@ void AppendOfflineBatchLog(const CommandLine_t &cmdLine,
     out << "Old offline stored size: " << oldOfflineStoredSize << endl;
     out << "Expired chunk stored size: " << expiredChunkStoredSize << endl;
     out << "Post-GC historical stored size: " << historicalOnlyStoredSize << endl;
+    out << "Historical rewrite time: " << historicalRewriteTime << "s" << endl;
     out << "Historical GC reclaimed size: " << historicalGCReclaimedSize << endl;
     out << "Appended stored size: " << appendStoredSize << endl;
     out << "Final offline stored size: " << finalOfflineStoredSize << endl;
@@ -729,9 +731,11 @@ int main(int argc, char **argv)
             const uint64_t batchProcessedLogicalSize = OfflineAbsMethodObj->logicalchunkSize;
             const uint64_t finalOfflineStoredSize = ComputeStoredSize(OfflineAbsMethodObj->offline_dataWrite_);
             uint64_t historicalOnlyStoredSize = finalOfflineStoredSize;
+            double historicalRewriteTime = 0.0;
             if (auto *design5 = dynamic_cast<Design5 *>(OfflineAbsMethodObj))
             {
                 historicalOnlyStoredSize = design5->GetHistoricalOnlyStoredSize();
+                historicalRewriteTime = design5->GetHistoricalRewriteTimeSeconds();
             }
 
             OfflineAbsMethodObj->AddOfflineProcessedLogicalSize(batchProcessedLogicalSize);
@@ -746,6 +750,7 @@ int main(int argc, char **argv)
                 preGCStoredSize,
                 expiredChunkStoredSize,
                 historicalOnlyStoredSize,
+                historicalRewriteTime,
                 finalOfflineStoredSize,
                 offlineBatchTime,
                 restoreChunkTimeDelta.count(),

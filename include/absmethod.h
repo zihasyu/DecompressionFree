@@ -67,6 +67,7 @@ public:
         uint64_t design5SfRetained = 0;
         uint64_t design5SfRemapped = 0;
         uint64_t design5SfRemoved = 0;
+        double design5HistoricalRewriteTime = 0.0;
         uint64_t design5AppendRoots = 0;
         uint64_t design5AppendChunks = 0;
         uint64_t design5AppendedBaseChunks = 0;

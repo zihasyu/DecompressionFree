@@ -44,7 +44,7 @@ datasets=(
   # ["linux"]="/home/public/Dataset/linux 270"
   # ["cassandra"]="/mnt/dataset2/cassandra 97"   
   # ["vmdk"]="/mnt/dataset2/vmdk 50"  #10
-  ["WEB"]="/home/public/Dataset/WEB 20"   # 102
+  ["WEB"]="/home/public/Dataset/WEB 50"   # 102
   # ["WEB-3"]="/home/public/Dataset/WEB 3"
   # ["WindowsLog"]="/home/public/Dataset/WindowsLog 1"
   # ["ThunderbirdLog"]="/mnt/dataset2/ThunderbirdLog 1"
@@ -60,8 +60,8 @@ online_methods=(3)          # 在线方法编号列表
 offline_methods=(12)       # -1表示不做离线，其他为离线方法编号
 restore_options=(0)         # 是否恢复  0,1
 threshold_values=(64)   # threshold 敏感性实验时在这里配置多个阈值
-retention_backups=10      # 新增：保留最近多少个备份，-1 表示全部保留
-offline_batch_period=10    # design4/design5 每累计多少个 backup 触发一次离线处理
+retention_backups=40      # 新增：保留最近多少个备份，-1 表示全部保留
+offline_batch_period=40    # design4/design5 每累计多少个 backup 触发一次离线处理
 
 for dataset in "${!datasets[@]}"; do
   read -r path num <<< "${datasets[$dataset]}"

@@ -28,6 +28,7 @@ private:
         uint64_t sfRetained = 0;
         uint64_t sfRemapped = 0;
         uint64_t sfRemoved = 0;
+        double rewriteTimeSeconds = 0.0;
     };
 
     struct AppendLogStats
@@ -96,6 +97,7 @@ public:
     ~Design5();
     void SetAppendRange(uint64_t appendStart, uint64_t appendEnd);
     uint64_t GetHistoricalOnlyStoredSize() const { return historicalOnlyStoredSize_; }
+    double GetHistoricalRewriteTimeSeconds() const { return historicalLogStats_.rewriteTimeSeconds; }
     void ProcessTrace();
     uint8_t *xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer);
     Chunk_t xd3_recursive_restore_BL_time(uint64_t BasechunkId);

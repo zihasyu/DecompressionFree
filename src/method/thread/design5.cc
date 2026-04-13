@@ -113,6 +113,7 @@ void Design5::FinalizeRebuildLogStats()
     offlineLogSummary_.design5SfRetained += historicalLogStats_.sfRetained;
     offlineLogSummary_.design5SfRemapped += historicalLogStats_.sfRemapped;
     offlineLogSummary_.design5SfRemoved += historicalLogStats_.sfRemoved;
+    offlineLogSummary_.design5HistoricalRewriteTime += historicalLogStats_.rewriteTimeSeconds;
     offlineLogSummary_.design5AppendRoots += appendLogStats_.inputRoots;
     offlineLogSummary_.design5AppendChunks += appendLogStats_.inputChunks;
     offlineLogSummary_.design5AppendedBaseChunks += appendLogStats_.appendedBaseChunks;
@@ -143,6 +144,7 @@ void Design5::PrintRebuildLogStats() const
     cout << "historical chunks downgraded to lz4/base: " << historicalLogStats_.rewrittenAsLz4Fallback << endl;
     cout << "historical downgraded old stored size: " << historicalLogStats_.downgradedOldStoredSize << endl;
     cout << "historical downgraded new stored size: " << historicalLogStats_.downgradedNewStoredSize << endl;
+    cout << "historical rewrite time: " << historicalLogStats_.rewriteTimeSeconds << "s" << endl;
     cout << "historical tree edges added: " << historicalLogStats_.treeEdges << endl;
     cout << "sf entries retained: " << historicalLogStats_.sfRetained << endl;
     cout << "sf entries remapped: " << historicalLogStats_.sfRemapped << endl;
@@ -951,7 +953,10 @@ void Design5::ProcessTrace()
 
     if (sourceWriter != nullptr && !sourceWriter->chunklist.empty())
     {
+        const auto historicalRewriteStart = high_resolution_clock::now();
         RewriteKeptHistoricalChunks(sourceWriter, oldTreeIndex);
+        const auto historicalRewriteEnd = high_resolution_clock::now();
+        historicalLogStats_.rewriteTimeSeconds += duration_cast<duration<double>>(historicalRewriteEnd - historicalRewriteStart).count();
     }
     else
     {

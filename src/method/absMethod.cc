@@ -1032,6 +1032,7 @@ void AbsMethod::PrintOffline(double time, CommandLine_t CmdLine)
                     ? offlineLogSummary_.design5DowngradedNewStoredSize - offlineLogSummary_.design5DowngradedOldStoredSize
                     : 0)
             << endl;
+        out << "Historical rewrite time: " << offlineLogSummary_.design5HistoricalRewriteTime << "s" << endl;
         out << "Historical tree edges added: " << offlineLogSummary_.design5HistoricalTreeEdges << endl;
         out << "SF entries retained: " << offlineLogSummary_.design5SfRetained << endl;
         out << "SF entries remapped: " << offlineLogSummary_.design5SfRemapped << endl;
