@@ -79,9 +79,14 @@ private:
     int ResolveChildAnchor(dataWrite *writer, int baseChunkId) const;
     int ResolveReplacementBase(dataWrite *writer, int baseChunkId, uint64_t currentChunkId) const;
     int FindReplacementEntryInSubtree(dataWrite *writer, uint64_t rootId, super_feature_t sf) const;
+    void CollectHistoricalSubtreeChunkIds(dataWrite *writer, uint64_t rootId, std::vector<uint64_t> &chunkIds) const;
     bool RewriteChunkAsLz4Base(const Chunk_t &sourceMeta, Chunk_t &rawChunk);
     bool RewriteChunkWithOriginalDelta(dataWrite *sourceWriter, const Chunk_t &sourceMeta);
     bool RewriteChunkWithReplacementBase(const Chunk_t &sourceMeta, Chunk_t &rawChunk, int replacementBaseId);
+    void RewriteHistoricalChunkIds(dataWrite *sourceWriter,
+                                   const std::unordered_map<uint64_t, SuperFeatures> &historicalOwnedSFs,
+                                   const std::vector<uint64_t> &chunkIds,
+                                   std::vector<uint8_t> &rewriteState);
     void RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
                                      const std::unordered_map<super_feature_t, uint64_t> &oldTreeIndex);
     void RepairTreeIndexFromHistoricalState(dataWrite *sourceWriter,

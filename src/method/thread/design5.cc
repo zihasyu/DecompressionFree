@@ -631,6 +631,48 @@ int Design5::FindReplacementEntryInSubtree(dataWrite *writer, uint64_t rootId, s
     return -1;
 }
 
+void Design5::CollectHistoricalSubtreeChunkIds(dataWrite *writer, uint64_t rootId, std::vector<uint64_t> &chunkIds) const
+{
+    if (!ChunkExists(writer, rootId))
+    {
+        return;
+    }
+
+    std::queue<uint64_t> pending;
+    pending.push(rootId);
+
+    while (!pending.empty())
+    {
+        const uint64_t currentId = pending.front();
+        pending.pop();
+        if (!ChunkExists(writer, currentId))
+        {
+            continue;
+        }
+
+        chunkIds.push_back(currentId);
+
+        const Chunk_t currentMeta = writer->Get_Chunk_MetaInfo(currentId);
+        int childId = currentMeta.FirstChildID;
+        while (childId >= 0)
+        {
+            const uint64_t childChunkId = static_cast<uint64_t>(childId);
+            if (writer != nullptr && childChunkId < writer->chunklist.size())
+            {
+                if (ChunkExists(writer, childChunkId))
+                {
+                    pending.push(childChunkId);
+                }
+                childId = writer->Get_Chunk_MetaInfo(childChunkId).FirstBroID;
+            }
+            else
+            {
+                break;
+            }
+        }
+    }
+}
+
 void Design5::RepairTreeIndexFromHistoricalState(dataWrite *sourceWriter,
                                                  const std::unordered_map<super_feature_t, uint64_t> &oldTreeIndex)
 {
@@ -668,17 +710,16 @@ void Design5::RepairTreeIndexFromHistoricalState(dataWrite *sourceWriter,
     }
 }
 
-void Design5::RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
-                                          const std::unordered_map<super_feature_t, uint64_t> &oldTreeIndex)
+void Design5::RewriteHistoricalChunkIds(dataWrite *sourceWriter,
+                                        const std::unordered_map<uint64_t, SuperFeatures> &historicalOwnedSFs,
+                                        const std::vector<uint64_t> &chunkIds,
+                                        std::vector<uint8_t> &rewriteState)
 {
-    std::unordered_map<uint64_t, SuperFeatures> historicalOwnedSFs;
-    historicalOwnedSFs.reserve(oldTreeIndex.size());
-    for (const auto &[sf, chunkId] : oldTreeIndex)
+    if (sourceWriter == nullptr)
     {
-        historicalOwnedSFs[chunkId].push_back(sf);
+        return;
     }
 
-    std::vector<uint8_t> rewriteState(sourceWriter->chunklist.size(), 0);
     std::function<void(uint64_t)> rewriteChunk = [&](uint64_t chunkId)
     {
         if (!ShouldKeepChunk(chunkId))
@@ -869,11 +910,34 @@ void Design5::RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
         rewriteState[chunkId] = 2;
     };
 
-    for (uint64_t chunkId = 0; chunkId < sourceWriter->chunklist.size(); ++chunkId)
+    for (uint64_t chunkId : chunkIds)
     {
-        rewriteChunk(chunkId);
+        if (ChunkExists(sourceWriter, chunkId))
+        {
+            rewriteChunk(chunkId);
+        }
+    }
+}
+
+void Design5::RewriteKeptHistoricalChunks(dataWrite *sourceWriter,
+                                          const std::unordered_map<super_feature_t, uint64_t> &oldTreeIndex)
+{
+    std::unordered_map<uint64_t, SuperFeatures> historicalOwnedSFs;
+    historicalOwnedSFs.reserve(oldTreeIndex.size());
+    for (const auto &[sf, chunkId] : oldTreeIndex)
+    {
+        historicalOwnedSFs[chunkId].push_back(sf);
     }
 
+    std::vector<uint8_t> rewriteState(sourceWriter->chunklist.size(), 0);
+    std::vector<uint64_t> orderedChunkIds;
+    orderedChunkIds.reserve(sourceWriter->chunklist.size());
+    for (uint64_t chunkId = 0; chunkId < sourceWriter->chunklist.size(); ++chunkId)
+    {
+        orderedChunkIds.push_back(chunkId);
+    }
+
+    RewriteHistoricalChunkIds(sourceWriter, historicalOwnedSFs, orderedChunkIds, rewriteState);
     RepairTreeIndexFromHistoricalState(sourceWriter, oldTreeIndex);
 }
 
@@ -951,33 +1015,6 @@ void Design5::ProcessTrace()
     ResetRebuildLogStats();
     ResetSearchState();
 
-    if (sourceWriter != nullptr && !sourceWriter->chunklist.empty())
-    {
-        const auto historicalRewriteStart = high_resolution_clock::now();
-        RewriteKeptHistoricalChunks(sourceWriter, oldTreeIndex);
-        const auto historicalRewriteEnd = high_resolution_clock::now();
-        historicalLogStats_.rewriteTimeSeconds += duration_cast<duration<double>>(historicalRewriteEnd - historicalRewriteStart).count();
-    }
-    else
-    {
-        table.Tree_SFIndex.clear();
-    }
-
-    historicalOnlyStoredSize_ = 0;
-    if (offline_dataWrite_ != nullptr)
-    {
-        for (const auto &chunk : offline_dataWrite_->chunklist)
-        {
-            if (chunk.chunkSize == 0)
-            {
-                continue;
-            }
-            historicalOnlyStoredSize_ += chunk.saveSize;
-        }
-    }
-
-    ThreadSafeQueue5<RestoredChunk5> chunkQueue;
-
     std::map<uint64_t, std::vector<uint64_t>> sortedRootChunkMap;
     for (const auto &pair : *rootChunkMap)
     {
@@ -999,158 +1036,64 @@ void Design5::ProcessTrace()
         }
     }
 
-    if (sortedRootChunkMap.empty())
+    std::unordered_map<uint64_t, SuperFeatures> historicalOwnedSFs;
+    std::vector<uint8_t> rewriteState;
+    if (sourceWriter != nullptr && !sourceWriter->chunklist.empty())
     {
-        cout << "no new root entries for append range [" << appendStart_ << ", " << appendEnd_ << ")" << endl;
-        return;
+        historicalOwnedSFs.reserve(oldTreeIndex.size());
+        for (const auto &[sf, chunkId] : oldTreeIndex)
+        {
+            historicalOwnedSFs[chunkId].push_back(sf);
+        }
+        rewriteState.assign(sourceWriter->chunklist.size(), 0);
     }
 
-    std::thread restoreThread([&]()
-                              {
-        std::set<uint64_t> processed;
-        std::function<void(uint64_t)> process_tree = [&](uint64_t rootId) {
-            auto it = sortedRootChunkMap.find(rootId);
-            if (it == sortedRootChunkMap.end() || processed.count(rootId)) return;
-            const std::vector<uint64_t>& chunkIds = it->second;
-            if (chunkIds.empty()) return;
-
-            processed.insert(rootId);
-
-            std::vector<uint64_t> subRoots;
-
-            struct QueueItem {
-                std::vector<uint64_t>::const_iterator iter;
-                std::vector<uint64_t>::const_iterator end;
-                uint64_t initialRootId;
-            };
-            std::queue<QueueItem> bfsQueue;
-            bfsQueue.push({chunkIds.begin(), chunkIds.end(), rootId});
-
-            while (!bfsQueue.empty())
-            {
-                QueueItem item = bfsQueue.front();
-                bfsQueue.pop();
-
-                if (item.iter == item.end)
-                    continue;
-
-                uint64_t cid = *item.iter;
-                auto nextIter = item.iter;
-                ++nextIter;
-                if (nextIter != item.end) {
-                    bfsQueue.push({nextIter, item.end, item.initialRootId});
-                }
-
-                auto startRestoreChunk = high_resolution_clock::now();
-                Chunk_t tmpChunk = LoadSourceChunk(cid);
-                auto endRestoreChunk = high_resolution_clock::now();
-                RestoreChunkTime += endRestoreChunk - startRestoreChunk;
-
-                auto subRootIt = sortedRootChunkMap.find(cid);
-                if (subRootIt != sortedRootChunkMap.end() && !subRootIt->second.empty() && cid != subRootIt->second[0])
-                {
-                    subRoots.push_back(cid);
-                }
-
-                chunkQueue.push(RestoredChunk5{rootId, cid, tmpChunk, item.initialRootId});
-            }
-
-            for (uint64_t subRoot : subRoots) {
-                process_tree(subRoot);
-            }
-        };
-
-        for (const auto &pair : sortedRootChunkMap)
+    auto rewriteHistoricalChunkBatch = [&](const std::vector<uint64_t> &chunkIds)
+    {
+        if (sourceWriter == nullptr || sourceWriter->chunklist.empty() || chunkIds.empty())
         {
-            if (!pair.second.empty())
-            {
-                process_tree(pair.first);
-            }
+            return;
         }
-        chunkQueue.set_finished(); });
+        const auto historicalRewriteStart = high_resolution_clock::now();
+        RewriteHistoricalChunkIds(sourceWriter, historicalOwnedSFs, chunkIds, rewriteState);
+        const auto historicalRewriteEnd = high_resolution_clock::now();
+        historicalLogStats_.rewriteTimeSeconds += duration_cast<duration<double>>(historicalRewriteEnd - historicalRewriteStart).count();
+    };
 
-    std::thread processThread([&]()
-                              {
-        RestoredChunk5 item;
-        while (chunkQueue.pop(item))
+    auto appendChunk = [&](uint64_t rootId, uint64_t initialRootId, Chunk_t &tmpChunk)
+    {
+        uint64_t basechunkid = logicalRootMap[initialRootId];
+        if (tmpChunk.chunkID == rootId)
         {
-            uint64_t rootId = item.rootId;
-            uint64_t cid = item.cid;
-            uint64_t basechunkid = logicalRootMap[item.initialRootId];
-            if (cid == rootId)
-                basechunkid = -1;
-            const bool needsRootBootstrap = (logicalRootMap[item.initialRootId] == static_cast<uint64_t>(-1));
-            Chunk_t &tmpChunk = item.tmpChunk;
-            bool hasSearchableSF = false;
-            SuperFeatures rawSuperFeatures;
-            if (tmpChunk.chunkSize > 60)
+            basechunkid = -1;
+        }
+        const bool needsRootBootstrap = (logicalRootMap[initialRootId] == static_cast<uint64_t>(-1));
+        bool hasSearchableSF = false;
+        SuperFeatures rawSuperFeatures;
+        if (tmpChunk.chunkSize > 60)
+        {
+            const string rawChunkContent(reinterpret_cast<const char *>(tmpChunk.chunkPtr), tmpChunk.chunkSize);
+            rawSuperFeatures = table.feature_generator_.GenerateSuperFeatures(rawChunkContent);
+            hasSearchableSF = true;
+        }
+        ResetChunkForAppend(tmpChunk);
+
+        if (basechunkid != static_cast<uint64_t>(-1))
+        {
+            auto RestoreBasechunk = CutGreedy(basechunkid, tmpChunk);
+            uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize,
+                                             RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize,
+                                             &tmpChunk.saveSize, deltaMaxChunkBuffer);
+
+            if (RestoreBasechunk.loadFromDisk)
             {
-                const string rawChunkContent(reinterpret_cast<const char *>(tmpChunk.chunkPtr), tmpChunk.chunkSize);
-                rawSuperFeatures = table.feature_generator_.GenerateSuperFeatures(rawChunkContent);
-                hasSearchableSF = true;
+                free(RestoreBasechunk.chunkPtr);
             }
-            ResetChunkForAppend(tmpChunk);
 
-            if (basechunkid != -1)
+            if (tmpChunk.saveSize > tmpChunk.chunkSize || tmpChunk.saveSize <= 0 || RestoreBasechunk.chunkSize == 0)
             {
-                auto RestoreBasechunk = CutGreedy(basechunkid, tmpChunk);
-                uint8_t *deltachunk = xd3_encode(tmpChunk.chunkPtr, tmpChunk.chunkSize, RestoreBasechunk.chunkPtr, RestoreBasechunk.chunkSize, &tmpChunk.saveSize, deltaMaxChunkBuffer);
-
-                if (RestoreBasechunk.loadFromDisk)
-                    free(RestoreBasechunk.chunkPtr);
-
-                if (tmpChunk.saveSize > tmpChunk.chunkSize || tmpChunk.saveSize <= 0 || RestoreBasechunk.chunkSize == 0)
-                {
-                    int tmpChunkLz4CompressSize = LZ4_compress_fast((char *)tmpChunk.chunkPtr, (char *)lz4ChunkBuffer, tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
-                    if (tmpChunkLz4CompressSize > 0)
-                    {
-                        tmpChunk.deltaFlag = NO_DELTA;
-                        tmpChunk.saveSize = tmpChunkLz4CompressSize;
-                    }
-                    else
-                    {
-                        tmpChunk.deltaFlag = NO_LZ4;
-                        tmpChunk.saveSize = tmpChunk.chunkSize;
-                    }
-                    tmpChunk.basechunkID = -1;
-
-                    basechunkNum++;
-                    basechunkSize += tmpChunk.saveSize;
-                    appendLogStats_.appendedBaseChunks++;
-                    appendLogStats_.appendedLz4FallbackChunks++;
-                    free(deltachunk);
-
-                    if (tmpChunk.deltaFlag == NO_LZ4)
-                        offline_dataWrite_->Chunk_Insert(tmpChunk);
-                    else
-                        offline_dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
-                }
-                else
-                {
-                    tmpChunk.deltaFlag = DELTA;
-                    tmpChunk.basechunkID = RestoreBasechunk.chunkID;
-                    appendLogStats_.appendedDeltaChunks++;
-
-                    if (tmpChunk.saveSize >= TREE_INSERT_SAVE_THRESHOLD)
-                    {
-                        AppendChild(tmpChunk.basechunkID, tmpChunk.chunkID);
-                        appendLogStats_.treeEdges++;
-                    }
-                    else
-                    {
-                        appendLogStats_.appendedSmallDeltaChunks++;
-                    }
-
-                    memcpy(tmpChunk.chunkPtr, deltachunk, tmpChunk.saveSize);
-                    StatsDelta(tmpChunk);
-                    free(deltachunk);
-
-                    offline_dataWrite_->Chunk_Insert(tmpChunk);
-                }
-            }
-            else
-            {
-                int tmpChunkLz4CompressSize = LZ4_compress_fast((char *)tmpChunk.chunkPtr, (char *)lz4ChunkBuffer, tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
+                int tmpChunkLz4CompressSize = LZ4_compress_fast((char *)tmpChunk.chunkPtr, (char *)lz4ChunkBuffer,
+                                                                tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
                 if (tmpChunkLz4CompressSize > 0)
                 {
                     tmpChunk.deltaFlag = NO_DELTA;
@@ -1166,36 +1109,208 @@ void Design5::ProcessTrace()
                 basechunkNum++;
                 basechunkSize += tmpChunk.saveSize;
                 appendLogStats_.appendedBaseChunks++;
+                appendLogStats_.appendedLz4FallbackChunks++;
+                free(deltachunk);
 
                 if (tmpChunk.deltaFlag == NO_LZ4)
-                    offline_dataWrite_->Chunk_Insert(tmpChunk);
-                else
-                    offline_dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
-            }
-
-            uniquechunkNum++;
-            uniquechunkSize += tmpChunk.saveSize;
-            logicalchunkNum++;
-            logicalchunkSize += tmpChunk.chunkSize;
-            if (needsRootBootstrap)
-            {
-                logicalRootMap[item.initialRootId] = tmpChunk.chunkID;
-            }
-            if (IsSearchableChunk(tmpChunk) && hasSearchableSF)
-            {
-                searchableChunkSFs_[tmpChunk.chunkID] = rawSuperFeatures;
-                for (const auto &sf : rawSuperFeatures)
                 {
-                    if (table.Tree_SFIndex.find(sf) == table.Tree_SFIndex.end())
-                    {
-                        table.Tree_SFIndex[sf] = tmpChunk.chunkID;
-                    }
+                    offline_dataWrite_->Chunk_Insert(tmpChunk);
+                }
+                else
+                {
+                    offline_dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
                 }
             }
-        } });
+            else
+            {
+                tmpChunk.deltaFlag = DELTA;
+                tmpChunk.basechunkID = RestoreBasechunk.chunkID;
+                appendLogStats_.appendedDeltaChunks++;
 
-    restoreThread.join();
-    processThread.join();
+                if (tmpChunk.saveSize >= TREE_INSERT_SAVE_THRESHOLD)
+                {
+                    AppendChild(tmpChunk.basechunkID, tmpChunk.chunkID);
+                    appendLogStats_.treeEdges++;
+                }
+                else
+                {
+                    appendLogStats_.appendedSmallDeltaChunks++;
+                }
+
+                memcpy(tmpChunk.chunkPtr, deltachunk, tmpChunk.saveSize);
+                StatsDelta(tmpChunk);
+                free(deltachunk);
+
+                offline_dataWrite_->Chunk_Insert(tmpChunk);
+            }
+        }
+        else
+        {
+            int tmpChunkLz4CompressSize = LZ4_compress_fast((char *)tmpChunk.chunkPtr, (char *)lz4ChunkBuffer,
+                                                            tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
+            if (tmpChunkLz4CompressSize > 0)
+            {
+                tmpChunk.deltaFlag = NO_DELTA;
+                tmpChunk.saveSize = tmpChunkLz4CompressSize;
+            }
+            else
+            {
+                tmpChunk.deltaFlag = NO_LZ4;
+                tmpChunk.saveSize = tmpChunk.chunkSize;
+            }
+            tmpChunk.basechunkID = -1;
+
+            basechunkNum++;
+            basechunkSize += tmpChunk.saveSize;
+            appendLogStats_.appendedBaseChunks++;
+
+            if (tmpChunk.deltaFlag == NO_LZ4)
+            {
+                offline_dataWrite_->Chunk_Insert(tmpChunk);
+            }
+            else
+            {
+                offline_dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
+            }
+        }
+
+        uniquechunkNum++;
+        uniquechunkSize += tmpChunk.saveSize;
+        logicalchunkNum++;
+        logicalchunkSize += tmpChunk.chunkSize;
+        if (needsRootBootstrap)
+        {
+            logicalRootMap[initialRootId] = tmpChunk.chunkID;
+        }
+        if (IsSearchableChunk(tmpChunk) && hasSearchableSF)
+        {
+            searchableChunkSFs_[tmpChunk.chunkID] = rawSuperFeatures;
+        }
+        else
+        {
+            searchableChunkSFs_.erase(tmpChunk.chunkID);
+        }
+    };
+
+    std::set<uint64_t> processedAppendRoots;
+    std::function<void(uint64_t)> processAppendTree = [&](uint64_t rootId)
+    {
+        auto it = sortedRootChunkMap.find(rootId);
+        if (it == sortedRootChunkMap.end() || processedAppendRoots.count(rootId) != 0)
+        {
+            return;
+        }
+        const std::vector<uint64_t> &chunkIds = it->second;
+        if (chunkIds.empty())
+        {
+            return;
+        }
+
+        processedAppendRoots.insert(rootId);
+
+        std::vector<uint64_t> historicalChunkIds;
+        CollectHistoricalSubtreeChunkIds(sourceWriter, rootId, historicalChunkIds);
+        rewriteHistoricalChunkBatch(historicalChunkIds);
+
+        std::vector<uint64_t> subRoots;
+        for (uint64_t cid : chunkIds)
+        {
+            auto startRestoreChunk = high_resolution_clock::now();
+            Chunk_t tmpChunk = LoadSourceChunk(cid);
+            auto endRestoreChunk = high_resolution_clock::now();
+            RestoreChunkTime += endRestoreChunk - startRestoreChunk;
+
+            auto subRootIt = sortedRootChunkMap.find(cid);
+            if (subRootIt != sortedRootChunkMap.end() && !subRootIt->second.empty() && cid != subRootIt->second[0])
+            {
+                subRoots.push_back(cid);
+            }
+
+            appendChunk(rootId, rootId, tmpChunk);
+        }
+
+        for (uint64_t subRoot : subRoots)
+        {
+            processAppendTree(subRoot);
+        }
+    };
+
+    if (sortedRootChunkMap.empty())
+    {
+        cout << "no new root entries for append range [" << appendStart_ << ", " << appendEnd_ << ")" << endl;
+    }
+    else
+    {
+        for (const auto &pair : sortedRootChunkMap)
+        {
+            if (!pair.second.empty())
+            {
+                processAppendTree(pair.first);
+            }
+        }
+    }
+
+    if (sourceWriter != nullptr && !sourceWriter->chunklist.empty())
+    {
+        std::vector<uint64_t> remainingHistoricalChunkIds;
+        remainingHistoricalChunkIds.reserve(sourceWriter->chunklist.size());
+        for (uint64_t chunkId = 0; chunkId < sourceWriter->chunklist.size(); ++chunkId)
+        {
+            if (chunkId >= rewriteState.size() || rewriteState[chunkId] != 2)
+            {
+                remainingHistoricalChunkIds.push_back(chunkId);
+            }
+        }
+        rewriteHistoricalChunkBatch(remainingHistoricalChunkIds);
+        RepairTreeIndexFromHistoricalState(sourceWriter, oldTreeIndex);
+    }
+    else
+    {
+        table.Tree_SFIndex.clear();
+    }
+
+    for (const auto &pair : sortedRootChunkMap)
+    {
+        for (uint64_t chunkId : pair.second)
+        {
+            if (!ChunkExists(offline_dataWrite_, chunkId))
+            {
+                continue;
+            }
+            const Chunk_t appendedMeta = offline_dataWrite_->Get_Chunk_MetaInfo(chunkId);
+            if (!IsSearchableChunk(appendedMeta))
+            {
+                continue;
+            }
+            const auto sfIt = searchableChunkSFs_.find(chunkId);
+            if (sfIt == searchableChunkSFs_.end())
+            {
+                continue;
+            }
+            for (const auto &sf : sfIt->second)
+            {
+                if (table.Tree_SFIndex.find(sf) == table.Tree_SFIndex.end())
+                {
+                    table.Tree_SFIndex[sf] = chunkId;
+                }
+            }
+        }
+    }
+
+    historicalOnlyStoredSize_ = 0;
+    if (offline_dataWrite_ != nullptr)
+    {
+        const size_t historicalLimit = std::min<size_t>(static_cast<size_t>(appendStart_), offline_dataWrite_->chunklist.size());
+        for (size_t chunkId = 0; chunkId < historicalLimit; ++chunkId)
+        {
+            const auto &chunk = offline_dataWrite_->chunklist[chunkId];
+            if (chunk.chunkSize == 0)
+            {
+                continue;
+            }
+            historicalOnlyStoredSize_ += chunk.saveSize;
+        }
+    }
 
     if (sourceWriter != nullptr && sourceWriter != offline_dataWrite_)
     {
