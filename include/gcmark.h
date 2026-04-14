@@ -16,6 +16,9 @@ struct GCMarkState
     std::vector<std::string> keptBackups;
     std::vector<std::string> expiredBackups;
     std::unordered_set<std::string> keptBackupSet;
+    size_t preservedBaseChunks = 0;
+    uint64_t preservedBaseStoredSize = 0;
+    uint64_t preservedProtectedBytes = 0;
 
     bool ShouldKeepChunk(uint64_t chunkId) const
     {
@@ -84,6 +87,108 @@ inline GCMarkState BuildGCMarkState(const dataWrite &dataWriteObj,
     }
 
     return state;
+}
+
+inline void PreserveReferencedBaseChunks(GCMarkState &state,
+                                         const dataWrite &offlineDataWrite,
+                                         uint32_t minKeptChildren = 4)
+{
+    const size_t limit = std::min(state.keepChunk.size(), offlineDataWrite.chunklist.size());
+    if (limit == 0)
+    {
+        return;
+    }
+
+    std::vector<uint32_t> keptChildCount(limit, 0);
+    std::vector<uint64_t> protectedBytes(limit, 0);
+
+    for (size_t chunkId = 0; chunkId < limit; ++chunkId)
+    {
+        if (!state.ShouldKeepChunk(chunkId))
+        {
+            continue;
+        }
+
+        const Chunk_t &chunk = offlineDataWrite.chunklist[chunkId];
+        if (chunk.chunkSize == 0 || chunk.deltaFlag != DELTA || chunk.basechunkID < 0)
+        {
+            continue;
+        }
+
+        const size_t baseId = static_cast<size_t>(chunk.basechunkID);
+        if (baseId >= limit)
+        {
+            continue;
+        }
+
+        keptChildCount[baseId]++;
+        if (chunk.chunkSize > chunk.saveSize)
+        {
+            protectedBytes[baseId] += chunk.chunkSize - chunk.saveSize;
+        }
+    }
+
+    struct Candidate
+    {
+        size_t chunkId;
+        uint32_t keptChildren;
+        uint64_t protectedBytes;
+        uint64_t storedSize;
+        bool positivePayoff;
+    };
+
+    std::vector<Candidate> candidates;
+    for (size_t chunkId = 0; chunkId < limit; ++chunkId)
+    {
+        if (state.keepChunk[chunkId] != 0)
+        {
+            continue;
+        }
+
+        const Chunk_t &chunk = offlineDataWrite.chunklist[chunkId];
+        if (chunk.chunkSize == 0 || keptChildCount[chunkId] == 0)
+        {
+            continue;
+        }
+
+        const uint64_t storedSize = chunk.saveSize;
+        const bool positivePayoff = protectedBytes[chunkId] > storedSize;
+        if (keptChildCount[chunkId] < minKeptChildren && !positivePayoff)
+        {
+            continue;
+        }
+
+        candidates.push_back(Candidate{
+            chunkId,
+            keptChildCount[chunkId],
+            protectedBytes[chunkId],
+            storedSize,
+            positivePayoff});
+    }
+
+    std::sort(candidates.begin(), candidates.end(), [](const Candidate &lhs, const Candidate &rhs)
+              {
+        if (lhs.positivePayoff != rhs.positivePayoff)
+        {
+            return lhs.positivePayoff > rhs.positivePayoff;
+        }
+        if (lhs.keptChildren != rhs.keptChildren)
+        {
+            return lhs.keptChildren > rhs.keptChildren;
+        }
+        if (lhs.protectedBytes != rhs.protectedBytes)
+        {
+            return lhs.protectedBytes > rhs.protectedBytes;
+        }
+        return lhs.storedSize < rhs.storedSize; });
+
+    for (const Candidate &candidate : candidates)
+    {
+        state.keepChunk[candidate.chunkId] = 1;
+        state.preservedBaseChunks++;
+        state.preservedBaseStoredSize += candidate.storedSize;
+        state.preservedProtectedBytes += candidate.protectedBytes;
+    }
 }
 
 #endif

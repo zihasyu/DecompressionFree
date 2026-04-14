@@ -143,6 +143,9 @@ void AppendOfflineBatchLog(const CommandLine_t &cmdLine,
                            const GCMarkState &markState,
                            uint64_t keptChunkCount,
                            uint64_t expiredChunkCount,
+                           uint64_t preservedBaseChunks,
+                           uint64_t preservedBaseStoredSize,
+                           uint64_t preservedProtectedBytes,
                            uint64_t oldOfflineStoredSize,
                            uint64_t expiredChunkStoredSize,
                            uint64_t historicalOnlyStoredSize,
@@ -179,6 +182,7 @@ void AppendOfflineBatchLog(const CommandLine_t &cmdLine,
             << " -T " << cmdLine.Threshold
             << " -k " << cmdLine.retentionBackups
             << " -P " << cmdLine.offlineBatchPeriod
+            << " -G " << cmdLine.enableDesign5BasePreservation
             << " -R " << cmdLine.enableRestore << endl;
         wroteInstructionForCurrentRun = true;
     }
@@ -190,6 +194,9 @@ void AppendOfflineBatchLog(const CommandLine_t &cmdLine,
     out << "Expired backups: " << markState.expiredBackups.size() << endl;
     out << "Kept chunks: " << keptChunkCount << endl;
     out << "Expired chunks: " << expiredChunkCount << endl;
+    out << "Preserved expired base chunks: " << preservedBaseChunks << endl;
+    out << "Preserved expired base stored size: " << preservedBaseStoredSize << endl;
+    out << "Protected kept delta bytes: " << preservedProtectedBytes << endl;
     out << "Old offline stored size: " << oldOfflineStoredSize << endl;
     out << "Expired chunk stored size: " << expiredChunkStoredSize << endl;
     out << "Post-GC historical stored size: " << historicalOnlyStoredSize << endl;
@@ -332,7 +339,7 @@ int main(int argc, char **argv)
 
     vector<string> readfileList;
 
-    const char optString[] = "i:m:c:n:r:a:b:t:H:o:R:T:k:P:";
+    const char optString[] = "i:m:c:n:r:a:b:t:H:o:R:T:k:P:G:";
     // if (argc != sizeof(optString) && argc != sizeof(optString) - 2 && argc != sizeof(optString) - 4 && argc != sizeof(optString) - 6 && argc != sizeof(optString) - 8 && argc != sizeof(optString) - 10 && argc != sizeof(optString) - 12 && argc != sizeof(optString) - 14 && argc != sizeof(optString) - 16)
     // {
     //     cout << "argc is " << argc << endl;
@@ -387,6 +394,9 @@ int main(int argc, char **argv)
             break;
         case 'P':
             CmdLine.offlineBatchPeriod = atoi(optarg);
+            break;
+        case 'G':
+            CmdLine.enableDesign5BasePreservation = atoi(optarg);
             break;
         default:
             break;
@@ -642,6 +652,13 @@ int main(int argc, char **argv)
             const std::vector<std::string> processedBackups(readfileList.begin(), readfileList.begin() + i + 1);
             currentGCMarkState = BuildGCMarkState(*absMethodObj->dataWrite_, processedBackups, CmdLine.retentionBackups);
             currentKeptBackupLogicalSize = ComputeKeptBackupLogicalSize(currentGCMarkState, absMethodObj->dataWrite_);
+            if (CmdLine.enableDesign5BasePreservation &&
+                incrementalDesign5 &&
+                OfflineAbsMethodObj != nullptr &&
+                OfflineAbsMethodObj->offline_dataWrite_ != nullptr)
+            {
+                PreserveReferencedBaseChunks(currentGCMarkState, *OfflineAbsMethodObj->offline_dataWrite_);
+            }
 
             size_t keptChunkCount = 0;
             size_t expiredChunkCount = 0;
@@ -658,6 +675,13 @@ int main(int argc, char **argv)
             cout << "expired backups: " << currentGCMarkState.expiredBackups.size() << std::endl;
             cout << "kept chunks: " << keptChunkCount << std::endl;
             cout << "expired chunks: " << expiredChunkCount << std::endl;
+            if (incrementalDesign5)
+            {
+                cout << "design5 preserved-base heuristic: " << (CmdLine.enableDesign5BasePreservation ? "enabled" : "disabled") << std::endl;
+                cout << "preserved expired base chunks: " << currentGCMarkState.preservedBaseChunks << std::endl;
+                cout << "preserved expired base stored size: " << currentGCMarkState.preservedBaseStoredSize << std::endl;
+                cout << "protected kept delta bytes: " << currentGCMarkState.preservedProtectedBytes << std::endl;
+            }
 
             if (absMethodObj->rootChunkMap == nullptr || absMethodObj->dataWrite_->versionEndPoints.empty())
             {
@@ -771,6 +795,9 @@ int main(int argc, char **argv)
                 currentGCMarkState,
                 keptChunkCount,
                 expiredChunkCount,
+                currentGCMarkState.preservedBaseChunks,
+                currentGCMarkState.preservedBaseStoredSize,
+                currentGCMarkState.preservedProtectedBytes,
                 preGCStoredSize,
                 expiredChunkStoredSize,
                 historicalOnlyStoredSize,

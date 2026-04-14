@@ -85,6 +85,7 @@ typedef struct
     int Threshold = 64; // for design2
     int retentionBackups = -1;
     int offlineBatchPeriod = 1;
+    bool enableDesign5BasePreservation = true;
 } CommandLine_t;
 
 #endif

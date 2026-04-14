@@ -41,10 +41,10 @@ datasets=(
   # ["gcc"]="/mnt/dataset2/GNU_GCC/gcc-packed/tar 117"
   # ["chromium"]="/mnt/dataset2/chromium 107"
   # ["linux-100"]="/mnt/dataset2/linux 100"
-  ["linux"]="/home/public/Dataset/linux 270"
+  # ["linux"]="/home/public/Dataset/linux 270"
   # ["cassandra"]="/mnt/dataset2/cassandra 97"   
-  # ["vmdk"]="/mnt/dataset2/vmdk 50"  #10
-  # ["WEB"]="/home/public/Dataset/WEB 50"   # 102
+  # ["vmdk"]="/mnt/dataset2/vmdk 10"  #10
+  ["WEB"]="/home/public/Dataset/WEB 50"   # 102
   # ["WEB-3"]="/home/public/Dataset/WEB 3"
   # ["WindowsLog"]="/home/public/Dataset/WindowsLog 1"
   # ["ThunderbirdLog"]="/mnt/dataset2/ThunderbirdLog 1"
@@ -57,11 +57,12 @@ chunking=1
 
 # 只用修改这里
 online_methods=(3)          # 在线方法编号列表
-offline_methods=(11)       # -1表示不做离线，其他为离线方法编号
+offline_methods=(12)       # -1表示不做离线，其他为离线方法编号
 restore_options=(0)         # 是否恢复  0,1
 threshold_values=(64)   # threshold 敏感性实验时在这里配置多个阈值
-retention_backups=216      # 新增：保留最近多少个备份，-1 表示全部保留
-offline_batch_period=216    # design4/design5 每累计多少个 backup 触发一次离线处理
+retention_backups=40      # 新增：保留最近多少个备份，-1 表示全部保留
+offline_batch_period=40    # design4/design5 每累计多少个 backup 触发一次离线处理
+design5_preserve_base=1     # 仅对 design5 生效：1 开启保留高价值 base，0 关闭
 
 for dataset in "${!datasets[@]}"; do
   read -r path num <<< "${datasets[$dataset]}"
@@ -83,8 +84,10 @@ for dataset in "${!datasets[@]}"; do
           threshold_arg=""
           retention_arg=""
           offline_period_arg=""
+          design5_preserve_arg=""
           retention_tag=""
           offline_period_tag=""
+          design5_preserve_tag=""
           threshold_tag=""
           if [[ $offline -ge 0 ]]; then
             offline_arg="-o $offline"
@@ -93,6 +96,10 @@ for dataset in "${!datasets[@]}"; do
             threshold_tag="_T${threshold}"
             offline_period_arg="-P $offline_batch_period"
             offline_period_tag="_P${offline_batch_period}"
+            if [[ $offline -eq 12 ]]; then
+              design5_preserve_arg="-G $design5_preserve_base"
+              design5_preserve_tag="_G${design5_preserve_base}"
+            fi
           fi
           if [[ $retention_backups -ge 0 ]]; then
             retention_arg="-k $retention_backups"
@@ -102,6 +109,9 @@ for dataset in "${!datasets[@]}"; do
           experiment_desc="dataset=${dataset} path=${path} n=${num} C${chunking} M${online} offline${offline} R${restore}"
           if [[ $offline -ge 0 ]]; then
             experiment_desc="${experiment_desc} T${threshold} K${retention_backups} P${offline_batch_period}"
+            if [[ $offline -eq 12 ]]; then
+              experiment_desc="${experiment_desc} G${design5_preserve_base}"
+            fi
           fi
           echo "实验开始时间：$(date) - 正在执行：${experiment_desc}"
 
@@ -111,8 +121,8 @@ for dataset in "${!datasets[@]}"; do
             exit 1
           fi
 
-          logfile="${outname}C${chunking}_M${online}_${dataset}_R${restore}${threshold_tag}${retention_tag}${offline_period_tag}.txt"
-          ./DFree -i "$path" -c "$chunking" -m "$online" -n "$num" $offline_arg $threshold_arg $retention_arg $offline_period_arg -R "$restore" > "$logfile" 2>&1
+          logfile="${outname}C${chunking}_M${online}_${dataset}_R${restore}${threshold_tag}${retention_tag}${offline_period_tag}${design5_preserve_tag}.txt"
+          ./DFree -i "$path" -c "$chunking" -m "$online" -n "$num" $offline_arg $threshold_arg $retention_arg $offline_period_arg $design5_preserve_arg -R "$restore" > "$logfile" 2>&1
           status=$?
           if [[ $status -ne 0 ]]; then
             echo "实验失败：${experiment_desc}" >&2
@@ -120,7 +130,11 @@ for dataset in "${!datasets[@]}"; do
             exit $status
           fi
           if [[ $offline -ge 0 ]]; then
-            echo "完成：$dataset 分块$chunking 在线$online 离线$offline 恢复$restore 阈值$threshold 保留$retention_backups 周期$offline_batch_period"
+            if [[ $offline -eq 12 ]]; then
+              echo "完成：$dataset 分块$chunking 在线$online 离线$offline 恢复$restore 阈值$threshold 保留$retention_backups 周期$offline_batch_period 保留base$design5_preserve_base"
+            else
+              echo "完成：$dataset 分块$chunking 在线$online 离线$offline 恢复$restore 阈值$threshold 保留$retention_backups 周期$offline_batch_period"
+            fi
           else
             echo "完成：$dataset 分块$chunking 在线$online 离线$offline 恢复$restore"
           fi
