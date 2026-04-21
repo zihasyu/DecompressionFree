@@ -1274,6 +1274,10 @@ inline uint32_t dataWrite::CompareLimit(uint32_t input, uint32_t lower, uint32_t
 
 void dataWrite::SetFilename(string name)
 {
+    if (backupFileOrder.empty() || backupFileOrder.back() != name)
+    {
+        backupFileOrder.push_back(name);
+    }
     filename.assign(name);
     return;
 }

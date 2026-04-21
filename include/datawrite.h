@@ -71,6 +71,11 @@ public:
     uint64_t curOffset = 0;
     string containerName = "./Containers/";
     unordered_map<string, vector<Recipe_t>> RecipeMap;
+    vector<string> backupFileOrder;
+    const unordered_map<string, vector<Recipe_Header_t>> &GetHeaderRecipeMap() const
+    {
+        return RecipeMap_header;
+    }
     void setContainerPath(string path)
     {
         containerName = path;

@@ -1,5 +1,7 @@
 #include "../../../include/Thread/design3.h"
+#include <algorithm>
 #include <cstdint>
+#include <unordered_set>
 
 Design3::Design3()
 // : chunkCache(1024) // 在构造函数初始化列表中初始化缓存容量
@@ -288,6 +290,151 @@ void Design3::ProcessTrace()
 
     cout << "lru cache hit rate: " << (double)cacheHitCount / (double)cacheAccessCount << " cacheHitCount " << cacheHitCount << " cacheAccessCount " << cacheAccessCount << endl;
     return;
+}
+
+void Design3::PrintOffline(double time, CommandLine_t CmdLine)
+{
+    AbsMethod::PrintOffline(time, CmdLine);
+
+    auto get_backup_label = [](const string &backupPath) -> string
+    {
+        size_t pos = backupPath.find_last_of('/');
+        if (pos == string::npos)
+            return backupPath;
+        return backupPath.substr(pos + 1);
+    };
+    auto to_mib = [](uint64_t bytes) -> double
+    {
+        return static_cast<double>(bytes) / 1024.0 / 1024.0;
+    };
+
+    const size_t totalChunks = offline_dataWrite_->chunklist.size();
+    const auto &backupOrder = dataWrite_->backupFileOrder;
+    const auto &headerRecipeMap = dataWrite_->GetHeaderRecipeMap();
+    uint64_t totalStoredSize = 0;
+    for (size_t chunkId = 0; chunkId < totalChunks; ++chunkId)
+    {
+        totalStoredSize += offline_dataWrite_->chunklist[chunkId].saveSize;
+    }
+
+    if (!dataWrite_->versionEndPoints.empty())
+    {
+        cout << "----------------------offline compression by backup-------------------------" << endl;
+        if (!backupOrder.empty() && backupOrder.size() != dataWrite_->versionEndPoints.size())
+        {
+            cout << "backup order size " << backupOrder.size() << " != versionEndPoints size " << dataWrite_->versionEndPoints.size() << endl;
+        }
+
+        size_t startChunkId = 0;
+        for (size_t backupIdx = 0; backupIdx < dataWrite_->versionEndPoints.size(); ++backupIdx)
+        {
+            size_t endChunkId = dataWrite_->versionEndPoints[backupIdx];
+            size_t safeStart = std::min(startChunkId, totalChunks);
+            size_t safeEnd = std::min(endChunkId, totalChunks);
+            if (safeEnd < safeStart)
+                safeEnd = safeStart;
+
+            uint64_t backupLogicalSize = 0;
+            uint64_t backupStoredSize = 0;
+            for (size_t chunkId = safeStart; chunkId < safeEnd; ++chunkId)
+            {
+                backupLogicalSize += offline_dataWrite_->chunklist[chunkId].chunkSize;
+                backupStoredSize += offline_dataWrite_->chunklist[chunkId].saveSize;
+            }
+
+            cout << "backup " << (backupIdx + 1);
+            if (backupIdx < backupOrder.size())
+            {
+                cout << " (" << get_backup_label(backupOrder[backupIdx]) << ")";
+            }
+            cout << endl;
+            cout << "  unique chunk count: " << (safeEnd - safeStart) << endl;
+            cout << "  logical size: " << to_mib(backupLogicalSize) << " MiB" << endl;
+            cout << "  stored size: " << to_mib(backupStoredSize) << " MiB" << endl;
+            cout << "  logical/save ratio: " << (backupStoredSize == 0 ? 0.0 : static_cast<double>(backupLogicalSize) / static_cast<double>(backupStoredSize)) << endl;
+
+            startChunkId = endChunkId;
+        }
+    }
+
+    if (!backupOrder.empty())
+    {
+        vector<uint32_t> liveSupport(totalChunks, 0);
+        size_t liveChunkCount = 0;
+        uint64_t liveStoredSize = 0;
+
+        auto mark_chunk_chain = [&](uint64_t chunkId, unordered_set<uint64_t> &touched)
+        {
+            int64_t currentId = static_cast<int64_t>(chunkId);
+            while (currentId >= 0 && static_cast<size_t>(currentId) < totalChunks)
+            {
+                uint64_t normalizedId = static_cast<uint64_t>(currentId);
+                if (!touched.insert(normalizedId).second)
+                    break;
+                currentId = offline_dataWrite_->chunklist[normalizedId].basechunkID;
+            }
+        };
+
+        auto apply_backup_references = [&](const string &backupName, int delta)
+        {
+            unordered_set<uint64_t> touched;
+
+            auto recipeIt = dataWrite_->RecipeMap.find(backupName);
+            if (recipeIt != dataWrite_->RecipeMap.end())
+            {
+                for (uint64_t chunkId : recipeIt->second)
+                    mark_chunk_chain(chunkId, touched);
+            }
+
+            auto headerIt = headerRecipeMap.find(backupName);
+            if (headerIt != headerRecipeMap.end())
+            {
+                for (uint64_t chunkId : headerIt->second)
+                    mark_chunk_chain(chunkId, touched);
+            }
+
+            for (uint64_t chunkId : touched)
+            {
+                if (delta > 0)
+                {
+                    if (liveSupport[chunkId]++ == 0)
+                    {
+                        ++liveChunkCount;
+                        liveStoredSize += offline_dataWrite_->chunklist[chunkId].saveSize;
+                    }
+                }
+                else if (delta < 0 && liveSupport[chunkId] > 0)
+                {
+                    --liveSupport[chunkId];
+                    if (liveSupport[chunkId] == 0)
+                    {
+                        --liveChunkCount;
+                        liveStoredSize -= offline_dataWrite_->chunklist[chunkId].saveSize;
+                    }
+                }
+            }
+        };
+
+        for (const auto &backupName : backupOrder)
+        {
+            apply_backup_references(backupName, 1);
+        }
+
+        cout << "----------------------delete oldest backups-------------------------" << endl;
+        cout << "total backup count: " << backupOrder.size() << ", total chunk count: " << totalChunks << endl;
+        for (size_t deleteCount = 1; deleteCount <= backupOrder.size(); ++deleteCount)
+        {
+            apply_backup_references(backupOrder[deleteCount - 1], -1);
+            size_t deletableChunkCount = totalChunks >= liveChunkCount ? totalChunks - liveChunkCount : 0;
+            uint64_t deletableStoredSize = totalStoredSize >= liveStoredSize ? totalStoredSize - liveStoredSize : 0;
+            cout << "delete oldest " << deleteCount << " backup(s)";
+            cout << " up to " << get_backup_label(backupOrder[deleteCount - 1]) << endl;
+            cout << "  remaining valid backup count: " << (backupOrder.size() - deleteCount) << endl;
+            cout << "  deletable chunk count: " << deletableChunkCount << endl;
+            cout << "  deletable chunk stored size: " << to_mib(deletableStoredSize) << " MiB" << endl;
+            cout << "  remaining live chunk count: " << liveChunkCount << endl;
+        }
+    }
 }
 
 uint8_t *Design3::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer)
