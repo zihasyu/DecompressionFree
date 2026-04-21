@@ -1,5 +1,5 @@
-#ifndef DESIGN_3_H
-#define DESIGN_3_H
+#ifndef DESIGN_4_H
+#define DESIGN_4_H
 
 #include "../absmethod.h"
 #include "../odess_similarity_detection.h"
@@ -11,10 +11,10 @@
 #include <memory>
 using namespace std;
 
-class Design3 : public AbsMethod
+class Design4 : public AbsMethod
 {
 private:
-    string myName_ = "Design3";
+    string myName_ = "Design4";
     int PrevDedupChunkid = -1;
     int Version = 0;
     uint8_t *MinBaseBuffer = nullptr;
@@ -33,13 +33,13 @@ private:
     ChunkBufferPool<MAX_CHUNK_SIZE, 1024> chunkCache_;
 
 public:
-    Design3();
-    ~Design3();
-    void ProcessTrace();
+    Design4();
+    ~Design4();
+    void ProcessTrace() override;
     void PrintOffline(double time, CommandLine_t CmdLine) override;
     uint8_t *xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer);
     Chunk_t xd3_recursive_restore_BL_time(uint64_t BasechunkId);
-    Chunk_t CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk);
-    void StatsHit(uint64_t FatherID, uint64_t HitID, uint64_t BasechunkID);
+    Chunk_t CutGreedy(uint64_t treeKey, uint64_t BasechunkId, const Chunk_t Targetchunk);
+    void StatsHit(uint64_t treeKey, uint64_t logicalBasechunkID, uint64_t FatherID, uint64_t HitID);
 };
 #endif

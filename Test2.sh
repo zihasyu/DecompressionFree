@@ -29,8 +29,8 @@ chunking=1
 
 # 只用修改这里
 online_methods=(3)          # 在线方法编号列表
-offline_methods=(10)       # -1表示不做离线，其他为离线方法编号
-restore_options=(0)         # 是否恢复  0,1
+offline_methods=(10 11)       # -1表示不做离线，其他为离线方法编号
+restore_options=(1)         # 是否恢复  0,1
 threshold=64              # 新增：阈值参数，可根据需要修改
 
 for dataset in "${!datasets[@]}"; do
