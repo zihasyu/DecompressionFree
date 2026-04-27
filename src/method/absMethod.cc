@@ -26,6 +26,55 @@ void WriteSearchBreakdown(std::ostream &out, const AbsMethod &method, double tot
     out << "Encode Trial Time: " << method.EncodeTime.count() << "s" << endl;
     out << "Other Time: " << GetOtherTime(total_time, method).count() << "s" << endl;
 }
+
+void WriteTreeShapeStats(std::ostream &out, const dataWrite *writer)
+{
+    size_t internalNodeCount = 0;
+    size_t totalChildEdges = 0;
+    size_t maxChildren = 0;
+    size_t truncatedChildChains = 0;
+
+    if (writer != nullptr)
+    {
+        const auto &chunks = writer->chunklist;
+        const size_t totalChunks = chunks.size();
+
+        for (size_t chunkId = 0; chunkId < totalChunks; ++chunkId)
+        {
+            size_t childCount = 0;
+            int childId = chunks[chunkId].FirstChildID;
+            size_t steps = 0;
+
+            while (childId >= 0 && static_cast<size_t>(childId) < totalChunks && steps < totalChunks)
+            {
+                ++childCount;
+                childId = chunks[childId].FirstBroID;
+                ++steps;
+            }
+
+            if (childId >= 0)
+            {
+                ++truncatedChildChains;
+            }
+
+            if (childCount > 0)
+            {
+                ++internalNodeCount;
+                totalChildEdges += childCount;
+                if (childCount > maxChildren)
+                    maxChildren = childCount;
+            }
+        }
+    }
+
+    out << "-----------------Tree Shape------------------------" << endl;
+    out << "Internal Node Count: " << internalNodeCount << endl;
+    out << "Total Child Edges: " << totalChildEdges << endl;
+    out << "Avg Children Per Internal Node: "
+        << (internalNodeCount == 0 ? 0.0 : static_cast<double>(totalChildEdges) / static_cast<double>(internalNodeCount)) << endl;
+    out << "Max Children Per Internal Node: " << maxChildren << endl;
+    out << "Truncated Child Chains: " << truncatedChildChains << endl;
+}
 } // namespace
 
 AbsMethod::AbsMethod()
@@ -944,6 +993,7 @@ void AbsMethod::PrintOffline(double time, CommandLine_t CmdLine)
     out << "DCC: " << (double)deltachunkNum / (double)uniquechunkNum << endl;
     out << "DCR: " << (double)deltachunkOriSize / (double)deltachunkSize << endl;
     out << "DCE: " << DCESum / (double)deltachunkNum << endl;
+    WriteTreeShapeStats(out, offline_dataWrite_);
     out << "-----------------Time------------------------------" << endl;
     // out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
     out << "total time: " << time << "s" << endl;
