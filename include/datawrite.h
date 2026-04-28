@@ -37,10 +37,10 @@ private:
     // unordered_map<string, vector<int>> *SFindex;
     //  static Container_t curContainer;
     ReadCache *containerCache;
-    std::chrono::duration<double> readIOTime;
-    std::chrono::duration<double> writeIOTime;
-    std::chrono::duration<double> UpdateCacheTime;
-    std::chrono::duration<double> readCacheTime;
+    std::chrono::duration<double> readIOTime = std::chrono::duration<double>::zero();
+    std::chrono::duration<double> writeIOTime = std::chrono::duration<double>::zero();
+    std::chrono::duration<double> UpdateCacheTime = std::chrono::duration<double>::zero();
+    std::chrono::duration<double> readCacheTime = std::chrono::duration<double>::zero();
     std::chrono::time_point<std::chrono::high_resolution_clock> startTime, endTime;
     std::chrono::time_point<std::chrono::high_resolution_clock> startTime2, endTime2;
 
@@ -139,8 +139,8 @@ public:
     void ClearContainerCache();
 
 
-    std::chrono::duration<double> restoreIOTime;
-    std::chrono::duration<double> restoreDecodeTime;
+    std::chrono::duration<double> restoreIOTime = std::chrono::duration<double>::zero();
+    std::chrono::duration<double> restoreDecodeTime = std::chrono::duration<double>::zero();
     int restoreDecodeCount = 0;
     int restoreChunkNum = 0;
 };

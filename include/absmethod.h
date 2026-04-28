@@ -24,16 +24,16 @@ protected:
 public:
     // time motivation
     std::chrono::time_point<std::chrono::high_resolution_clock> startIO, endIO;
-    std::chrono::duration<double> IOTime;
+    std::chrono::duration<double> IOTime = std::chrono::duration<double>::zero();
     std::chrono::time_point<std::chrono::high_resolution_clock> startDecode, endDecode;
-    std::chrono::duration<double> DecodeTime;
+    std::chrono::duration<double> DecodeTime = std::chrono::duration<double>::zero();
     std::chrono::time_point<std::chrono::high_resolution_clock> startMiEncode, endMiEncode;
-    std::chrono::duration<double> EncodeTime;
+    std::chrono::duration<double> EncodeTime = std::chrono::duration<double>::zero();
     std::chrono::time_point<std::chrono::high_resolution_clock> startMemcpy, endMemcpy;
-    std::chrono::duration<double> RestoreMemcpyTime;
-    std::chrono::duration<double> BestBaseCopyTime;
+    std::chrono::duration<double> RestoreMemcpyTime = std::chrono::duration<double>::zero();
+    std::chrono::duration<double> BestBaseCopyTime = std::chrono::duration<double>::zero();
     std::chrono::time_point<std::chrono::high_resolution_clock> startMiDelta, endMiDelta;
-    std::chrono::duration<double> MiDeltaTime;
+    std::chrono::duration<double> MiDeltaTime = std::chrono::duration<double>::zero();
 
     std::chrono::duration<double> RestoreChunkTime = std::chrono::duration<double>::zero();
 
@@ -60,27 +60,27 @@ public:
     uint64_t SFnum = 0;
     // SF time statics
     std::chrono::time_point<std::chrono::high_resolution_clock> startSF, endSF;
-    std::chrono::duration<double> preSFTime;
-    std::chrono::duration<double> SFTime;
+    std::chrono::duration<double> preSFTime = std::chrono::duration<double>::zero();
+    std::chrono::duration<double> SFTime = std::chrono::duration<double>::zero();
     // time breakdown
 
     std::chrono::time_point<std::chrono::high_resolution_clock> startDedup, endDedup;
-    std::chrono::duration<double> DedupTime;
+    std::chrono::duration<double> DedupTime = std::chrono::duration<double>::zero();
     std::chrono::time_point<std::chrono::high_resolution_clock> startLocalityMatch, endLocalityMatch;
-    std::chrono::duration<double> LocalityMatchTime;
+    std::chrono::duration<double> LocalityMatchTime = std::chrono::duration<double>::zero();
     std::chrono::time_point<std::chrono::high_resolution_clock> startLocalityDelta, endLocalityDelta;
-    std::chrono::duration<double> LocalityDeltaTime, LocalityDeltaTmp;
+    std::chrono::duration<double> LocalityDeltaTime = std::chrono::duration<double>::zero(), LocalityDeltaTmp = std::chrono::duration<double>::zero();
     std::chrono::time_point<std::chrono::high_resolution_clock> startLz4, endLz4;
-    std::chrono::duration<double> lz4CompressionTime;
+    std::chrono::duration<double> lz4CompressionTime = std::chrono::duration<double>::zero();
     std::chrono::time_point<std::chrono::high_resolution_clock> startFeatureMatch, endFeatureMatch;
-    std::chrono::duration<double> FeatureMatchTime, FeatureMatchTime1;
+    std::chrono::duration<double> FeatureMatchTime = std::chrono::duration<double>::zero(), FeatureMatchTime1 = std::chrono::duration<double>::zero();
     std::chrono::time_point<std::chrono::high_resolution_clock> startFeatureDelta, endFeatureDelta;
-    std::chrono::duration<double> FeatureDeltaTime;
+    std::chrono::duration<double> FeatureDeltaTime = std::chrono::duration<double>::zero();
     std::chrono::time_point<std::chrono::high_resolution_clock> startIOGet, endIOGet;
-    std::chrono::duration<double> IOGetTime;
+    std::chrono::duration<double> IOGetTime = std::chrono::duration<double>::zero();
     std::chrono::time_point<std::chrono::high_resolution_clock> startIOWrite, endIOWrite;
-    std::chrono::duration<double> IOWriteTime;
-    std::chrono::duration<double> deltaCompressionTime;
+    std::chrono::duration<double> IOWriteTime = std::chrono::duration<double>::zero();
+    std::chrono::duration<double> deltaCompressionTime = std::chrono::duration<double>::zero();
 
     // index
     unordered_map<string, int> FPindex; //(fp,chunkid)
@@ -89,7 +89,7 @@ public:
     // MessageQueue<uint64_t> *MaskRecieveQueue;
     //  MessageQueue<Chunk_t> *outputMQ_; // to datawrite but not used
     unordered_map<string, vector<int>> *SFindex;
-    std::chrono::duration<double> getSFTime;
+    std::chrono::duration<double> getSFTime = std::chrono::duration<double>::zero();
     uint64_t computeSFtimes = 0;
     // total
 
