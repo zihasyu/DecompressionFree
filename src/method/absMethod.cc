@@ -33,6 +33,10 @@ void WriteTreeShapeStats(std::ostream &out, const dataWrite *writer)
     size_t totalChildEdges = 0;
     size_t maxChildren = 0;
     size_t truncatedChildChains = 0;
+    size_t totalDepth = 0;
+    size_t maxDepth = 0;
+    size_t deltaNodeCount = 0;
+    size_t totalDeltaDepth = 0;
 
     if (writer != nullptr)
     {
@@ -41,6 +45,25 @@ void WriteTreeShapeStats(std::ostream &out, const dataWrite *writer)
 
         for (size_t chunkId = 0; chunkId < totalChunks; ++chunkId)
         {
+            size_t depth = 0;
+            int currentId = static_cast<int>(chunkId);
+            size_t baseSteps = 0;
+            while (currentId >= 0 && static_cast<size_t>(currentId) < totalChunks && baseSteps < totalChunks)
+            {
+                ++depth;
+                currentId = chunks[currentId].basechunkID;
+                ++baseSteps;
+            }
+
+            totalDepth += depth;
+            if (depth > maxDepth)
+                maxDepth = depth;
+            if (chunks[chunkId].basechunkID >= 0)
+            {
+                ++deltaNodeCount;
+                totalDeltaDepth += depth;
+            }
+
             size_t childCount = 0;
             int childId = chunks[chunkId].FirstChildID;
             size_t steps = 0;
@@ -74,6 +97,11 @@ void WriteTreeShapeStats(std::ostream &out, const dataWrite *writer)
         << (internalNodeCount == 0 ? 0.0 : static_cast<double>(totalChildEdges) / static_cast<double>(internalNodeCount)) << endl;
     out << "Max Children Per Internal Node: " << maxChildren << endl;
     out << "Truncated Child Chains: " << truncatedChildChains << endl;
+    out << "Avg Chunk Depth: "
+        << (writer == nullptr || writer->chunklist.empty() ? 0.0 : static_cast<double>(totalDepth) / static_cast<double>(writer->chunklist.size())) << endl;
+    out << "Max Chunk Depth: " << maxDepth << endl;
+    out << "Avg Delta Chunk Depth: "
+        << (deltaNodeCount == 0 ? 0.0 : static_cast<double>(totalDeltaDepth) / static_cast<double>(deltaNodeCount)) << endl;
 }
 } // namespace
 
