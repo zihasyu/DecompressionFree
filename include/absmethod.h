@@ -161,6 +161,7 @@ public:
     virtual void PrintChunkInfo(double time, CommandLine_t CmdLine);
     virtual void PrintChunkInfo(double time, CommandLine_t CmdLine, double chunktime);
     virtual void PrintOffline(double time, CommandLine_t CmdLine);
+    void DumpSFIndexSizeDistribution(const CommandLine_t &CmdLine) const;
 
     void StatsDelta(Chunk_t &tmpChunk);
     void StatsDeltaFeature(Chunk_t &tmpChunk);

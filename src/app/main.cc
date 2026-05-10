@@ -289,6 +289,7 @@ int main(int argc, char **argv)
         absMethodObj->PrintChunkInfo(sumTimeInSeconds, CmdLine);
     else
         absMethodObj->PrintChunkInfo(sumTimeInSeconds, CmdLine, chunkerObj->ChunkTime.count());
+    absMethodObj->DumpSFIndexSizeDistribution(CmdLine);
 
     string fileName = "C" + to_string(CmdLine.chunkingType) + "_M" + to_string(CmdLine.compressionMethod);
     // absMethodObj->dataWrite_->Save_to_File_unique(fileName);

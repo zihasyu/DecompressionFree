@@ -337,6 +337,19 @@ void FeatureIndexTable::SF_Insert(const SuperFeatures &superfeatures, const uint
   // return -1 if not found, uint64_t's MAX value
   return;
 }
+
+std::vector<std::pair<super_feature_t, size_t>> FeatureIndexTable::GetSFIndexSizeStats() const
+{
+  std::vector<std::pair<super_feature_t, size_t>> stats;
+  stats.reserve(SFindex.size());
+
+  for (const auto &entry : SFindex)
+  {
+    stats.emplace_back(entry.first, entry.second.size());
+  }
+
+  return stats;
+}
 void FeatureIndexTable::Log2_SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid)
 {
   for (int i = 0; i < ODESS_SF_NUM; i++)

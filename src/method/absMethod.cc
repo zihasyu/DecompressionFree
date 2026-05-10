@@ -1,5 +1,8 @@
 #include "../../include/absmethod.h"
 
+#include <algorithm>
+#include <fstream>
+
 namespace
 {
 std::chrono::duration<double> GetBaseReconstructionTime(const AbsMethod &method)
@@ -990,6 +993,28 @@ void AbsMethod::PrintChunkInfo(double time, CommandLine_t CmdLine)
     out << "-----------------END-------------------------------" << endl;
     out.close();
     return;
+}
+
+void AbsMethod::DumpSFIndexSizeDistribution(const CommandLine_t &CmdLine) const
+{
+    auto stats = table.GetSFIndexSizeStats();
+    std::sort(stats.begin(), stats.end(), [](const auto &lhs, const auto &rhs) {
+        if (lhs.second != rhs.second)
+            return lhs.second > rhs.second;
+        return lhs.first < rhs.first;
+    });
+
+    const string fileName = "./sf_size_dist_C" + to_string(CmdLine.chunkingType) +
+                            "_M" + to_string(CmdLine.compressionMethod) +
+                            "_N" + to_string(CmdLine.backupNum) + ".csv";
+
+    ofstream out(fileName, ios::out | ios::trunc);
+    out << "rank,superfeature,set_size\n";
+
+    for (size_t i = 0; i < stats.size(); ++i)
+    {
+        out << (i + 1) << "," << stats[i].first << "," << stats[i].second << "\n";
+    }
 }
 
 void AbsMethod::PrintOffline(double time, CommandLine_t CmdLine)
