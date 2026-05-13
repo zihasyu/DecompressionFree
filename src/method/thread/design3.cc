@@ -1,5 +1,32 @@
 #include "../../../include/Thread/design3.h"
+#include <cmath>
 #include <cstdint>
+
+namespace
+{
+constexpr double kAdaptiveThresholdA = 64.0;
+
+int ComputeChunkDepth(const std::vector<Chunk_t> &chunklist, int chunkId)
+{
+    int depth = 0;
+    while (chunkId >= 0)
+    {
+        depth++;
+        chunkId = chunklist[chunkId].basechunkID;
+    }
+    return depth;
+}
+
+double ComputeTreeInsertThreshold(const std::vector<Chunk_t> &chunklist, int baseChunkId)
+{
+    const int newNodeDepth = ComputeChunkDepth(chunklist, baseChunkId) + 1;
+    if (newNodeDepth <= 1)
+    {
+        return 0.0;
+    }
+    return kAdaptiveThresholdA * std::log(static_cast<double>(newNodeDepth));
+}
+} // namespace
 
 Design3::Design3()
 // : chunkCache(1024) // 在构造函数初始化列表中初始化缓存容量
@@ -242,7 +269,9 @@ void Design3::ProcessTrace()
                     tmpChunk.deltaFlag = DELTA;
                     tmpChunk.basechunkID = RestoreBasechunk.chunkID;
 
-                    if (tmpChunk.saveSize >= TREE_INSERT_SAVE_THRESHOLD)
+                    const double treeInsertThreshold =
+                        ComputeTreeInsertThreshold(offline_dataWrite_->chunklist, tmpChunk.basechunkID);
+                    if (static_cast<double>(tmpChunk.saveSize) >= treeInsertThreshold)
                     {
                         if (offline_dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID < 0)
                         {
