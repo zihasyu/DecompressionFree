@@ -30,6 +30,28 @@ void WriteSearchBreakdown(std::ostream &out, const AbsMethod &method, double tot
 
 AbsMethod::AbsMethod()
 {
+    IOTime = std::chrono::duration<double>::zero();
+    DecodeTime = std::chrono::duration<double>::zero();
+    EncodeTime = std::chrono::duration<double>::zero();
+    RestoreMemcpyTime = std::chrono::duration<double>::zero();
+    BestBaseCopyTime = std::chrono::duration<double>::zero();
+    MiDeltaTime = std::chrono::duration<double>::zero();
+    RestoreChunkTime = std::chrono::duration<double>::zero();
+    preSFTime = std::chrono::duration<double>::zero();
+    SFTime = std::chrono::duration<double>::zero();
+    DedupTime = std::chrono::duration<double>::zero();
+    LocalityMatchTime = std::chrono::duration<double>::zero();
+    LocalityDeltaTime = std::chrono::duration<double>::zero();
+    LocalityDeltaTmp = std::chrono::duration<double>::zero();
+    lz4CompressionTime = std::chrono::duration<double>::zero();
+    FeatureMatchTime = std::chrono::duration<double>::zero();
+    FeatureMatchTime1 = std::chrono::duration<double>::zero();
+    FeatureDeltaTime = std::chrono::duration<double>::zero();
+    IOGetTime = std::chrono::duration<double>::zero();
+    IOWriteTime = std::chrono::duration<double>::zero();
+    deltaCompressionTime = std::chrono::duration<double>::zero();
+    getSFTime = std::chrono::duration<double>::zero();
+
     mdCtx = EVP_MD_CTX_new();
     hashBuf = (uint8_t *)malloc(CHUNK_HASH_SIZE * sizeof(uint8_t));
     DecodeBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * 2);
