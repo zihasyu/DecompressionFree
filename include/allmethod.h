@@ -36,6 +36,7 @@
 #include "Thread/design1.h"
 #include "Thread/design2.h"
 #include "Thread/design3.h"
+#include "Thread/design3_G.h"
 #include "Thread/fixed.h"
 #include "Thread/greedy.h"
 #endif
