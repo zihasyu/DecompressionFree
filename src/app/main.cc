@@ -361,6 +361,11 @@ int main(int argc, char **argv)
         OfflineAbsMethodObj = new Design3_G();
         break;
     }
+    case Design3_D_:
+    {
+        OfflineAbsMethodObj = new Design3_D();
+        break;
+    }
     default:
         break;
     }
