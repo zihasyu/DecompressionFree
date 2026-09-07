@@ -351,9 +351,9 @@ int main(int argc, char **argv)
         OfflineAbsMethodObj = new Design3();
         break;
     }
-    case Fixed_:
+    case Design3_S_:
     {
-        OfflineAbsMethodObj = new Fixed();
+        OfflineAbsMethodObj = new Design3_S();
         break;
     }
     case Design3_G_:

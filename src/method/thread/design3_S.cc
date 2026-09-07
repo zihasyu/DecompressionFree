@@ -1,4 +1,4 @@
-#include "../../../include/Thread/fixed.h"
+#include "../../../include/Thread/design3_S.h"
 #include <cstdint>
 
 // 线程安全队列
@@ -38,7 +38,7 @@ private:
 };
 
 // 用于线程间传递的结构体
-struct RestoredChunkFixed
+struct RestoredChunk3S
 {
     uint64_t rootId;
     uint64_t cid;
@@ -46,7 +46,7 @@ struct RestoredChunkFixed
     uint64_t initialRootId;
 };
 
-Fixed::Fixed()
+Design3_S::Design3_S()
 {
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
     mdCtx = EVP_MD_CTX_new();
@@ -57,7 +57,7 @@ Fixed::Fixed()
     MinBaseBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
 }
 
-Fixed::~Fixed()
+Design3_S::~Design3_S()
 {
     free(lz4ChunkBuffer);
     free(deltaMaxChunkBuffer);
@@ -71,12 +71,12 @@ Fixed::~Fixed()
     }
 }
 
-void Fixed::ProcessTrace()
+void Design3_S::ProcessTrace()
 {
     using namespace std;
     using namespace std::chrono;
 
-    ThreadSafeQueue<RestoredChunkFixed> chunkQueue;
+    ThreadSafeQueue<RestoredChunk3S> chunkQueue;
 
     std::map<uint64_t, const std::vector<uint64_t> &> sortedRootChunkMap;
     for (const auto &pair : *rootChunkMap)
@@ -154,7 +154,7 @@ void Fixed::ProcessTrace()
                     subRoots.push_back(cid);
                 }
 
-                chunkQueue.push(RestoredChunkFixed{rootId, cid, tmpChunk, item.initialRootId});
+                chunkQueue.push(RestoredChunk3S{rootId, cid, tmpChunk, item.initialRootId});
             }
 
             for (uint64_t subRoot : subRoots) {
@@ -175,7 +175,7 @@ void Fixed::ProcessTrace()
     // 处理线程
     std::thread processThread([&]()
                               {
-        RestoredChunkFixed item;
+        RestoredChunk3S item;
         while (chunkQueue.pop(item))
         {
             uint64_t rootId = item.rootId;
@@ -278,7 +278,7 @@ void Fixed::ProcessTrace()
     return;
 }
 
-uint8_t *Fixed::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer)
+uint8_t *Design3_S::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer)
 {
     SetTime(startMiEncode);
     size_t deltachunkSize;
@@ -299,7 +299,7 @@ uint8_t *Fixed::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targe
     return tmpDeltaBuffer;
 }
 
-Chunk_t Fixed::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
+Chunk_t Design3_S::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
 {
     SetTime(startMiDelta);
     Chunk_t resultchunk;

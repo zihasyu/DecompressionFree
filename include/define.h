@@ -372,7 +372,7 @@ enum OFFLINE_TYPE
     Design1_,
     Design2_,
     Design3_,
-    Fixed_,
+    Design3_S_,
     Design3_G_
 };
 enum DELTA_TYPE

@@ -1,5 +1,5 @@
-#ifndef FIXED_H
-#define FIXED_H
+#ifndef DESIGN3_S_H
+#define DESIGN3_S_H
 
 #include "../absmethod.h"
 #include "../odess_similarity_detection.h"
@@ -10,10 +10,10 @@
 
 using namespace std;
 
-class Fixed : public AbsMethod
+class Design3_S : public AbsMethod
 {
 private:
-    string myName_ = "Fixed";
+    string myName_ = "Design3_S";
     int PrevDedupChunkid = -1;
     int Version = 0;
     uint8_t *MinBaseBuffer = nullptr;
@@ -30,8 +30,8 @@ private:
     ChunkBufferPool<MAX_CHUNK_SIZE, 1024> chunkCache_;
 
 public:
-    Fixed();
-    ~Fixed();
+    Design3_S();
+    ~Design3_S();
     void ProcessTrace();
     uint8_t *xd3_encode_buffer(const uint8_t *targetChunkbuffer,
                                size_t targetChunkbuffer_size,
