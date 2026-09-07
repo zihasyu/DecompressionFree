@@ -34,7 +34,7 @@
 #include "Offline/offline_tree_Feature_lru.h"
 
 #include "Thread/design1.h"
-#include "Thread/design2.h"
+#include "Thread/design3_R.h"
 #include "Thread/design3.h"
 #include "Thread/design3_G.h"
 #include "Thread/design3_S.h"

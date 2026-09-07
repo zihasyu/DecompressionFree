@@ -370,7 +370,7 @@ enum OFFLINE_TYPE
     Offline_Tree_Feature_LRU,
     Greedy_,
     Design1_,
-    Design2_,
+    Design3_R_,
     Design3_,
     Design3_S_,
     Design3_G_

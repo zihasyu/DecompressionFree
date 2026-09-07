@@ -1,8 +1,8 @@
-#include "../../../include/Thread/design2.h"
+#include "../../../include/Thread/design3_R.h"
 
 // const size_t TREE_INSERT_SAVE_THRESHOLD = 128;
 
-Design2::Design2()
+Design3_R::Design3_R()
 {
     // cout << " Chunk_t is " << sizeof(Chunk_t) << " Chunk_t_ori is " << sizeof(Chunk_t_odess) << " <super_feature_t, unordered_set<string>> is " << sizeof(super_feature_t);
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
@@ -16,7 +16,7 @@ Design2::Design2()
     CombinedBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
 }
 
-Design2::~Design2()
+Design3_R::~Design3_R()
 {
     free(lz4ChunkBuffer);
     free(deltaMaxChunkBuffer);
@@ -63,19 +63,19 @@ private:
 };
 
 // 用于线程间传递的结构体
-struct RestoredChunk2
+struct RestoredChunk3R
 {
     size_t idx;
     Chunk_t tmpChunk;
     SuperFeatures superfeature;
 };
 
-void Design2::ProcessTrace()
+void Design3_R::ProcessTrace()
 {
     using namespace std;
     using namespace std::chrono;
 
-    ThreadSafeQueue<RestoredChunk2> chunkQueue;
+    ThreadSafeQueue<RestoredChunk3R> chunkQueue;
     vector<Chunk_t> &sourceList = dataWrite_->chunklist;
     size_t totalChunks = sourceList.size();
 
@@ -125,14 +125,14 @@ void Design2::ProcessTrace()
                 endSF = high_resolution_clock::now();
                 SFTime += (endSF - startSF);
             }
-            chunkQueue.push(RestoredChunk2{i, tmpChunk, superfeature});
+            chunkQueue.push(RestoredChunk3R{i, tmpChunk, superfeature});
         }
         chunkQueue.set_finished();
     });
 
     // 处理线程
     std::thread processThread([&]() {
-        RestoredChunk2 item;
+        RestoredChunk3R item;
         size_t nextVersionEndPointIndex = 0;
         while (chunkQueue.pop(item))
         {
@@ -263,7 +263,7 @@ void Design2::ProcessTrace()
     processThread.join();
     return;
 }
-Chunk_t Design2::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, SuperFeatures sfs)
+Chunk_t Design3_R::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, SuperFeatures sfs)
 {
     SetTime(startMiDelta);
     Chunk_t resultchunk;
@@ -365,7 +365,7 @@ Chunk_t Design2::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk, Supe
     return resultchunk;
 }
 
-uint8_t *Design2::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer)
+uint8_t *Design3_R::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer)
 {
     SetTime(startMiEncode);
     size_t deltachunkSize;
@@ -386,7 +386,7 @@ uint8_t *Design2::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t tar
     return tmpDeltaBuffer;
 }
 
-void Design2::StatsHit(uint64_t FatherID, uint64_t HitID, SuperFeatures sfs)
+void Design3_R::StatsHit(uint64_t FatherID, uint64_t HitID, SuperFeatures sfs)
 {
     // [CHANGE] StatsHit should operate on the destination data (offline_dataWrite_)
     if (offline_dataWrite_->chunklist[FatherID].BeforeFit == HitID)

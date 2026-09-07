@@ -82,7 +82,7 @@ typedef struct
     int MultiHeaderChunk = 16; // num
     int offlineMethod = -1;
     bool enableRestore = false;
-    int Threshold = 64; // for design2
+    int Threshold = 64; // for design3_R
 } CommandLine_t;
 
 #endif
