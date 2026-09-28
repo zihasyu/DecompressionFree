@@ -101,6 +101,7 @@ struct RestoredChunk3
     uint64_t cid;
     Chunk_t tmpChunk;
     uint64_t initialRootId;
+    bool endOfGroup = false;
 };
 
 void Design3::ProcessTrace()
@@ -198,7 +199,9 @@ void Design3::ProcessTrace()
                 //     basechunkid = -1;
 
                 // 放入队列，交给处理线程
-                chunkQueue.push(RestoredChunk3{rootId, cid,  tmpChunk, item.initialRootId});
+                chunkQueue.push(RestoredChunk3{rootId, cid, tmpChunk,
+                                                item.initialRootId,
+                                                nextIter == item.end});
             }
 
             // 主树处理完后，递归处理所有子根
@@ -221,9 +224,18 @@ void Design3::ProcessTrace()
     // 处理线程
     std::thread processThread([&]()
                               {
-        RestoredChunk3 item;
-        while (chunkQueue.pop(item))
+        RestoredChunk3 incoming;
+        vector<RestoredChunk3> groupChunks;
+        while (chunkQueue.pop(incoming))
         {
+            groupChunks.push_back(std::move(incoming));
+            if (!groupChunks.back().endOfGroup)
+                continue;
+
+            vector<uint64_t> stagedChunkIDs;
+            stagedChunkIDs.reserve(groupChunks.size());
+            for (RestoredChunk3 &item : groupChunks)
+            {
             uint64_t rootId = item.rootId;
             uint64_t cid = item.cid;
             uint64_t basechunkid = logicalRootMap[item.initialRootId];
@@ -259,10 +271,10 @@ void Design3::ProcessTrace()
                     basechunkSize += tmpChunk.saveSize;
                     free(deltachunk);
 
-                    if (tmpChunk.deltaFlag == NO_LZ4)
-                        offline_dataWrite_->Chunk_Insert(tmpChunk);
-                    else
-                        offline_dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
+                    const uint8_t *payload = tmpChunk.deltaFlag == NO_LZ4
+                        ? tmpChunk.chunkPtr : lz4ChunkBuffer;
+                    offline_dataWrite_->Stage_Chunk(tmpChunk, payload);
+                    stagedChunkIDs.push_back(tmpChunk.chunkID);
                 }
                 else
                 {
@@ -290,7 +302,8 @@ void Design3::ProcessTrace()
                     StatsDelta(tmpChunk);
                     free(deltachunk);
 
-                    offline_dataWrite_->Chunk_Insert(tmpChunk);
+                    offline_dataWrite_->Stage_Chunk(tmpChunk, tmpChunk.chunkPtr);
+                    stagedChunkIDs.push_back(tmpChunk.chunkID);
                 }
             }
             else
@@ -311,16 +324,23 @@ void Design3::ProcessTrace()
                 basechunkNum++;
                 basechunkSize += tmpChunk.saveSize;
 
-                if (tmpChunk.deltaFlag == NO_LZ4)
-                    offline_dataWrite_->Chunk_Insert(tmpChunk);
-                else
-                    offline_dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
+                const uint8_t *payload = tmpChunk.deltaFlag == NO_LZ4
+                    ? tmpChunk.chunkPtr : lz4ChunkBuffer;
+                offline_dataWrite_->Stage_Chunk(tmpChunk, payload);
+                stagedChunkIDs.push_back(tmpChunk.chunkID);
             }
 
             uniquechunkNum++;
             uniquechunkSize += tmpChunk.saveSize;
             logicalchunkNum++;
             logicalchunkSize += tmpChunk.chunkSize;
+            }
+            if (!offline_dataWrite_->Commit_Staged_Chunks(stagedChunkIDs))
+            {
+                cerr << "failed to commit Design3 group" << endl;
+                return;
+            }
+            groupChunks.clear();
         } });
 
     restoreThread.join();

@@ -85,6 +85,36 @@ void Odess::ProcessTrace()
                     basechunkid = table.SF_Find(superfeature);
                 }
 
+                // With an offline method, keep the online representation raw.
+                // Tree-SF still builds rootChunkMap, but xdelta/LZ4 is deferred
+                // completely to the offline Design3 pass.
+                if (offlineMethod >= 0)
+                {
+                    tmpChunk.deltaFlag = NO_LZ4;
+                    tmpChunk.basechunkID = -1;
+                    tmpChunk.saveSize = tmpChunk.chunkSize;
+                    tmpChunkid = tmpChunk.chunkID;
+                    dataWrite_->Chunk_Insert(tmpChunk);
+
+                    basechunkNum++;
+                    basechunkSize += tmpChunk.saveSize;
+                    uniquechunkNum++;
+                    uniquechunkSize += tmpChunk.saveSize;
+
+                    if (treeBaseChunkid == -1)
+                        (*rootChunkMap)[tmpChunk.chunkID].push_back(tmpChunk.chunkID);
+                    else
+                        (*rootChunkMap)[treeBaseChunkid].push_back(tmpChunk.chunkID);
+
+                    if (tmpChunk.HeaderFlag == 0)
+                        dataWrite_->Recipe_Insert(tmpChunk.chunkID);
+                    else
+                        dataWrite_->Recipe_Header_Insert(tmpChunk.chunkID);
+                    logicalchunkNum++;
+                    logicalchunkSize += tmpChunk.chunkSize;
+                    continue;
+                }
+
                 if (basechunkid != -1)
                 // unique chunk & delta chunk
                 {
@@ -178,17 +208,6 @@ void Odess::ProcessTrace()
                 uniquechunkNum++;
                 uniquechunkSize += tmpChunk.saveSize;
 
-                if (offlineMethod >= 0)
-                {
-                    if (treeBaseChunkid == -1)
-                    {
-                        (*rootChunkMap)[tmpChunk.chunkID].push_back(tmpChunk.chunkID);
-                    }
-                    else
-                    {
-                        (*rootChunkMap)[treeBaseChunkid].push_back(tmpChunk.chunkID);
-                    }
-                }
             }
             else
             {

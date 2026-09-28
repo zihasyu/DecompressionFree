@@ -64,6 +64,9 @@ private:
     uint32_t maskL;
     uint8_t *lz4SafeChunkBuffer;
     uint8_t *CombinedBuffer;
+    // Encoded payloads belonging to the group currently being assembled by
+    // Design3.  They are visible to tree search before one batch commit.
+    unordered_map<uint64_t, vector<uint8_t>> stagedChunkPayloads;
 
 public:
     int containerNum = 0;
@@ -93,6 +96,8 @@ public:
     MessageQueue<Container_t> *MQ;
     bool Chunk_Insert(Chunk_t chunk);
     bool Chunk_Insert(Chunk_t chunk, uint8_t *lz4Buffer);
+    bool Stage_Chunk(Chunk_t chunk, const uint8_t *payload);
+    bool Commit_Staged_Chunks(const vector<uint64_t> &chunkIDs);
     int Get_Chunk_Num();
     int Get_Container_Num(Chunk_t chunk);
     Chunk_t Get_Chunk_Info(int id);

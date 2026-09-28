@@ -257,6 +257,59 @@ bool dataWrite::Chunk_Insert(Chunk_t chunk, uint8_t *lz4Buffer)
     return true;
 }
 
+bool dataWrite::Stage_Chunk(Chunk_t chunk, const uint8_t *payload)
+{
+    const size_t storedSize =
+        chunk.deltaFlag == NO_LZ4 ? chunk.chunkSize : chunk.saveSize;
+    if (payload == nullptr || storedSize == 0)
+        return false;
+
+    stagedChunkPayloads[chunk.chunkID] =
+        vector<uint8_t>(payload, payload + storedSize);
+    if (chunk.loadFromDisk && chunk.chunkPtr != nullptr)
+        free(chunk.chunkPtr);
+    chunk.chunkPtr = nullptr;
+    chunk.loadFromDisk = false;
+
+    if (chunk.chunkID >= chunklist.size())
+        chunklist.resize(chunk.chunkID + 1);
+    chunklist[chunk.chunkID] = chunk;
+    return true;
+}
+
+bool dataWrite::Commit_Staged_Chunks(const vector<uint64_t> &chunkIDs)
+{
+    for (uint64_t chunkID : chunkIDs)
+    {
+        auto payloadIt = stagedChunkPayloads.find(chunkID);
+        if (payloadIt == stagedChunkPayloads.end() || chunkID >= chunklist.size())
+            return false;
+
+        Chunk_t chunk = chunklist[chunkID];
+        const vector<uint8_t> &payload = payloadIt->second;
+        bool inserted = false;
+        if (chunk.deltaFlag == NO_DELTA)
+        {
+            // The LZ4 overload copies from payload directly and does not own
+            // chunk.chunkPtr.
+            inserted = Chunk_Insert(chunk, const_cast<uint8_t *>(payload.data()));
+        }
+        else
+        {
+            chunk.chunkPtr = static_cast<uint8_t *>(malloc(payload.size()));
+            if (chunk.chunkPtr == nullptr)
+                return false;
+            memcpy(chunk.chunkPtr, payload.data(), payload.size());
+            chunk.loadFromDisk = true;
+            inserted = Chunk_Insert(chunk);
+        }
+        if (!inserted)
+            return false;
+        stagedChunkPayloads.erase(payloadIt);
+    }
+    return true;
+}
+
 void dataWrite::restoreHeaderFile(string fileName)
 {
     string name;
@@ -635,6 +688,39 @@ void dataWrite::MTar2Tar(string fileName)
 
 Chunk_t dataWrite::Get_Chunk_Info(int id)
 {
+    if (auto stagedIt = stagedChunkPayloads.find(id);
+        stagedIt != stagedChunkPayloads.end())
+    {
+        Chunk_t stagedChunk = chunklist[id];
+        const vector<uint8_t> &payload = stagedIt->second;
+        stagedChunk.chunkPtr = nullptr;
+        stagedChunk.loadFromDisk = true;
+        if (stagedChunk.deltaFlag == NO_DELTA)
+        {
+            stagedChunk.chunkPtr = static_cast<uint8_t *>(malloc(stagedChunk.chunkSize));
+            if (stagedChunk.chunkPtr == nullptr)
+                return stagedChunk;
+            const int decoded = LZ4_decompress_safe(
+                reinterpret_cast<const char *>(payload.data()),
+                reinterpret_cast<char *>(stagedChunk.chunkPtr),
+                payload.size(), stagedChunk.chunkSize);
+            if (decoded != static_cast<int>(stagedChunk.chunkSize))
+            {
+                free(stagedChunk.chunkPtr);
+                stagedChunk.chunkPtr = nullptr;
+            }
+        }
+        else
+        {
+            const size_t storedSize = stagedChunk.deltaFlag == NO_LZ4
+                ? stagedChunk.chunkSize : stagedChunk.saveSize;
+            stagedChunk.chunkPtr = static_cast<uint8_t *>(malloc(storedSize));
+            if (stagedChunk.chunkPtr != nullptr)
+                memcpy(stagedChunk.chunkPtr, payload.data(), storedSize);
+        }
+        return stagedChunk;
+    }
+
     // TODO: cache read container
     // cout << "chunk list size is " << chunklist.size() << endl;
     int tmpSize = 0;
