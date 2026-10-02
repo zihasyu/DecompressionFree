@@ -35,10 +35,22 @@ private:
 public:
     Design3();
     ~Design3();
+    // Chunks below boundary were emitted by the preceding offline generation.
+    // They are copied from that generation, while later chunks are read from
+    // the current online/raw dataWrite_ and compressed for the first time.
+    void SetPreviousOfflineSource(dataWrite *source, uint64_t boundary)
+    {
+        previousOfflineDataWrite_ = source;
+        previousOfflineChunkBoundary_ = boundary;
+    }
     void ProcessTrace();
     uint8_t *xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer);
     Chunk_t xd3_recursive_restore_BL_time(uint64_t BasechunkId);
     Chunk_t CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk);
     void StatsHit(uint64_t FatherID, uint64_t HitID, uint64_t BasechunkID);
+
+private:
+    dataWrite *previousOfflineDataWrite_ = nullptr; // owned by previous batch
+    uint64_t previousOfflineChunkBoundary_ = 0;
 };
 #endif

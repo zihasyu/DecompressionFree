@@ -102,6 +102,7 @@ struct RestoredChunk3
     Chunk_t tmpChunk;
     uint64_t initialRootId;
     bool endOfGroup = false;
+    bool preserveCompressed = false;
 };
 
 void Design3::ProcessTrace()
@@ -160,25 +161,31 @@ void Design3::ProcessTrace()
                 }
 
                 auto startRestoreChunk = high_resolution_clock::now();
-                Chunk_t tmpChunk = dataWrite_->Get_Chunk_MetaInfo(cid);
-                if (tmpChunk.basechunkID >= 0)
+                dataWrite *sourceDataWrite = dataWrite_;
+                if (previousOfflineDataWrite_ != nullptr && cid < previousOfflineChunkBoundary_)
                 {
-                    Chunk_t tmpPreChunk = dataWrite_->Get_Chunk_Info(tmpChunk.basechunkID);
-                    Chunk_t tmpDeltaChunk = dataWrite_->Get_Chunk_Info(cid);
-                    uint64_t tmpSize = 0;
-                    tmpChunk.chunkPtr = xd3_decode(tmpDeltaChunk.chunkPtr, tmpDeltaChunk.saveSize, tmpPreChunk.chunkPtr, tmpPreChunk.chunkSize, &tmpSize);
-                    tmpChunk.loadFromDisk = true;
-                    if (tmpPreChunk.loadFromDisk)
-                        free(tmpPreChunk.chunkPtr);
-                    if (tmpDeltaChunk.loadFromDisk)
-                        free(tmpDeltaChunk.chunkPtr);
+                    sourceDataWrite = previousOfflineDataWrite_;
+                }
+
+                const bool preserveCompressed = sourceDataWrite == previousOfflineDataWrite_;
+                Chunk_t tmpChunk = sourceDataWrite->Get_Chunk_MetaInfo(cid);
+                if (preserveCompressed)
+                {
+                    // Historical chunks keep both their encoded bytes and
+                    // their output-tree links.  They are copied verbatim to
+                    // this generation and never participate in re-search.
+                    tmpChunk = sourceDataWrite->Get_Chunk_Stored_Info(cid);
                 }
                 else
                 {
-                    Chunk_t rawChunk = dataWrite_->Get_Chunk_Info(cid);
-                    // tmpChunk = rawChunk;
+                    // Online chunks are raw.  Their destination-tree links
+                    // are built only if they are newly compressed this batch.
+                    tmpChunk.FirstChildID = -1;
+                    tmpChunk.FirstBroID = -1;
+                    tmpChunk.BeforeFit = -1;
+                    tmpChunk.HitCount = 0;
+                    Chunk_t rawChunk = sourceDataWrite->Get_Chunk_Info(cid);
                     tmpChunk.chunkPtr = (uint8_t *)malloc(tmpChunk.chunkSize);
-                    // if (tmpChunk.chunkPtr != nullptr && rawChunk.chunkPtr != nullptr)
                     memcpy(tmpChunk.chunkPtr, rawChunk.chunkPtr, tmpChunk.chunkSize);
                     tmpChunk.loadFromDisk = true;
                     if (rawChunk.loadFromDisk)
@@ -201,7 +208,8 @@ void Design3::ProcessTrace()
                 // 放入队列，交给处理线程
                 chunkQueue.push(RestoredChunk3{rootId, cid, tmpChunk,
                                                 item.initialRootId,
-                                                nextIter == item.end});
+                                                nextIter == item.end,
+                                                preserveCompressed});
             }
 
             // 主树处理完后，递归处理所有子根
@@ -234,8 +242,43 @@ void Design3::ProcessTrace()
 
             vector<uint64_t> stagedChunkIDs;
             stagedChunkIDs.reserve(groupChunks.size());
+
+            // Materialize the historical part of this group first.  Its
+            // compression tree is now immediately available for new chunks
+            // in the same group to search as base candidates.
             for (RestoredChunk3 &item : groupChunks)
             {
+                if (!item.preserveCompressed)
+                    continue;
+                if (!offline_dataWrite_->Stage_Chunk(item.tmpChunk, item.tmpChunk.chunkPtr))
+                {
+                    cerr << "failed to stage preserved Design3 chunk" << endl;
+                    return;
+                }
+                stagedChunkIDs.push_back(item.tmpChunk.chunkID);
+                if (item.tmpChunk.deltaFlag == DELTA)
+                    StatsDelta(item.tmpChunk);
+                else
+                {
+                    basechunkNum++;
+                    basechunkSize += item.tmpChunk.saveSize;
+                }
+                uniquechunkNum++;
+                uniquechunkSize += item.tmpChunk.saveSize;
+                logicalchunkNum++;
+                logicalchunkSize += item.tmpChunk.chunkSize;
+            }
+            if (!stagedChunkIDs.empty() && !offline_dataWrite_->Commit_Staged_Chunks(stagedChunkIDs))
+            {
+                cerr << "failed to commit preserved Design3 group chunks" << endl;
+                return;
+            }
+            stagedChunkIDs.clear();
+
+            for (RestoredChunk3 &item : groupChunks)
+            {
+            if (item.preserveCompressed)
+                continue;
             uint64_t rootId = item.rootId;
             uint64_t cid = item.cid;
             uint64_t basechunkid = logicalRootMap[item.initialRootId];

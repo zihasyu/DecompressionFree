@@ -3,6 +3,7 @@
 #include <csignal>
 #include <sstream>
 #include <chrono>
+#include <filesystem>
 
 #include "../../include/allmethod.h"
 
@@ -26,7 +27,7 @@ int main(int argc, char **argv)
 
     vector<string> readfileList;
 
-    const char optString[] = "i:m:c:n:r:a:b:t:H:o:R:T:";
+    const char optString[] = "i:m:c:n:r:a:b:t:H:o:R:T:B:";
     // if (argc != sizeof(optString) && argc != sizeof(optString) - 2 && argc != sizeof(optString) - 4 && argc != sizeof(optString) - 6 && argc != sizeof(optString) - 8 && argc != sizeof(optString) - 10 && argc != sizeof(optString) - 12 && argc != sizeof(optString) - 14 && argc != sizeof(optString) - 16)
     // {
     //     cout << "argc is " << argc << endl;
@@ -76,6 +77,9 @@ int main(int argc, char **argv)
         case 'T':
             CmdLine.Threshold = atoi(optarg);
             break;
+        case 'B':
+            CmdLine.batchSize = atoi(optarg);
+            break;
         default:
             break;
         }
@@ -88,6 +92,12 @@ int main(int argc, char **argv)
         cout << "  -c: Chunking type (integer)" << endl;
         cout << "  -m: Compression method (integer)" << endl;
         cout << "  -n: Number of versions/backups to process" << endl;
+        cout << "  -B: Versions per online/offline batch (default: 10)" << endl;
+        return 1;
+    }
+    if (CmdLine.batchSize <= 0)
+    {
+        cout << "Batch size must be positive" << endl;
         return 1;
     }
 
@@ -222,6 +232,119 @@ int main(int argc, char **argv)
     absMethodObj->TurnOnNameHash = CmdLine.TurnOnNameHash;
     chunkerObj->MULTI_HEADER_CHUNK = CmdLine.MultiHeaderChunk;
 
+    auto CreateOfflineMethod = [&]() -> AbsMethod *
+    {
+        switch (CmdLine.offlineMethod)
+        {
+        case Offline_Greedy: return new OfflineAllGreedy();
+        case Offline_Tree_Cut: return new OfflineTreeCut();
+        case Offline_Tree_Cut_Layer: return new OfflineTreeCutLayer();
+        case Offline_Tree_Cache: return new OfflineTreeCache();
+        case Offline_Tree_Feature: return new OfflineTreeFeature();
+        case Offline_Tree_Cut_Layer_Ignore: return new OfflineTreeCutLayerIgnore();
+        case Offline_Tree_Feature_LRU: return new OfflineTreeFeatureLru();
+        case Greedy_: return new Greedy();
+        case Design1_: return new Design1();
+        case Design3_R_: return new Design3_R();
+        case Design3_: return new Design3();
+        case Design3_S_: return new Design3_S();
+        case Design3_G_: return new Design3_G();
+        case Design3_D_: return new Design3_D();
+        default: return nullptr;
+        }
+    };
+
+    uint64_t previousOfflineChunkBoundary = 0;
+
+    auto RunOfflineBatch = [&](int batchNumber, int completedVersions)
+    {
+        if (CmdLine.offlineMethod < 0)
+            return;
+        if (absMethodObj->rootChunkMap == nullptr)
+        {
+            cerr << "offline batch processing requires an online rootChunkMap" << endl;
+            return;
+        }
+
+        AbsMethod *batchMethod = CreateOfflineMethod();
+        if (batchMethod == nullptr)
+        {
+            cerr << "unsupported offline method" << endl;
+            return;
+        }
+
+        batchMethod->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
+        batchMethod->dataWrite_ = absMethodObj->dataWrite_;
+        // The online map remains alive for later batches.  Each offline pass
+        // owns a snapshot and may safely destroy it when replaced.
+        batchMethod->rootChunkMap = new std::unordered_map<uint64_t, std::vector<uint64_t>>(*absMethodObj->rootChunkMap);
+        batchMethod->offline_dataWrite_ = new dataWrite();
+
+        if (OfflineAbsMethodObj != nullptr)
+        {
+            auto *design3BatchMethod = dynamic_cast<Design3 *>(batchMethod);
+            if (design3BatchMethod == nullptr)
+            {
+                cerr << "incremental offline batches are currently supported only by Design3" << endl;
+                delete batchMethod;
+                return;
+            }
+            design3BatchMethod->SetPreviousOfflineSource(
+                OfflineAbsMethodObj->offline_dataWrite_, previousOfflineChunkBoundary);
+        }
+
+        const std::filesystem::path offlineRoot("./OfflineContainers");
+        const string generationName = "batch_" + to_string(batchNumber);
+        const std::filesystem::path generationDir = offlineRoot / generationName;
+        const string generationPath = generationDir.string() + "/";
+        std::filesystem::create_directories(generationDir);
+        batchMethod->offline_dataWrite_->setContainerPath(generationPath);
+
+        auto startBatch = std::chrono::high_resolution_clock::now();
+        if (OfflineAbsMethodObj == nullptr)
+            cout << "Offline input: all chunks from the online/raw containers" << endl;
+        else
+            cout << "Offline input: chunkID < " << previousOfflineChunkBoundary
+                 << " copied from the previous offline generation; later chunkIDs compressed from online/raw containers" << endl;
+        batchMethod->ProcessTrace();
+        batchMethod->offline_dataWrite_->ProcessLastContainer();
+        auto endBatch = std::chrono::high_resolution_clock::now();
+        const double batchSeconds =
+            std::chrono::duration_cast<std::chrono::duration<double>>(endBatch - startBatch).count();
+
+        cout << "----------------------offline batch-------------------------" << endl;
+        cout << "Batch " << batchNumber << " completed after " << batchSeconds << " s" << endl;
+        cout << "Versions included: " << completedVersions << endl;
+        cout << "RestoreChunkTime: " << batchMethod->RestoreChunkTime.count() << "s" << endl;
+        cout << "Offline Compression ratio " << (double)absMethodObj->logicalchunkSize / (double)batchMethod->uniquechunkSize << endl;
+        cout << "Offline Throughput " << (double)absMethodObj->logicalchunkSize / batchSeconds / 1024 / 1024 << " MiB/s" << endl;
+        batchMethod->PrintOffline(batchSeconds, CmdLine);
+
+        // A new generation now contains the complete history through this
+        // batch, so earlier batch generations are no longer needed for
+        // restore or for the next offline pass.
+        std::error_code cleanupError;
+        uintmax_t removedGenerationCount = 0;
+        for (const auto &entry : std::filesystem::directory_iterator(offlineRoot, cleanupError))
+        {
+            const string entryName = entry.path().filename().string();
+            if (entryName.rfind("batch_", 0) == 0 && entryName != generationName && entry.is_directory())
+            {
+                removedGenerationCount += std::filesystem::remove_all(entry.path(), cleanupError);
+                if (cleanupError)
+                    break;
+            }
+        }
+        if (cleanupError)
+            cerr << "failed to remove obsolete offline generations: " << cleanupError.message() << endl;
+        else if (removedGenerationCount > 0)
+            cout << "Removed " << removedGenerationCount << " files from obsolete offline generations" << endl;
+
+        delete OfflineAbsMethodObj;
+        OfflineAbsMethodObj = batchMethod;
+        previousOfflineChunkBoundary = absMethodObj->dataWrite_->chunklist.size();
+    };
+
     auto startsum = std::chrono::high_resolution_clock::now();
     double MTarTime = 0;
     if (CmdLine.chunkingType == MTAR || CmdLine.chunkingType == MTAROdess || CmdLine.chunkingType == MTARPalantir)
@@ -267,6 +390,12 @@ int main(int argc, char **argv)
         }
         else
             absMethodObj->Version_log(TimeTmp, chunkerObj->ChunkTime.count());
+
+        if (CmdLine.offlineMethod >= 0 &&
+            ((i + 1) % CmdLine.batchSize == 0 || i + 1 == CmdLine.backupNum))
+        {
+            RunOfflineBatch(static_cast<int>((i + 1 + CmdLine.batchSize - 1) / CmdLine.batchSize), i + 1);
+        }
     }
 
     auto endsum = std::chrono::high_resolution_clock::now();
@@ -292,103 +421,6 @@ int main(int argc, char **argv)
 
     string fileName = "C" + to_string(CmdLine.chunkingType) + "_M" + to_string(CmdLine.compressionMethod);
     // absMethodObj->dataWrite_->Save_to_File_unique(fileName);
-
-    // offline processing
-    switch (CmdLine.offlineMethod)
-    {
-    case Offline_Greedy:
-    {
-        OfflineAbsMethodObj = new OfflineAllGreedy();
-        break;
-    }
-    case Offline_Tree_Cut:
-    {
-        OfflineAbsMethodObj = new OfflineTreeCut();
-        break;
-    }
-    case Offline_Tree_Cut_Layer:
-    {
-        OfflineAbsMethodObj = new OfflineTreeCutLayer();
-        break;
-    }
-    case Offline_Tree_Cache:
-    {
-        OfflineAbsMethodObj = new OfflineTreeCache();
-        break;
-    }
-    case Offline_Tree_Feature:
-    {
-        OfflineAbsMethodObj = new OfflineTreeFeature();
-        break;
-    }
-    case Offline_Tree_Cut_Layer_Ignore:
-    {
-        OfflineAbsMethodObj = new OfflineTreeCutLayerIgnore(); // 5
-        break;
-    }
-    case Offline_Tree_Feature_LRU:
-    {
-        OfflineAbsMethodObj = new OfflineTreeFeatureLru(); // 6
-        break;
-    }
-    case Greedy_:
-    {
-        OfflineAbsMethodObj = new Greedy();
-        break;
-    }
-    case Design1_:
-    {
-        OfflineAbsMethodObj = new Design1();
-        break;
-    }
-    case Design3_R_:
-    {
-        OfflineAbsMethodObj = new Design3_R();
-        break;
-    }
-    case Design3_:
-    {
-        OfflineAbsMethodObj = new Design3();
-        break;
-    }
-    case Design3_S_:
-    {
-        OfflineAbsMethodObj = new Design3_S();
-        break;
-    }
-    case Design3_G_:
-    {
-        OfflineAbsMethodObj = new Design3_G();
-        break;
-    }
-    case Design3_D_:
-    {
-        OfflineAbsMethodObj = new Design3_D();
-        break;
-    }
-    default:
-        break;
-    }
-    // OfflineAbsMethodObj->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
-    if (CmdLine.offlineMethod >= 0)
-    {
-        OfflineAbsMethodObj->TREE_INSERT_SAVE_THRESHOLD = CmdLine.Threshold;
-
-        OfflineAbsMethodObj->offline_dataWrite_ = new dataWrite();
-        OfflineAbsMethodObj->dataWrite_ = absMethodObj->dataWrite_;
-        OfflineAbsMethodObj->rootChunkMap = absMethodObj->rootChunkMap;
-        absMethodObj->rootChunkMap = nullptr;
-        OfflineAbsMethodObj->offline_dataWrite_->setContainerPath("./OfflineContainers/");
-        auto startTmp = std::chrono::high_resolution_clock::now();
-        OfflineAbsMethodObj->ProcessTrace();
-        auto endTmp = std::chrono::high_resolution_clock::now();
-        auto offlineTimeTmp = std::chrono::duration_cast<std::chrono::duration<double>>(endTmp - startTmp).count();
-        cout << "RestoreChunkTime: " << OfflineAbsMethodObj->RestoreChunkTime.count() << "s" << std::endl;
-        std::cout << "Time taken by for offline: " << offlineTimeTmp << " s " << std::endl;
-        std::cout << "Offline Compression ratio " << (double)absMethodObj->logicalchunkSize / (double)OfflineAbsMethodObj->uniquechunkSize << std::endl;
-        std::cout << "Offline Throughput " << (double)absMethodObj->logicalchunkSize / offlineTimeTmp / 1024 / 1024 << " MiB/s" << std::endl;
-        OfflineAbsMethodObj->PrintOffline(offlineTimeTmp, CmdLine);
-    }
 
     if (CmdLine.enableRestore)
     {

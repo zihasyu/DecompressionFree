@@ -101,6 +101,9 @@ public:
     int Get_Chunk_Num();
     int Get_Container_Num(Chunk_t chunk);
     Chunk_t Get_Chunk_Info(int id);
+    // Return the bytes exactly as stored in a container.  Unlike
+    // Get_Chunk_Info(), this does not LZ4-decompress base chunks.
+    Chunk_t Get_Chunk_Stored_Info(int id);
 
     bool Recipe_Insert(uint64_t chunkID);
     bool Recipe_Header_Insert(uint64_t chunkID);

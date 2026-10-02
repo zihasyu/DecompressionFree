@@ -843,6 +843,49 @@ Chunk_t dataWrite::Get_Chunk_Info(int id)
     return chunklist[id];
 }
 
+Chunk_t dataWrite::Get_Chunk_Stored_Info(int id)
+{
+    Chunk_t storedChunk = Get_Chunk_MetaInfo(id);
+    const size_t storedSize = storedChunk.deltaFlag == NO_LZ4
+        ? storedChunk.chunkSize : storedChunk.saveSize;
+    storedChunk.chunkPtr = static_cast<uint8_t *>(malloc(storedSize));
+    storedChunk.loadFromDisk = true;
+    if (storedChunk.chunkPtr == nullptr)
+        return storedChunk;
+
+    if (auto stagedIt = stagedChunkPayloads.find(id); stagedIt != stagedChunkPayloads.end())
+    {
+        memcpy(storedChunk.chunkPtr, stagedIt->second.data(), storedSize);
+        return storedChunk;
+    }
+
+    if (storedChunk.containerID == containerNum)
+    {
+        memcpy(storedChunk.chunkPtr, curContainer.data + storedChunk.offset, storedSize);
+        return storedChunk;
+    }
+
+    const string fileName = containerName + to_string(storedChunk.containerID);
+    ifstream infile(fileName, ios::binary);
+    if (!infile.is_open())
+    {
+        cerr << "failed to open stored chunk container: " << fileName << endl;
+        free(storedChunk.chunkPtr);
+        storedChunk.chunkPtr = nullptr;
+        return storedChunk;
+    }
+
+    infile.seekg(sizeof(uint64_t) + storedChunk.offset, ios::beg);
+    infile.read(reinterpret_cast<char *>(storedChunk.chunkPtr), storedSize);
+    if (!infile)
+    {
+        cerr << "failed to read stored chunk " << id << " from " << fileName << endl;
+        free(storedChunk.chunkPtr);
+        storedChunk.chunkPtr = nullptr;
+    }
+    return storedChunk;
+}
+
 bool dataWrite::Recipe_Insert(uint64_t chunkID)
 {
     RecipeMap[filename].push_back(chunkID);

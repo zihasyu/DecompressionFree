@@ -83,6 +83,7 @@ typedef struct
     int offlineMethod = -1;
     bool enableRestore = false;
     int Threshold = 64; // for design3_R
+    int batchSize = 10; // versions per online/offline batch
 } CommandLine_t;
 
 #endif
