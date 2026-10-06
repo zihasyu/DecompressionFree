@@ -67,6 +67,13 @@ private:
     // Encoded payloads belonging to the group currently being assembled by
     // Design3.  They are visible to tree search before one batch commit.
     unordered_map<uint64_t, vector<uint8_t>> stagedChunkPayloads;
+    // During an incremental offline pass, historical metadata is installed
+    // up front so tree links can be followed before its group is rewritten.
+    // Payloads still come from the preceding generation until materialized
+    // into this generation's containers.
+    dataWrite *previousGenerationSource_ = nullptr;
+    uint64_t previousGenerationBoundary_ = 0;
+    vector<uint8_t> previousGenerationMaterialized_;
 
 public:
     int containerNum = 0;
@@ -78,6 +85,7 @@ public:
     {
         containerName = path;
     }
+    void SetPreviousGenerationSource(dataWrite *source, uint64_t boundary);
     void SetFilename(string name);
     vector<Chunk_t> chunklist;
     vector<size_t> versionEndPoints;

@@ -32,6 +32,11 @@ private:
 public:
     Design3_S();
     ~Design3_S();
+    void SetPreviousOfflineSource(dataWrite *source, uint64_t boundary)
+    {
+        previousOfflineDataWrite_ = source;
+        previousOfflineChunkBoundary_ = boundary;
+    }
     void ProcessTrace();
     uint8_t *xd3_encode_buffer(const uint8_t *targetChunkbuffer,
                                size_t targetChunkbuffer_size,
@@ -41,6 +46,10 @@ public:
                                uint8_t *tmpbuffer);
     Chunk_t xd3_recursive_restore_BL_time(uint64_t BasechunkId);
     Chunk_t CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk);
+
+private:
+    dataWrite *previousOfflineDataWrite_ = nullptr;
+    uint64_t previousOfflineChunkBoundary_ = 0;
 };
 
 #endif

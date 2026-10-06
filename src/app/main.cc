@@ -282,15 +282,23 @@ int main(int argc, char **argv)
 
         if (OfflineAbsMethodObj != nullptr)
         {
-            auto *design3BatchMethod = dynamic_cast<Design3 *>(batchMethod);
-            if (design3BatchMethod == nullptr)
+            dataWrite *previousSource = OfflineAbsMethodObj->offline_dataWrite_;
+            batchMethod->offline_dataWrite_->SetPreviousGenerationSource(
+                previousSource, previousOfflineChunkBoundary);
+            if (auto *method = dynamic_cast<Design3 *>(batchMethod))
+                method->SetPreviousOfflineSource(previousSource, previousOfflineChunkBoundary);
+            else if (auto *method = dynamic_cast<Design3_D *>(batchMethod))
+                method->SetPreviousOfflineSource(previousSource, previousOfflineChunkBoundary);
+            else if (auto *method = dynamic_cast<Design3_G *>(batchMethod))
+                method->SetPreviousOfflineSource(previousSource, previousOfflineChunkBoundary);
+            else if (auto *method = dynamic_cast<Design3_S *>(batchMethod))
+                method->SetPreviousOfflineSource(previousSource, previousOfflineChunkBoundary);
+            else
             {
-                cerr << "incremental offline batches are currently supported only by Design3" << endl;
+                cerr << "incremental offline batches are currently supported only by Design3/D/G/S" << endl;
                 delete batchMethod;
                 return;
             }
-            design3BatchMethod->SetPreviousOfflineSource(
-                OfflineAbsMethodObj->offline_dataWrite_, previousOfflineChunkBoundary);
         }
 
         const std::filesystem::path offlineRoot("./OfflineContainers");

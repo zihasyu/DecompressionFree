@@ -101,6 +101,7 @@ struct RestoredChunk3G
     uint64_t cid;
     Chunk_t tmpChunk;
     uint64_t initialRootId;
+    bool preserveCompressed = false;
 };
 
 void Design3_G::ProcessTrace()
@@ -142,22 +143,23 @@ void Design3_G::ProcessTrace()
             uint64_t rootId = rootIt->second;
 
             auto startRestoreChunk = high_resolution_clock::now();
-            Chunk_t tmpChunk = dataWrite_->Get_Chunk_MetaInfo(cid);
-            if (tmpChunk.basechunkID >= 0)
+            dataWrite *sourceDataWrite = dataWrite_;
+            if (previousOfflineDataWrite_ != nullptr && cid < previousOfflineChunkBoundary_)
+                sourceDataWrite = previousOfflineDataWrite_;
+
+            const bool preserveCompressed = sourceDataWrite == previousOfflineDataWrite_;
+            Chunk_t tmpChunk = sourceDataWrite->Get_Chunk_MetaInfo(cid);
+            if (preserveCompressed)
             {
-                Chunk_t tmpPreChunk = dataWrite_->Get_Chunk_Info(tmpChunk.basechunkID);
-                Chunk_t tmpDeltaChunk = dataWrite_->Get_Chunk_Info(cid);
-                uint64_t tmpSize = 0;
-                tmpChunk.chunkPtr = xd3_decode(tmpDeltaChunk.chunkPtr, tmpDeltaChunk.saveSize, tmpPreChunk.chunkPtr, tmpPreChunk.chunkSize, &tmpSize);
-                tmpChunk.loadFromDisk = true;
-                if (tmpPreChunk.loadFromDisk)
-                    free(tmpPreChunk.chunkPtr);
-                if (tmpDeltaChunk.loadFromDisk)
-                    free(tmpDeltaChunk.chunkPtr);
+                tmpChunk = sourceDataWrite->Get_Chunk_Stored_Info(cid);
             }
             else
             {
-                Chunk_t rawChunk = dataWrite_->Get_Chunk_Info(cid);
+                tmpChunk.FirstChildID = -1;
+                tmpChunk.FirstBroID = -1;
+                tmpChunk.BeforeFit = -1;
+                tmpChunk.HitCount = 0;
+                Chunk_t rawChunk = sourceDataWrite->Get_Chunk_Info(cid);
                 tmpChunk.chunkPtr = (uint8_t *)malloc(tmpChunk.chunkSize);
                 memcpy(tmpChunk.chunkPtr, rawChunk.chunkPtr, tmpChunk.chunkSize);
                 tmpChunk.loadFromDisk = true;
@@ -167,7 +169,7 @@ void Design3_G::ProcessTrace()
             auto endRestoreChunk = high_resolution_clock::now();
             RestoreChunkTime += endRestoreChunk - startRestoreChunk;
 
-            chunkQueue.push(RestoredChunk3G{rootId, cid, tmpChunk, rootId});
+            chunkQueue.push(RestoredChunk3G{rootId, cid, tmpChunk, rootId, preserveCompressed});
         }
         chunkQueue.set_finished(); });
 
@@ -177,6 +179,29 @@ void Design3_G::ProcessTrace()
         RestoredChunk3G item;
         while (chunkQueue.pop(item))
         {
+            if (item.preserveCompressed)
+            {
+                vector<uint64_t> chunkID{item.tmpChunk.chunkID};
+                if (!offline_dataWrite_->Stage_Chunk(item.tmpChunk, item.tmpChunk.chunkPtr) ||
+                    !offline_dataWrite_->Commit_Staged_Chunks(chunkID))
+                {
+                    cerr << "failed to copy preserved Design3_G chunk" << endl;
+                    return;
+                }
+                if (item.tmpChunk.deltaFlag == DELTA)
+                    StatsDelta(item.tmpChunk);
+                else
+                {
+                    basechunkNum++;
+                    basechunkSize += item.tmpChunk.saveSize;
+                }
+                uniquechunkNum++;
+                uniquechunkSize += item.tmpChunk.saveSize;
+                logicalchunkNum++;
+                logicalchunkSize += item.tmpChunk.chunkSize;
+                continue;
+            }
+
             uint64_t rootId = item.rootId;
             uint64_t cid = item.cid;
             uint64_t basechunkid = logicalRootMap[item.initialRootId];

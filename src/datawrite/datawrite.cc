@@ -23,6 +23,23 @@ dataWrite::~dataWrite()
     free(lz4SafeChunkBuffer);
     free(CombinedBuffer);
 }
+
+void dataWrite::SetPreviousGenerationSource(dataWrite *source, uint64_t boundary)
+{
+    previousGenerationSource_ = source;
+    previousGenerationBoundary_ = 0;
+    previousGenerationMaterialized_.clear();
+
+    if (source == nullptr || boundary == 0)
+        return;
+
+    const uint64_t available = std::min<uint64_t>(boundary, source->chunklist.size());
+    // Preserve the old tree metadata even when the corresponding payload has
+    // not yet been copied.  A later group may legitimately reference it.
+    chunklist.assign(source->chunklist.begin(), source->chunklist.begin() + available);
+    previousGenerationBoundary_ = available;
+    previousGenerationMaterialized_.assign(available, 0);
+}
 void dataWrite::PrintBinaryArray(const uint8_t *buffer, size_t buffer_size)
 {
     for (size_t i = 0; i < buffer_size; i++)
@@ -184,6 +201,8 @@ bool dataWrite::Chunk_Insert(Chunk_t chunk)
         chunklist.resize(chunk.chunkID + 1);
     }
     chunklist[chunk.chunkID] = chunk;
+    if (chunk.chunkID < previousGenerationMaterialized_.size())
+        previousGenerationMaterialized_[chunk.chunkID] = 1;
     // cout << "chunkset entry id is  " << chunklist[chunk.chunkid].chunkid << endl;
     return true;
 }
@@ -253,6 +272,8 @@ bool dataWrite::Chunk_Insert(Chunk_t chunk, uint8_t *lz4Buffer)
         chunklist.resize(chunk.chunkID + 1);
     }
     chunklist[chunk.chunkID] = chunk;
+    if (chunk.chunkID < previousGenerationMaterialized_.size())
+        previousGenerationMaterialized_[chunk.chunkID] = 1;
     // cout << "chunkset entry id is  " << chunklist[chunk.chunkid].chunkid << endl;
     return true;
 }
@@ -270,6 +291,19 @@ bool dataWrite::Stage_Chunk(Chunk_t chunk, const uint8_t *payload)
         free(chunk.chunkPtr);
     chunk.chunkPtr = nullptr;
     chunk.loadFromDisk = false;
+
+    if (chunk.chunkID < previousGenerationMaterialized_.size() &&
+        !previousGenerationMaterialized_[chunk.chunkID])
+    {
+        // Tree adaptation may already have changed metadata for an old chunk
+        // while its group is waiting to be rewritten.  Keep those fields,
+        // while retaining the source chunk's payload attributes.
+        const Chunk_t &existing = chunklist[chunk.chunkID];
+        chunk.FirstChildID = existing.FirstChildID;
+        chunk.FirstBroID = existing.FirstBroID;
+        chunk.BeforeFit = existing.BeforeFit;
+        chunk.HitCount = existing.HitCount;
+    }
 
     if (chunk.chunkID >= chunklist.size())
         chunklist.resize(chunk.chunkID + 1);
@@ -688,6 +722,13 @@ void dataWrite::MTar2Tar(string fileName)
 
 Chunk_t dataWrite::Get_Chunk_Info(int id)
 {
+    if (previousGenerationSource_ != nullptr && id >= 0 &&
+        static_cast<uint64_t>(id) < previousGenerationBoundary_ &&
+        !previousGenerationMaterialized_[id])
+    {
+        return previousGenerationSource_->Get_Chunk_Info(id);
+    }
+
     if (auto stagedIt = stagedChunkPayloads.find(id);
         stagedIt != stagedChunkPayloads.end())
     {
@@ -845,6 +886,12 @@ Chunk_t dataWrite::Get_Chunk_Info(int id)
 
 Chunk_t dataWrite::Get_Chunk_Stored_Info(int id)
 {
+    if (previousGenerationSource_ != nullptr && id >= 0 &&
+        static_cast<uint64_t>(id) < previousGenerationBoundary_ &&
+        !previousGenerationMaterialized_[id])
+    {
+        return previousGenerationSource_->Get_Chunk_Stored_Info(id);
+    }
     Chunk_t storedChunk = Get_Chunk_MetaInfo(id);
     const size_t storedSize = storedChunk.deltaFlag == NO_LZ4
         ? storedChunk.chunkSize : storedChunk.saveSize;
