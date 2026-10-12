@@ -270,6 +270,9 @@ int main(int argc, char **argv)
     };
 
     uint64_t previousOfflineChunkBoundary = 0;
+    // Sum the same per-version online wall-clock time reported by
+    // Version_log(), then emit it when this batch enters offline processing.
+    double currentBatchOnlineSeconds = 0.0;
 
     auto RunOfflineBatch = [&](int batchNumber, int completedVersions)
     {
@@ -335,6 +338,9 @@ int main(int argc, char **argv)
         const double batchSeconds =
             std::chrono::duration_cast<std::chrono::duration<double>>(endBatch - startBatch).count();
 
+        cout << "----------------------online batch--------------------------" << endl;
+        cout << "Online Batch " << batchNumber << " completed after "
+             << currentBatchOnlineSeconds << " s" << endl;
         cout << "----------------------offline batch-------------------------" << endl;
         cout << "Batch " << batchNumber << " completed after " << batchSeconds << " s" << endl;
         cout << "Versions included: " << completedVersions << endl;
@@ -366,6 +372,7 @@ int main(int argc, char **argv)
         delete OfflineAbsMethodObj;
         OfflineAbsMethodObj = batchMethod;
         previousOfflineChunkBoundary = absMethodObj->dataWrite_->chunklist.size();
+        currentBatchOnlineSeconds = 0.0;
     };
 
     auto startsum = std::chrono::high_resolution_clock::now();
@@ -400,12 +407,14 @@ int main(int argc, char **argv)
         }
         auto endTmp = std::chrono::high_resolution_clock::now();
         auto TimeTmp = std::chrono::duration_cast<std::chrono::duration<double>>(endTmp - startTmp).count();
+        double onlineVersionSeconds = TimeTmp;
         if (CmdLine.compressionMethod != 5)
 
         {
             if (CmdLine.chunkingType == MTAR)
             {
                 absMethodObj->Version_log(TimeTmp + chunkerObj->MTarTime[i]);
+                onlineVersionSeconds += chunkerObj->MTarTime[i];
                 MTarTime += chunkerObj->MTarTime[i];
             }
             else
@@ -413,6 +422,8 @@ int main(int argc, char **argv)
         }
         else
             absMethodObj->Version_log(TimeTmp, chunkerObj->ChunkTime.count());
+
+        currentBatchOnlineSeconds += onlineVersionSeconds;
 
         if (CmdLine.offlineMethod >= 0 &&
             ((i + 1) % CmdLine.batchSize == 0 || i + 1 == CmdLine.backupNum))
