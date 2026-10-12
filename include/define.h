@@ -374,7 +374,8 @@ enum OFFLINE_TYPE
     Design3_,
     Design3_S_,
     Design3_G_,
-    Design3_D_
+    Design3_D_,
+    Design3_Random_
 };
 enum DELTA_TYPE
 {

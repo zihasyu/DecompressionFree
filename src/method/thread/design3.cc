@@ -1,6 +1,8 @@
 #include "../../../include/Thread/design3.h"
 #include <cmath>
 #include <cstdint>
+#include <fstream>
+#include <algorithm>
 
 namespace
 {
@@ -28,9 +30,10 @@ double ComputeTreeInsertThreshold(const std::vector<Chunk_t> &chunklist, int bas
 }
 } // namespace
 
-Design3::Design3()
+Design3::Design3(bool randomCandidateSelection)
 // : chunkCache(1024) // 在构造函数初始化列表中初始化缓存容量
 {
+    randomCandidateSelection_ = randomCandidateSelection;
     // cout << " Chunk_t is " << sizeof(Chunk_t) << " Chunk_t_ori is " << sizeof(Chunk_t_odess) << " <super_feature_t, unordered_set<string>> is " << sizeof(super_feature_t);
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
     mdCtx = EVP_MD_CTX_new();
@@ -39,6 +42,8 @@ Design3::Design3()
     SFindex = new unordered_map<string, vector<int>>[FINESSE_SF_NUM];
     tmpDeltaBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
     MinBaseBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
+    if (randomCandidateSelection_)
+        LoadTrialBudget();
     //     bro_basechunk_ptr_cache = (uint8_t *)malloc(MAX_CHUNK_SIZE * sizeof(uint8_t));
     //     chi_basechunk_ptr_cache = (uint8_t *)malloc(MAX_CHUNK_SIZE * sizeof(uint8_t));
     //     basechunk_ptr_cache = (uint8_t *)malloc(MAX_CHUNK_SIZE * sizeof(uint8_t));
@@ -389,6 +394,19 @@ void Design3::ProcessTrace()
     restoreThread.join();
     processThread.join();
 
+    if (!randomCandidateSelection_)
+    {
+        WriteTrialBudget();
+        uint64_t totalTrials = 0;
+        for (const auto &[chunkID, trials] : trialBudget_)
+            totalTrials += trials;
+        cout << "Design3 selection xdelta trials: " << totalTrials << endl;
+    }
+    else
+    {
+        cout << "Design3-Random selection xdelta trials: " << randomTrialCount_ << endl;
+    }
+
     cout << "lru cache hit rate: " << (double)cacheHitCount / (double)cacheAccessCount << " cacheHitCount " << cacheHitCount << " cacheAccessCount " << cacheAccessCount << endl;
     return;
 }
@@ -434,6 +452,17 @@ void Design3::StatsHit(uint64_t FatherID, uint64_t HitID, uint64_t BasechunkID)
 
 Chunk_t Design3::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
 {
+    if (randomCandidateSelection_)
+    {
+        const auto budgetIt = trialBudget_.find(Targetchunk.chunkID);
+        if (budgetIt == trialBudget_.end())
+        {
+            cerr << "missing Design3 trial budget for chunk " << Targetchunk.chunkID << endl;
+            return CutRandom(BasechunkId, Targetchunk, 1);
+        }
+        return CutRandom(BasechunkId, Targetchunk, budgetIt->second);
+    }
+
     SetTime(startMiDelta);
     Chunk_t resultchunk;
     size_t basechunk_size = 0;
@@ -466,7 +495,10 @@ Chunk_t Design3::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
     }
 
     if (basechunk.FirstChildID < 0) // if only one layer
+    {
+        trialBudget_[Targetchunk.chunkID] = 1;
         return basechunk;
+    }
 
     memcpy(CombinedBuffer, basechunk.chunkPtr, basechunk.chunkSize);
     // greed init
@@ -477,6 +509,7 @@ Chunk_t Design3::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
     resultchunk.chunkID = basechunk.chunkID;
     resultchunk.FirstChildID = basechunk.FirstChildID;
 
+    uint64_t compressionTrials = 1;
     xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk.chunkPtr, basechunk.chunkSize, &resultchunk.saveSize, deltaMaxChunkBuffer); //*** resultchunk.saveSize save tmpMinDeltaSize only here
 
     if (basechunk.loadFromDisk)
@@ -517,6 +550,7 @@ Chunk_t Design3::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
         }
 
         // uint8_t *basechunk_ptr = xd3_decode(TmpChildChunk.chunkPtr, TmpChildChunk.saveSize, CombinedBuffer, basechunk.chunkSize, &basechunk_size);
+        ++compressionTrials;
         xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer);
         if (tmpsaveSize < resultchunk.saveSize)
         {
@@ -560,6 +594,7 @@ Chunk_t Design3::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
                 }
             }
 
+            ++compressionTrials;
             xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize, bro_basechunk_ptr, basechunk_size, &tmpsaveSize, deltaMaxChunkBuffer); //*** resultchunk.saveSize save tmpMinDeltaSize only here
             if (tmpsaveSize < resultchunk.saveSize)
             {
@@ -587,5 +622,96 @@ Chunk_t Design3::CutGreedy(uint64_t BasechunkId, const Chunk_t Targetchunk)
     }
     SetTime(endMiDelta);
     SetTime(startMiDelta, endMiDelta, MiDeltaTime);
+    trialBudget_[Targetchunk.chunkID] = compressionTrials;
     return resultchunk;
+}
+
+Chunk_t Design3::CutRandom(uint64_t BasechunkId, const Chunk_t Targetchunk,
+                           uint64_t compressionTrials)
+{
+    SetTime(startMiDelta);
+    std::vector<uint64_t> candidates;
+    std::vector<uint64_t> pending{BasechunkId};
+    std::unordered_set<uint64_t> seen;
+    while (!pending.empty())
+    {
+        const uint64_t id = pending.back();
+        pending.pop_back();
+        if (!seen.insert(id).second)
+            continue;
+        candidates.push_back(id);
+        const Chunk_t meta = offline_dataWrite_->Get_Chunk_MetaInfo(id);
+        if (meta.FirstChildID >= 0)
+            pending.push_back(meta.FirstChildID);
+        if (meta.FirstBroID >= 0)
+            pending.push_back(meta.FirstBroID);
+    }
+
+    Chunk_t resultchunk{};
+    resultchunk.saveSize = UINT64_MAX;
+    resultchunk.chunkPtr = MinBaseBuffer;
+    resultchunk.loadFromDisk = false;
+    resultchunk.chunkID = BasechunkId;
+    if (candidates.empty() || compressionTrials == 0)
+        return resultchunk;
+
+    std::mt19937_64 rng(0x9e3779b97f4a7c15ULL ^ Targetchunk.chunkID);
+    std::uniform_int_distribution<size_t> pick(0, candidates.size() - 1);
+    std::shuffle(candidates.begin(), candidates.end(), rng);
+    for (uint64_t attempt = 0; attempt < compressionTrials; ++attempt)
+    {
+        // Sample without replacement whenever the reachable pool is large
+        // enough.  Only an oversized replayed budget falls back to repeated
+        // draws, so the measured xdelta budget remains exact.
+        const uint64_t candidateId = attempt < candidates.size()
+            ? candidates[attempt]
+            : candidates[pick(rng)];
+        Chunk_t candidate = offline_dataWrite_->Get_Chunk_MetaInfo(candidateId);
+        if (candidate.basechunkID < 0)
+            candidate = offline_dataWrite_->Get_Chunk_Info(candidateId);
+        else
+            candidate = xd3_recursive_restore_offline_time(candidateId);
+
+        size_t deltaSize = 0;
+        xd3_encode_buffer(Targetchunk.chunkPtr, Targetchunk.chunkSize,
+                          candidate.chunkPtr, candidate.chunkSize,
+                          &deltaSize, deltaMaxChunkBuffer);
+        ++randomTrialCount_;
+        if (candidate.chunkPtr != nullptr && deltaSize < resultchunk.saveSize)
+        {
+            resultchunk.saveSize = deltaSize;
+            resultchunk.chunkID = candidateId;
+            resultchunk.chunkSize = candidate.chunkSize;
+            resultchunk.FirstChildID = candidate.FirstChildID;
+            memcpy(MinBaseBuffer, candidate.chunkPtr, candidate.chunkSize);
+        }
+        if (candidate.loadFromDisk && candidate.chunkPtr != nullptr)
+            free(candidate.chunkPtr);
+    }
+    if (resultchunk.saveSize != UINT64_MAX)
+        StatsHit(BasechunkId, resultchunk.chunkID, BasechunkId);
+    SetTime(endMiDelta);
+    SetTime(startMiDelta, endMiDelta, MiDeltaTime);
+    return resultchunk;
+}
+
+void Design3::WriteTrialBudget() const
+{
+    std::ofstream out("./Design3TrialBudget.tsv", std::ios::app);
+    if (!out.is_open())
+    {
+        cerr << "failed to write Design3 trial budget" << endl;
+        return;
+    }
+    for (const auto &[chunkID, trials] : trialBudget_)
+        out << chunkID << '\t' << trials << '\n';
+}
+
+void Design3::LoadTrialBudget()
+{
+    std::ifstream in("./Design3TrialBudget.tsv");
+    uint64_t chunkID = 0;
+    uint64_t trials = 0;
+    while (in >> chunkID >> trials)
+        trialBudget_[chunkID] = trials;
 }

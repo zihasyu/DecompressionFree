@@ -9,6 +9,7 @@
 // #include "cache_policy.hpp"
 #include <unordered_map>
 #include <memory>
+#include <random>
 using namespace std;
 
 class Design3 : public AbsMethod
@@ -31,9 +32,14 @@ private:
     uint8_t *chi_basechunk_ptr_cache = nullptr;
     uint8_t *basechunk_ptr_cache = nullptr;
     ChunkBufferPool<MAX_CHUNK_SIZE, 1024> chunkCache_;
+    bool randomCandidateSelection_ = false;
+    // chunkID -> number of actual xdelta trials performed by full Design3.
+    // The random baseline replays this per-chunk budget.
+    std::unordered_map<uint64_t, uint64_t> trialBudget_;
+    uint64_t randomTrialCount_ = 0;
 
 public:
-    Design3();
+    explicit Design3(bool randomCandidateSelection = false);
     ~Design3();
     // Chunks below boundary were emitted by the preceding offline generation.
     // They are copied from that generation, while later chunks are read from
@@ -52,5 +58,10 @@ public:
 private:
     dataWrite *previousOfflineDataWrite_ = nullptr; // owned by previous batch
     uint64_t previousOfflineChunkBoundary_ = 0;
+
+    Chunk_t CutRandom(uint64_t BasechunkId, const Chunk_t Targetchunk,
+                      uint64_t compressionTrials);
+    void WriteTrialBudget() const;
+    void LoadTrialBudget();
 };
 #endif

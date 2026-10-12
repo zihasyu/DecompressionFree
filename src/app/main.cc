@@ -101,6 +101,20 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    constexpr const char *kDesign3TrialBudgetPath = "./Design3TrialBudget.tsv";
+    if (CmdLine.offlineMethod == Design3_)
+    {
+        std::error_code traceError;
+        std::filesystem::remove(kDesign3TrialBudgetPath, traceError);
+    }
+    else if (CmdLine.offlineMethod == Design3_Random_ &&
+             !std::filesystem::exists(kDesign3TrialBudgetPath))
+    {
+        cerr << "Design3-Random requires " << kDesign3TrialBudgetPath
+             << "; run -o " << Design3_ << " first with the same input and batch size" << endl;
+        return 1;
+    }
+
     AbsMethod *absMethodObj = nullptr, *OfflineAbsMethodObj = nullptr;
     Chunker *chunkerObj = new Chunker(CmdLine.chunkingType);
 
@@ -250,6 +264,7 @@ int main(int argc, char **argv)
         case Design3_S_: return new Design3_S();
         case Design3_G_: return new Design3_G();
         case Design3_D_: return new Design3_D();
+        case Design3_Random_: return new Design3_Random();
         default: return nullptr;
         }
     };
