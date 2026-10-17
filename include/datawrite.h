@@ -86,6 +86,9 @@ public:
         containerName = path;
     }
     void SetPreviousGenerationSource(dataWrite *source, uint64_t boundary);
+    // Reuse an existing generation in place: historical payloads remain in
+    // its containers and only newly produced chunks are appended.
+    void ReusePreviousGeneration(dataWrite *source, uint64_t boundary);
     void SetFilename(string name);
     vector<Chunk_t> chunklist;
     vector<size_t> versionEndPoints;

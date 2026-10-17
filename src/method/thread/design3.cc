@@ -165,6 +165,20 @@ void Design3::ProcessTrace()
                     bfsQueue.push({nextIter, item.end, item.initialRootId});
                 }
 
+                // A group can contain a child entry whose root is an old
+                // chunk.  In an append-only batch that old chunk itself does
+                // not need to be materialized, but its child entry can still
+                // contain newly arrived chunks.  Discover the child entry
+                // before skipping the old payload.
+                auto subRootIt = sortedRootChunkMap.find(cid);
+                if (subRootIt != sortedRootChunkMap.end() && cid != subRootIt->second[0])
+                    subRoots.push_back(cid);
+
+                // Intermediate append-only batches retain old payloads in
+                // place.  They only materialize and compress new chunks.
+                if (appendOnly_ && cid < previousOfflineChunkBoundary_)
+                    continue;
+
                 auto startRestoreChunk = high_resolution_clock::now();
                 dataWrite *sourceDataWrite = dataWrite_;
                 if (previousOfflineDataWrite_ != nullptr && cid < previousOfflineChunkBoundary_)
@@ -198,13 +212,6 @@ void Design3::ProcessTrace()
                 }
                 auto endRestoreChunk = high_resolution_clock::now();
                 RestoreChunkTime += endRestoreChunk - startRestoreChunk;
-
-                // 记录子根（但不插队处理）
-                auto subRootIt = sortedRootChunkMap.find(cid);
-                if (subRootIt != sortedRootChunkMap.end() && cid != subRootIt->second[0])
-                {
-                    subRoots.push_back(cid);
-                }
 
                 // uint64_t basechunkid = logicalRootMap[item.initialRootId];
                 // if (cid == rootId)

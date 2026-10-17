@@ -27,7 +27,7 @@ int main(int argc, char **argv)
 
     vector<string> readfileList;
 
-    const char optString[] = "i:m:c:n:r:a:b:t:H:o:R:T:B:";
+    const char optString[] = "i:m:c:n:r:a:b:t:H:o:R:T:B:P:";
     // if (argc != sizeof(optString) && argc != sizeof(optString) - 2 && argc != sizeof(optString) - 4 && argc != sizeof(optString) - 6 && argc != sizeof(optString) - 8 && argc != sizeof(optString) - 10 && argc != sizeof(optString) - 12 && argc != sizeof(optString) - 14 && argc != sizeof(optString) - 16)
     // {
     //     cout << "argc is " << argc << endl;
@@ -80,6 +80,9 @@ int main(int argc, char **argv)
         case 'B':
             CmdLine.batchSize = atoi(optarg);
             break;
+        case 'P':
+            CmdLine.reorderInterval = atoi(optarg);
+            break;
         default:
             break;
         }
@@ -93,11 +96,17 @@ int main(int argc, char **argv)
         cout << "  -m: Compression method (integer)" << endl;
         cout << "  -n: Number of versions/backups to process" << endl;
         cout << "  -B: Versions per online/offline batch (default: 10)" << endl;
+        cout << "  -P: Offline batches between full group reorders (default: 1)" << endl;
         return 1;
     }
     if (CmdLine.batchSize <= 0)
     {
         cout << "Batch size must be positive" << endl;
+        return 1;
+    }
+    if (CmdLine.reorderInterval <= 0)
+    {
+        cout << "Reorder interval must be positive" << endl;
         return 1;
     }
 
@@ -270,6 +279,7 @@ int main(int argc, char **argv)
     };
 
     uint64_t previousOfflineChunkBoundary = 0;
+    string activeOfflineGeneration;
     // Sum the same per-version online wall-clock time reported by
     // Version_log(), then emit it when this batch enters offline processing.
     double currentBatchOnlineSeconds = 0.0;
@@ -297,14 +307,27 @@ int main(int argc, char **argv)
         // owns a snapshot and may safely destroy it when replaced.
         batchMethod->rootChunkMap = new std::unordered_map<uint64_t, std::vector<uint64_t>>(*absMethodObj->rootChunkMap);
         batchMethod->offline_dataWrite_ = new dataWrite();
+        bool fullReorder = OfflineAbsMethodObj == nullptr ||
+                           CmdLine.reorderInterval == 1 ||
+                           batchNumber % CmdLine.reorderInterval == 0 ||
+                           completedVersions == CmdLine.backupNum;
+        if (!fullReorder && dynamic_cast<Design3 *>(batchMethod) == nullptr)
+        {
+            cout << "Append-only batches currently use Design3; forcing a full reorder for this method" << endl;
+            fullReorder = true;
+        }
 
         if (OfflineAbsMethodObj != nullptr)
         {
             dataWrite *previousSource = OfflineAbsMethodObj->offline_dataWrite_;
-            batchMethod->offline_dataWrite_->SetPreviousGenerationSource(
-                previousSource, previousOfflineChunkBoundary);
+            if (fullReorder)
+                batchMethod->offline_dataWrite_->SetPreviousGenerationSource(
+                    previousSource, previousOfflineChunkBoundary);
             if (auto *method = dynamic_cast<Design3 *>(batchMethod))
+            {
                 method->SetPreviousOfflineSource(previousSource, previousOfflineChunkBoundary);
+                method->SetAppendOnly(!fullReorder);
+            }
             else if (auto *method = dynamic_cast<Design3_D *>(batchMethod))
                 method->SetPreviousOfflineSource(previousSource, previousOfflineChunkBoundary);
             else if (auto *method = dynamic_cast<Design3_G *>(batchMethod))
@@ -320,15 +343,23 @@ int main(int argc, char **argv)
         }
 
         const std::filesystem::path offlineRoot("./OfflineContainers");
-        const string generationName = "batch_" + to_string(batchNumber);
+        const string generationName = fullReorder
+            ? "batch_" + to_string(batchNumber)
+            : activeOfflineGeneration;
         const std::filesystem::path generationDir = offlineRoot / generationName;
         const string generationPath = generationDir.string() + "/";
         std::filesystem::create_directories(generationDir);
         batchMethod->offline_dataWrite_->setContainerPath(generationPath);
+        if (!fullReorder && OfflineAbsMethodObj != nullptr)
+            batchMethod->offline_dataWrite_->ReusePreviousGeneration(
+                OfflineAbsMethodObj->offline_dataWrite_, previousOfflineChunkBoundary);
 
         auto startBatch = std::chrono::high_resolution_clock::now();
         if (OfflineAbsMethodObj == nullptr)
             cout << "Offline input: all chunks from the online/raw containers" << endl;
+        else if (!fullReorder)
+            cout << "Offline input: append-only; old chunks remain in "
+                 << generationName << ", new chunks are compressed and appended" << endl;
         else
             cout << "Offline input: chunkID < " << previousOfflineChunkBoundary
                  << " copied from the previous offline generation; later chunkIDs compressed from online/raw containers" << endl;
@@ -337,6 +368,19 @@ int main(int argc, char **argv)
         auto endBatch = std::chrono::high_resolution_clock::now();
         const double batchSeconds =
             std::chrono::duration_cast<std::chrono::duration<double>>(endBatch - startBatch).count();
+
+        if (!fullReorder && OfflineAbsMethodObj != nullptr)
+        {
+            batchMethod->uniquechunkNum += OfflineAbsMethodObj->uniquechunkNum;
+            batchMethod->uniquechunkSize += OfflineAbsMethodObj->uniquechunkSize;
+            batchMethod->basechunkNum += OfflineAbsMethodObj->basechunkNum;
+            batchMethod->basechunkSize += OfflineAbsMethodObj->basechunkSize;
+            batchMethod->deltachunkNum += OfflineAbsMethodObj->deltachunkNum;
+            batchMethod->deltachunkSize += OfflineAbsMethodObj->deltachunkSize;
+            batchMethod->DCESum += OfflineAbsMethodObj->DCESum;
+            batchMethod->logicalchunkNum = absMethodObj->logicalchunkNum;
+            batchMethod->logicalchunkSize = absMethodObj->logicalchunkSize;
+        }
 
         cout << "----------------------online batch--------------------------" << endl;
         cout << "Online Batch " << batchNumber << " completed after "
@@ -349,19 +393,22 @@ int main(int argc, char **argv)
         cout << "Offline Throughput " << (double)absMethodObj->logicalchunkSize / batchSeconds / 1024 / 1024 << " MiB/s" << endl;
         batchMethod->PrintOffline(batchSeconds, CmdLine);
 
-        // A new generation now contains the complete history through this
-        // batch, so earlier batch generations are no longer needed for
-        // restore or for the next offline pass.
+        // A full reorder produces a self-contained new generation, so old
+        // generation directories can be reclaimed.  Append-only batches
+        // keep using the active directory and must retain it.
         std::error_code cleanupError;
         uintmax_t removedGenerationCount = 0;
-        for (const auto &entry : std::filesystem::directory_iterator(offlineRoot, cleanupError))
+        if (fullReorder)
         {
-            const string entryName = entry.path().filename().string();
-            if (entryName.rfind("batch_", 0) == 0 && entryName != generationName && entry.is_directory())
+            for (const auto &entry : std::filesystem::directory_iterator(offlineRoot, cleanupError))
             {
-                removedGenerationCount += std::filesystem::remove_all(entry.path(), cleanupError);
-                if (cleanupError)
-                    break;
+                const string entryName = entry.path().filename().string();
+                if (entryName.rfind("batch_", 0) == 0 && entryName != generationName && entry.is_directory())
+                {
+                    removedGenerationCount += std::filesystem::remove_all(entry.path(), cleanupError);
+                    if (cleanupError)
+                        break;
+                }
             }
         }
         if (cleanupError)
@@ -371,6 +418,7 @@ int main(int argc, char **argv)
 
         delete OfflineAbsMethodObj;
         OfflineAbsMethodObj = batchMethod;
+        activeOfflineGeneration = generationName;
         previousOfflineChunkBoundary = absMethodObj->dataWrite_->chunklist.size();
         currentBatchOnlineSeconds = 0.0;
     };

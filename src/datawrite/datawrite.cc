@@ -40,6 +40,20 @@ void dataWrite::SetPreviousGenerationSource(dataWrite *source, uint64_t boundary
     previousGenerationBoundary_ = available;
     previousGenerationMaterialized_.assign(available, 0);
 }
+
+void dataWrite::ReusePreviousGeneration(dataWrite *source, uint64_t boundary)
+{
+    SetPreviousGenerationSource(source, boundary);
+    if (previousGenerationBoundary_ == 0)
+        return;
+
+    // All inherited metadata points at the same container directory, so it
+    // is already readable by this writer and must not fall back to `source`.
+    previousGenerationSource_ = nullptr;
+    previousGenerationMaterialized_.assign(previousGenerationBoundary_, 1);
+    containerNum = source->containerNum + 1;
+    curContainer.containerID = containerNum;
+}
 void dataWrite::PrintBinaryArray(const uint8_t *buffer, size_t buffer_size)
 {
     for (size_t i = 0; i < buffer_size; i++)

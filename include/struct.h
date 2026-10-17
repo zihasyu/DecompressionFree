@@ -84,6 +84,7 @@ typedef struct
     bool enableRestore = false;
     int Threshold = 64; // for design3_R
     int batchSize = 10; // versions per online/offline batch
+    int reorderInterval = 1; // offline batches between full group reorders
 } CommandLine_t;
 
 #endif
