@@ -193,7 +193,10 @@ void Design3::ProcessTrace()
                     // Historical chunks keep both their encoded bytes and
                     // their output-tree links.  They are copied verbatim to
                     // this generation and never participate in re-search.
+                    const auto reorderReadStart = high_resolution_clock::now();
                     tmpChunk = sourceDataWrite->Get_Chunk_Stored_Info(cid);
+                    const auto reorderReadEnd = high_resolution_clock::now();
+                    ReorderReadTime += reorderReadEnd - reorderReadStart;
                 }
                 else
                 {
@@ -262,12 +265,18 @@ void Design3::ProcessTrace()
             {
                 if (!item.preserveCompressed)
                     continue;
+                const auto reorderStageStart = high_resolution_clock::now();
                 if (!offline_dataWrite_->Stage_Chunk(item.tmpChunk, item.tmpChunk.chunkPtr))
                 {
                     cerr << "failed to stage preserved Design3 chunk" << endl;
                     return;
                 }
+                ReorderStageTime += high_resolution_clock::now() - reorderStageStart;
                 stagedChunkIDs.push_back(item.tmpChunk.chunkID);
+                ReorderedChunkNum++;
+                ReorderedStoredSize += item.tmpChunk.deltaFlag == NO_LZ4
+                    ? item.tmpChunk.chunkSize
+                    : item.tmpChunk.saveSize;
                 if (item.tmpChunk.deltaFlag == DELTA)
                     StatsDelta(item.tmpChunk);
                 else
@@ -280,10 +289,16 @@ void Design3::ProcessTrace()
                 logicalchunkNum++;
                 logicalchunkSize += item.tmpChunk.chunkSize;
             }
-            if (!stagedChunkIDs.empty() && !offline_dataWrite_->Commit_Staged_Chunks(stagedChunkIDs))
+            if (!stagedChunkIDs.empty())
             {
-                cerr << "failed to commit preserved Design3 group chunks" << endl;
-                return;
+                const auto reorderWriteStart = high_resolution_clock::now();
+                const bool committed = offline_dataWrite_->Commit_Staged_Chunks(stagedChunkIDs);
+                ReorderWriteTime += high_resolution_clock::now() - reorderWriteStart;
+                if (!committed)
+                {
+                    cerr << "failed to commit preserved Design3 group chunks" << endl;
+                    return;
+                }
             }
             stagedChunkIDs.clear();
 

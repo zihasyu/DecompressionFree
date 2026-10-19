@@ -37,6 +37,15 @@ public:
 
     std::chrono::duration<double> RestoreChunkTime = std::chrono::duration<double>::zero();
 
+    // Incremental offline accounting.  These are accumulated operation times:
+    // the reader and writer run in parallel, so they are reported separately.
+    std::chrono::duration<double> ReorderReadTime = std::chrono::duration<double>::zero();
+    std::chrono::duration<double> ReorderStageTime = std::chrono::duration<double>::zero();
+    std::chrono::duration<double> ReorderWriteTime = std::chrono::duration<double>::zero();
+    std::chrono::duration<double> ReorderFinalFlushTime = std::chrono::duration<double>::zero();
+    uint64_t ReorderedChunkNum = 0;
+    uint64_t ReorderedStoredSize = 0;
+
     // old
     int ads_Version = 0;
     // util

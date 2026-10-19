@@ -364,7 +364,11 @@ int main(int argc, char **argv)
             cout << "Offline input: chunkID < " << previousOfflineChunkBoundary
                  << " copied from the previous offline generation; later chunkIDs compressed from online/raw containers" << endl;
         batchMethod->ProcessTrace();
+        const auto finalFlushStart = std::chrono::high_resolution_clock::now();
         batchMethod->offline_dataWrite_->ProcessLastContainer();
+        const auto finalFlushEnd = std::chrono::high_resolution_clock::now();
+        if (fullReorder)
+            batchMethod->ReorderFinalFlushTime = finalFlushEnd - finalFlushStart;
         auto endBatch = std::chrono::high_resolution_clock::now();
         const double batchSeconds =
             std::chrono::duration_cast<std::chrono::duration<double>>(endBatch - startBatch).count();
@@ -389,6 +393,18 @@ int main(int argc, char **argv)
         cout << "Batch " << batchNumber << " completed after " << batchSeconds << " s" << endl;
         cout << "Versions included: " << completedVersions << endl;
         cout << "RestoreChunkTime: " << batchMethod->RestoreChunkTime.count() << "s" << endl;
+        cout << "Reordered chunks: " << batchMethod->ReorderedChunkNum
+             << ", stored bytes: " << batchMethod->ReorderedStoredSize << endl;
+        cout << "Reorder read time: " << batchMethod->ReorderReadTime.count() << "s" << endl;
+        cout << "Reorder staging time: " << batchMethod->ReorderStageTime.count() << "s" << endl;
+        cout << "Reorder write time: " << batchMethod->ReorderWriteTime.count() << "s" << endl;
+        cout << "Reorder final container flush time: "
+             << batchMethod->ReorderFinalFlushTime.count() << "s" << endl;
+        const auto reorderTotalTime = batchMethod->ReorderReadTime +
+                                      batchMethod->ReorderStageTime +
+                                      batchMethod->ReorderWriteTime +
+                                      batchMethod->ReorderFinalFlushTime;
+        cout << "Reorder total operation time: " << reorderTotalTime.count() << "s" << endl;
         cout << "Offline Compression ratio " << (double)absMethodObj->logicalchunkSize / (double)batchMethod->uniquechunkSize << endl;
         cout << "Offline Throughput " << (double)absMethodObj->logicalchunkSize / batchSeconds / 1024 / 1024 << " MiB/s" << endl;
         batchMethod->PrintOffline(batchSeconds, CmdLine);
