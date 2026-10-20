@@ -31,9 +31,10 @@ private:
     uint8_t *chi_basechunk_ptr_cache = nullptr;
     uint8_t *basechunk_ptr_cache = nullptr;
     ChunkBufferPool<MAX_CHUNK_SIZE, 1024> chunkCache_;
+    bool selectiveTreeExpansionEnabled_ = true;
 
 public:
-    Design3_G();
+    explicit Design3_G(bool selectiveTreeExpansionEnabled = true);
     ~Design3_G();
     void SetPreviousOfflineSource(dataWrite *source, uint64_t boundary)
     {

@@ -375,7 +375,9 @@ enum OFFLINE_TYPE
     Design3_S_,
     Design3_G_,
     Design3_D_,
-    Design3_Random_
+    Design3_Random_,
+    // Global-order variant without selective tree expansion.
+    Design3_GT_
 };
 enum DELTA_TYPE
 {

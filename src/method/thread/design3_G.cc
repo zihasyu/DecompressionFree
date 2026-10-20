@@ -28,9 +28,10 @@ double ComputeTreeInsertThreshold(const std::vector<Chunk_t> &chunklist, int bas
 }
 } // namespace
 
-Design3_G::Design3_G()
+Design3_G::Design3_G(bool selectiveTreeExpansionEnabled)
 // : chunkCache(1024) // 在构造函数初始化列表中初始化缓存容量
 {
+    selectiveTreeExpansionEnabled_ = selectiveTreeExpansionEnabled;
     // cout << " Chunk_t is " << sizeof(Chunk_t) << " Chunk_t_ori is " << sizeof(Chunk_t_odess) << " <super_feature_t, unordered_set<string>> is " << sizeof(super_feature_t);
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
     mdCtx = EVP_MD_CTX_new();
@@ -151,7 +152,9 @@ void Design3_G::ProcessTrace()
             Chunk_t tmpChunk = sourceDataWrite->Get_Chunk_MetaInfo(cid);
             if (preserveCompressed)
             {
+                const auto reorderReadStart = high_resolution_clock::now();
                 tmpChunk = sourceDataWrite->Get_Chunk_Stored_Info(cid);
+                ReorderReadTime += high_resolution_clock::now() - reorderReadStart;
             }
             else
             {
@@ -182,8 +185,24 @@ void Design3_G::ProcessTrace()
             if (item.preserveCompressed)
             {
                 vector<uint64_t> chunkID{item.tmpChunk.chunkID};
-                if (!offline_dataWrite_->Stage_Chunk(item.tmpChunk, item.tmpChunk.chunkPtr) ||
-                    !offline_dataWrite_->Commit_Staged_Chunks(chunkID))
+                const auto reorderStageStart = high_resolution_clock::now();
+                const bool staged = offline_dataWrite_->Stage_Chunk(
+                    item.tmpChunk, item.tmpChunk.chunkPtr);
+                ReorderStageTime += high_resolution_clock::now() - reorderStageStart;
+                if (!staged)
+                {
+                    cerr << "failed to copy preserved Design3_G chunk" << endl;
+                    return;
+                }
+                ReorderedChunkNum++;
+                ReorderedStoredSize += item.tmpChunk.deltaFlag == NO_LZ4
+                    ? item.tmpChunk.chunkSize
+                    : item.tmpChunk.saveSize;
+
+                const auto reorderWriteStart = high_resolution_clock::now();
+                const bool committed = offline_dataWrite_->Commit_Staged_Chunks(chunkID);
+                ReorderWriteTime += high_resolution_clock::now() - reorderWriteStart;
+                if (!committed)
                 {
                     cerr << "failed to copy preserved Design3_G chunk" << endl;
                     return;
@@ -247,9 +266,9 @@ void Design3_G::ProcessTrace()
                     tmpChunk.deltaFlag = DELTA;
                     tmpChunk.basechunkID = RestoreBasechunk.chunkID;
 
-                    const double treeInsertThreshold =
-                        ComputeTreeInsertThreshold(offline_dataWrite_->chunklist, tmpChunk.basechunkID);
-                    if (static_cast<double>(tmpChunk.saveSize) >= treeInsertThreshold)
+                    if (!selectiveTreeExpansionEnabled_ ||
+                        static_cast<double>(tmpChunk.saveSize) >=
+                            ComputeTreeInsertThreshold(offline_dataWrite_->chunklist, tmpChunk.basechunkID))
                     {
                         if (offline_dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID < 0)
                         {
