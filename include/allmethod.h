@@ -40,6 +40,7 @@
 #include "Thread/design3_D.h"
 #include "Thread/design3_G.h"
 #include "Thread/design3_GT.h"
+#include "Thread/design3_A.h"
 #include "Thread/design3_S.h"
 #include "Thread/greedy.h"
 #endif

@@ -377,7 +377,9 @@ enum OFFLINE_TYPE
     Design3_D_,
     Design3_Random_,
     // Global-order variant without selective tree expansion.
-    Design3_GT_
+    Design3_GT_,
+    // Fix search starts at the nearest lossless ancestor in group ownership.
+    Design3_A_
 };
 enum DELTA_TYPE
 {

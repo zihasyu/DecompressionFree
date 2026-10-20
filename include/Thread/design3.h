@@ -33,13 +33,15 @@ private:
     uint8_t *basechunk_ptr_cache = nullptr;
     ChunkBufferPool<MAX_CHUNK_SIZE, 1024> chunkCache_;
     bool randomCandidateSelection_ = false;
+    bool fixedLosslessRootSearch_ = false;
     // chunkID -> number of actual xdelta trials performed by full Design3.
     // The random baseline replays this per-chunk budget.
     std::unordered_map<uint64_t, uint64_t> trialBudget_;
     uint64_t randomTrialCount_ = 0;
 
 public:
-    explicit Design3(bool randomCandidateSelection = false);
+    explicit Design3(bool randomCandidateSelection = false,
+                     bool fixedLosslessRootSearch = false);
     ~Design3();
     // Chunks below boundary were emitted by the preceding offline generation.
     // They are copied from that generation, while later chunks are read from

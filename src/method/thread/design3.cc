@@ -30,10 +30,11 @@ double ComputeTreeInsertThreshold(const std::vector<Chunk_t> &chunklist, int bas
 }
 } // namespace
 
-Design3::Design3(bool randomCandidateSelection)
+Design3::Design3(bool randomCandidateSelection, bool fixedLosslessRootSearch)
 // : chunkCache(1024) // 在构造函数初始化列表中初始化缓存容量
 {
     randomCandidateSelection_ = randomCandidateSelection;
+    fixedLosslessRootSearch_ = fixedLosslessRootSearch;
     // cout << " Chunk_t is " << sizeof(Chunk_t) << " Chunk_t_ori is " << sizeof(Chunk_t_odess) << " <super_feature_t, unordered_set<string>> is " << sizeof(super_feature_t);
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
     mdCtx = EVP_MD_CTX_new();
@@ -122,6 +123,18 @@ void Design3::ProcessTrace()
     {
         sortedRootChunkMap.insert(pair);
         logicalRootMap[pair.first] = pair.first;
+    }
+
+    // A root that appears in another entry's value is nested under that
+    // entry. This relation is independent of the actual compression base.
+    std::unordered_map<uint64_t, uint64_t> parentEntryRoot;
+    for (const auto &[entryRoot, chunkIds] : *rootChunkMap)
+    {
+        for (uint64_t cid : chunkIds)
+        {
+            if (cid != entryRoot)
+                parentEntryRoot[cid] = entryRoot;
+        }
     }
 
     // 恢复线程
@@ -249,6 +262,48 @@ void Design3::ProcessTrace()
                               {
         RestoredChunk3 incoming;
         vector<RestoredChunk3> groupChunks;
+        std::unordered_set<uint64_t> materializedChunkIds;
+        std::unordered_map<uint64_t, uint64_t> losslessEntryRootCache;
+        auto findLosslessEntryRoot = [&](uint64_t initialRootId) -> uint64_t {
+            auto cached = losslessEntryRootCache.find(initialRootId);
+            if (cached != losslessEntryRootCache.end())
+                return cached->second;
+
+            std::unordered_set<uint64_t> visited;
+            uint64_t candidate = initialRootId;
+            while (visited.insert(candidate).second)
+            {
+                const Chunk_t *meta = nullptr;
+                Chunk_t metaCopy{};
+                if (candidate < previousOfflineChunkBoundary_ &&
+                    previousOfflineDataWrite_ != nullptr)
+                {
+                    metaCopy = previousOfflineDataWrite_->Get_Chunk_MetaInfo(candidate);
+                    meta = &metaCopy;
+                }
+                else if (materializedChunkIds.count(candidate) != 0)
+                {
+                    metaCopy = offline_dataWrite_->Get_Chunk_MetaInfo(candidate);
+                    meta = &metaCopy;
+                }
+
+                if (meta != nullptr && meta->basechunkID < 0)
+                {
+                    losslessEntryRootCache[initialRootId] = candidate;
+                    return candidate;
+                }
+
+                auto parent = parentEntryRoot.find(candidate);
+                if (parent == parentEntryRoot.end())
+                {
+                    losslessEntryRootCache[initialRootId] = static_cast<uint64_t>(-1);
+                    return static_cast<uint64_t>(-1);
+                }
+                candidate = parent->second;
+            }
+            losslessEntryRootCache[initialRootId] = static_cast<uint64_t>(-1);
+            return static_cast<uint64_t>(-1);
+        };
         while (chunkQueue.pop(incoming))
         {
             groupChunks.push_back(std::move(incoming));
@@ -273,6 +328,7 @@ void Design3::ProcessTrace()
                 }
                 ReorderStageTime += high_resolution_clock::now() - reorderStageStart;
                 stagedChunkIDs.push_back(item.tmpChunk.chunkID);
+                materializedChunkIds.insert(item.tmpChunk.chunkID);
                 ReorderedChunkNum++;
                 ReorderedStoredSize += item.tmpChunk.deltaFlag == NO_LZ4
                     ? item.tmpChunk.chunkSize
@@ -308,11 +364,12 @@ void Design3::ProcessTrace()
                 continue;
             uint64_t rootId = item.rootId;
             uint64_t cid = item.cid;
-            uint64_t basechunkid = logicalRootMap[item.initialRootId];
+            uint64_t basechunkid = fixedLosslessRootSearch_
+                ? findLosslessEntryRoot(item.initialRootId)
+                : logicalRootMap[item.initialRootId];
             if (cid == rootId)
                     basechunkid = -1;
             Chunk_t &tmpChunk = item.tmpChunk;
-            uint64_t initialRootId = item.initialRootId;
 
             if (basechunkid != -1)
             {
@@ -345,6 +402,7 @@ void Design3::ProcessTrace()
                         ? tmpChunk.chunkPtr : lz4ChunkBuffer;
                     offline_dataWrite_->Stage_Chunk(tmpChunk, payload);
                     stagedChunkIDs.push_back(tmpChunk.chunkID);
+                    materializedChunkIds.insert(tmpChunk.chunkID);
                 }
                 else
                 {
@@ -374,6 +432,7 @@ void Design3::ProcessTrace()
 
                     offline_dataWrite_->Stage_Chunk(tmpChunk, tmpChunk.chunkPtr);
                     stagedChunkIDs.push_back(tmpChunk.chunkID);
+                    materializedChunkIds.insert(tmpChunk.chunkID);
                 }
             }
             else
@@ -398,6 +457,7 @@ void Design3::ProcessTrace()
                     ? tmpChunk.chunkPtr : lz4ChunkBuffer;
                 offline_dataWrite_->Stage_Chunk(tmpChunk, payload);
                 stagedChunkIDs.push_back(tmpChunk.chunkID);
+                materializedChunkIds.insert(tmpChunk.chunkID);
             }
 
             uniquechunkNum++;
@@ -416,7 +476,7 @@ void Design3::ProcessTrace()
     restoreThread.join();
     processThread.join();
 
-    if (!randomCandidateSelection_)
+    if (!randomCandidateSelection_ && !fixedLosslessRootSearch_)
     {
         WriteTrialBudget();
         uint64_t totalTrials = 0;
@@ -424,9 +484,16 @@ void Design3::ProcessTrace()
             totalTrials += trials;
         cout << "Design3 selection xdelta trials: " << totalTrials << endl;
     }
-    else
+    else if (randomCandidateSelection_)
     {
         cout << "Design3-Random selection xdelta trials: " << randomTrialCount_ << endl;
+    }
+    else
+    {
+        uint64_t totalTrials = 0;
+        for (const auto &[chunkID, trials] : trialBudget_)
+            totalTrials += trials;
+        cout << "Design3-A selection xdelta trials: " << totalTrials << endl;
     }
 
     cout << "lru cache hit rate: " << (double)cacheHitCount / (double)cacheAccessCount << " cacheHitCount " << cacheHitCount << " cacheAccessCount " << cacheAccessCount << endl;
@@ -465,7 +532,8 @@ void Design3::StatsHit(uint64_t FatherID, uint64_t HitID, uint64_t BasechunkID)
         offline_dataWrite_->chunklist[FatherID].BeforeFit = HitID;
         offline_dataWrite_->chunklist[FatherID].HitCount = 1;
     }
-    if (offline_dataWrite_->chunklist[FatherID].HitCount > 4)
+    if (!fixedLosslessRootSearch_ &&
+        offline_dataWrite_->chunklist[FatherID].HitCount > 4)
     {
         if (BasechunkID == FatherID)
             logicalRootMap[BasechunkID] = HitID;

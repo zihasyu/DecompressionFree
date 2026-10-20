@@ -273,6 +273,7 @@ int main(int argc, char **argv)
         case Design3_S_: return new Design3_S();
         case Design3_G_: return new Design3_G();
         case Design3_GT_: return new Design3_GT();
+        case Design3_A_: return new Design3_A();
         case Design3_D_: return new Design3_D();
         case Design3_Random_: return new Design3_Random();
         default: return nullptr;
