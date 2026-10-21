@@ -460,6 +460,17 @@ void Design3::ProcessTrace()
                 materializedChunkIds.insert(tmpChunk.chunkID);
             }
 
+            // The entry root is deliberately stored losslessly.  The initial
+            // root lookup above happens before this chunk is staged, so it can
+            // temporarily cache "not found".  Replace that result now that
+            // the root's staged payload and metadata are available; following
+            // chunks in this entry can then use it as their lossless base.
+            if (fixedLosslessRootSearch_ && cid == rootId &&
+                materializedChunkIds.count(cid) != 0)
+            {
+                losslessEntryRootCache[item.initialRootId] = cid;
+            }
+
             uniquechunkNum++;
             uniquechunkSize += tmpChunk.saveSize;
             logicalchunkNum++;
