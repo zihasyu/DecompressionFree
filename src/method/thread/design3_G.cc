@@ -137,6 +137,11 @@ void Design3_G::ProcessTrace()
         const size_t totalChunkNum = dataWrite_->chunklist.size();
         for (uint64_t cid = 0; cid < totalChunkNum; cid++)
         {
+            // In append mode, old chunks and their tree links already exist
+            // in the reused generation; only new raw chunks need processing.
+            if (appendOnly_ && cid < previousOfflineChunkBoundary_)
+                continue;
+
             auto rootIt = chunkToRoot.find(cid);
             if (rootIt == chunkToRoot.end())
                 continue; // 跳过不存在的 chunk（空洞）

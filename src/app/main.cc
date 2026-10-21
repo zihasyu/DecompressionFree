@@ -313,9 +313,10 @@ int main(int argc, char **argv)
                            CmdLine.reorderInterval == 1 ||
                            batchNumber % CmdLine.reorderInterval == 0 ||
                            completedVersions == CmdLine.backupNum;
-        if (!fullReorder && dynamic_cast<Design3 *>(batchMethod) == nullptr)
+        if (!fullReorder && dynamic_cast<Design3 *>(batchMethod) == nullptr &&
+            dynamic_cast<Design3_G *>(batchMethod) == nullptr)
         {
-            cout << "Append-only batches currently use Design3; forcing a full reorder for this method" << endl;
+            cout << "Append-only batches are unsupported by this method; forcing a full reorder" << endl;
             fullReorder = true;
         }
 
@@ -333,7 +334,10 @@ int main(int argc, char **argv)
             else if (auto *method = dynamic_cast<Design3_D *>(batchMethod))
                 method->SetPreviousOfflineSource(previousSource, previousOfflineChunkBoundary);
             else if (auto *method = dynamic_cast<Design3_G *>(batchMethod))
+            {
                 method->SetPreviousOfflineSource(previousSource, previousOfflineChunkBoundary);
+                method->SetAppendOnly(!fullReorder);
+            }
             else if (auto *method = dynamic_cast<Design3_S *>(batchMethod))
                 method->SetPreviousOfflineSource(previousSource, previousOfflineChunkBoundary);
             else

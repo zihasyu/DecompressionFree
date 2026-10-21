@@ -409,10 +409,10 @@ void Design3::ProcessTrace()
                     tmpChunk.deltaFlag = DELTA;
                     tmpChunk.basechunkID = RestoreBasechunk.chunkID;
 
-                    const double treeInsertThreshold =
-                        ComputeTreeInsertThreshold(offline_dataWrite_->chunklist, tmpChunk.basechunkID);
-                    if (static_cast<double>(tmpChunk.saveSize) >= treeInsertThreshold)
-                    {
+                    // const double treeInsertThreshold =
+                    //     ComputeTreeInsertThreshold(offline_dataWrite_->chunklist, tmpChunk.basechunkID);
+                    // if (static_cast<double>(tmpChunk.saveSize) >= treeInsertThreshold)
+                    // {
                         if (offline_dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID < 0)
                         {
                             offline_dataWrite_->chunklist[tmpChunk.basechunkID].FirstChildID = tmpChunk.chunkID;
@@ -424,7 +424,7 @@ void Design3::ProcessTrace()
                                 broID = offline_dataWrite_->chunklist[broID].FirstBroID;
                             offline_dataWrite_->chunklist[broID].FirstBroID = tmpChunk.chunkID;
                         }
-                    }
+                    // }
 
                     memcpy(tmpChunk.chunkPtr, deltachunk, tmpChunk.saveSize);
                     StatsDelta(tmpChunk);

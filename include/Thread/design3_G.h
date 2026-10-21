@@ -41,6 +41,7 @@ public:
         previousOfflineDataWrite_ = source;
         previousOfflineChunkBoundary_ = boundary;
     }
+    void SetAppendOnly(bool appendOnly) { appendOnly_ = appendOnly; }
     void ProcessTrace();
     uint8_t *xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t targetChunkbuffer_size, const uint8_t *baseChunkBuffer, size_t baseChunkBuffer_size, size_t *deltaChunkBuffer_size, uint8_t *tmpbuffer);
     Chunk_t xd3_recursive_restore_BL_time(uint64_t BasechunkId);
@@ -50,5 +51,6 @@ public:
 private:
     dataWrite *previousOfflineDataWrite_ = nullptr;
     uint64_t previousOfflineChunkBoundary_ = 0;
+    bool appendOnly_ = false;
 };
 #endif
