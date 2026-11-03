@@ -33,6 +33,38 @@ Odess::~Odess()
     }
 }
 
+bool Odess::IsLosslessGroupRoot(uint64_t rootID) const
+{
+    // New inline chunks have not gone through delta compression yet and are
+    // stored raw. Historical roots use the completed offline generation's
+    // actual storage type.
+    if (offlineIndexSource_ == nullptr || rootID >= offlineIndexBoundary_)
+        return true;
+    if (rootID >= offlineIndexSource_->chunklist.size())
+        return false;
+    return offlineIndexSource_->chunklist[rootID].deltaFlag != DELTA;
+}
+
+void Odess::RefreshGroupIndexCounts(dataWrite *offlineSource, uint64_t onlineChunkBoundary)
+{
+    GroupIndexEntryCount = 0;
+    GroupIndexReferenceCount = 0;
+    if (rootChunkMap != nullptr && offlineSource != nullptr)
+    {
+        for (const auto &[rootID, chunkIDs] : *rootChunkMap)
+        {
+            if (rootID < offlineSource->chunklist.size() &&
+                offlineSource->chunklist[rootID].deltaFlag != DELTA)
+            {
+                ++GroupIndexEntryCount;
+                GroupIndexReferenceCount += chunkIDs.size();
+            }
+        }
+    }
+    offlineIndexSource_ = offlineSource;
+    offlineIndexBoundary_ = onlineChunkBoundary;
+}
+
 void Odess::ProcessTrace()
 {
     string tmpChunkHash;
@@ -101,10 +133,16 @@ void Odess::ProcessTrace()
                     uniquechunkNum++;
                     uniquechunkSize += tmpChunk.saveSize;
 
-                    if (treeBaseChunkid == -1)
-                        (*rootChunkMap)[tmpChunk.chunkID].push_back(tmpChunk.chunkID);
-                    else
-                        (*rootChunkMap)[treeBaseChunkid].push_back(tmpChunk.chunkID);
+                    const uint64_t groupRootID = treeBaseChunkid == -1
+                        ? tmpChunk.chunkID : treeBaseChunkid;
+                    auto [groupIt, insertedGroup] = rootChunkMap->try_emplace(groupRootID);
+                    if (IsLosslessGroupRoot(groupRootID))
+                    {
+                        if (insertedGroup)
+                            ++GroupIndexEntryCount;
+                        ++GroupIndexReferenceCount;
+                    }
+                    groupIt->second.push_back(tmpChunk.chunkID);
 
                     if (tmpChunk.HeaderFlag == 0)
                         dataWrite_->Recipe_Insert(tmpChunk.chunkID);

@@ -4,6 +4,7 @@
 #include <sstream>
 #include <chrono>
 #include <filesystem>
+#include <algorithm>
 
 #include "../../include/allmethod.h"
 
@@ -253,6 +254,9 @@ int main(int argc, char **argv)
     absMethodObj->AcceptThreshold = CmdLine.AcceptThreshold;
     absMethodObj->IsFalseFilter = CmdLine.IsFalseFilter;
     absMethodObj->TurnOnNameHash = CmdLine.TurnOnNameHash;
+    const bool standaloneOdess = CmdLine.compressionMethod == ODESS && CmdLine.offlineMethod < 0;
+    const bool standaloneIdeal = CmdLine.compressionMethod == All_Greedy && CmdLine.offlineMethod < 0;
+    absMethodObj->UseFieldIndexEstimate = CmdLine.offlineMethod >= 0 || standaloneOdess || standaloneIdeal;
     chunkerObj->MULTI_HEADER_CHUNK = CmdLine.MultiHeaderChunk;
 
     auto CreateOfflineMethod = [&]() -> AbsMethod *
@@ -285,6 +289,43 @@ int main(int argc, char **argv)
     // Sum the same per-version online wall-clock time reported by
     // Version_log(), then emit it when this batch enters offline processing.
     double currentBatchOnlineSeconds = 0.0;
+
+    // During an online batch, historical chunks are represented by the last
+    // offline generation while chunks added since that generation are still
+    // raw in the inline containers. Count exactly those payload bytes to get
+    // the physical size of the currently active representation.
+    auto GetOnlineStatePhysicalBytes = [&]() -> uint64_t
+    {
+        uint64_t physicalBytes = OfflineAbsMethodObj
+            ? OfflineAbsMethodObj->uniquechunkSize
+            : 0;
+        const auto &chunks = absMethodObj->dataWrite_->chunklist;
+        const size_t firstNewChunk = std::min<size_t>(previousOfflineChunkBoundary, chunks.size());
+        for (size_t id = firstNewChunk; id < chunks.size(); ++id)
+        {
+            const Chunk_t &chunk = chunks[id];
+            physicalBytes += chunk.deltaFlag == NO_DELTA
+                ? chunk.chunkSize
+                : chunk.saveSize;
+        }
+        return physicalBytes;
+    };
+
+    auto UpdateIndexEntryCounts = [](AbsMethod *target, const AbsMethod *online)
+    {
+        target->FPIndexEntryCount = online->FPindex.size();
+        target->FeatureIndexEntryCount = online->table.Tree_SFIndex.size();
+        if (const auto *odess = dynamic_cast<const Odess *>(online))
+        {
+            target->GroupIndexEntryCount = odess->GroupIndexEntryCount;
+            target->GroupIndexReferenceCount = odess->GroupIndexReferenceCount;
+        }
+        else
+        {
+            target->GroupIndexEntryCount = online->rootChunkMap ? online->rootChunkMap->size() : 0;
+            target->GroupIndexReferenceCount = online->rootChunkMap ? online->uniquechunkNum : 0;
+        }
+    };
 
     auto RunOfflineBatch = [&](int batchNumber, int completedVersions)
     {
@@ -399,6 +440,15 @@ int main(int argc, char **argv)
         cout << "Batch " << batchNumber << " completed after " << batchSeconds << " s" << endl;
         cout << "Versions included: " << completedVersions << endl;
         cout << "RestoreChunkTime: " << batchMethod->RestoreChunkTime.count() << "s" << endl;
+        if (CmdLine.offlineMethod == Design3_)
+        {
+            const auto baseReconstructionTime = batchMethod->IOTime +
+                                                batchMethod->DecodeTime +
+                                                batchMethod->RestoreMemcpyTime +
+                                                batchMethod->BestBaseCopyTime;
+            cout << "Base Reconstruction Time: " << baseReconstructionTime.count() << "s" << endl;
+            cout << "Encode Trial Time: " << batchMethod->EncodeTime.count() << "s" << endl;
+        }
         cout << "Reordered chunks: " << batchMethod->ReorderedChunkNum
              << ", stored bytes: " << batchMethod->ReorderedStoredSize << endl;
         cout << "Reorder read time: " << batchMethod->ReorderReadTime.count() << "s" << endl;
@@ -412,7 +462,22 @@ int main(int argc, char **argv)
                                       batchMethod->ReorderFinalFlushTime;
         cout << "Reorder total operation time: " << reorderTotalTime.count() << "s" << endl;
         cout << "Offline Compression ratio " << (double)absMethodObj->logicalchunkSize / (double)batchMethod->uniquechunkSize << endl;
+        cout << "Overall DRR after offline batch: "
+             << (batchMethod->uniquechunkSize > 0
+                     ? (double)absMethodObj->logicalchunkSize / (double)batchMethod->uniquechunkSize
+                     : 0.0)
+             << " (logical bytes / stored payload bytes)" << endl;
+        cout << "Overall DCE after offline batch: ";
+        if (batchMethod->deltachunkNum > 0)
+            cout << batchMethod->DCESum / (double)batchMethod->deltachunkNum << endl;
+        else
+            cout << "N/A (no delta chunks)" << endl;
         cout << "Offline Throughput " << (double)absMethodObj->logicalchunkSize / batchSeconds / 1024 / 1024 << " MiB/s" << endl;
+
+        if (auto *odess = dynamic_cast<Odess *>(absMethodObj))
+            odess->RefreshGroupIndexCounts(
+                batchMethod->offline_dataWrite_, absMethodObj->dataWrite_->chunklist.size());
+        UpdateIndexEntryCounts(batchMethod, absMethodObj);
         batchMethod->PrintOffline(batchSeconds, CmdLine);
 
         // A full reorder produces a self-contained new generation, so old
@@ -494,6 +559,36 @@ int main(int argc, char **argv)
             absMethodObj->Version_log(TimeTmp, chunkerObj->ChunkTime.count());
 
         currentBatchOnlineSeconds += onlineVersionSeconds;
+
+        if (CmdLine.offlineMethod >= 0)
+        {
+            UpdateIndexEntryCounts(absMethodObj, absMethodObj);
+            absMethodObj->PrintIndexOverhead(
+                cout, "Index estimate after online backup " + to_string(i + 1));
+            const uint64_t onlinePhysicalBytes = GetOnlineStatePhysicalBytes();
+            cout << "Overall DRR after online version " << (i + 1) << ": "
+                 << (onlinePhysicalBytes > 0
+                         ? (double)absMethodObj->logicalchunkSize / (double)onlinePhysicalBytes
+                         : 0.0)
+                 << " (logical bytes / active stored payload bytes)" << endl;
+            cout << "Overall DCE after online version " << (i + 1) << ": ";
+            if (OfflineAbsMethodObj && OfflineAbsMethodObj->deltachunkNum > 0)
+                cout << OfflineAbsMethodObj->DCESum /
+                           (double)OfflineAbsMethodObj->deltachunkNum
+                     << " (over offline-compressed delta chunks; inline raw chunks excluded)" << endl;
+            else
+                cout << "N/A (no offline-compressed delta chunks yet)" << endl;
+        }
+        else if (standaloneOdess)
+        {
+            absMethodObj->PrintOdessIndexOverhead(
+                cout, "Index estimate after online backup " + to_string(i + 1));
+        }
+        else if (standaloneIdeal)
+        {
+            absMethodObj->PrintIdealIndexOverhead(
+                cout, "Index estimate after online backup " + to_string(i + 1));
+        }
 
         if (CmdLine.offlineMethod >= 0 &&
             ((i + 1) % CmdLine.batchSize == 0 || i + 1 == CmdLine.backupNum))

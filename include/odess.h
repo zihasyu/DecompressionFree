@@ -12,6 +12,10 @@ private:
     string myName_ = "Odess";
     int PrevDedupChunkid = -1;
     int Version = 0;
+    dataWrite *offlineIndexSource_ = nullptr;
+    uint64_t offlineIndexBoundary_ = 0;
+
+    bool IsLosslessGroupRoot(uint64_t rootID) const;
 
 public:
     int offlineMethod = -1;
@@ -19,5 +23,6 @@ public:
     Odess();
     ~Odess();
     void ProcessTrace();
+    void RefreshGroupIndexCounts(dataWrite *offlineSource, uint64_t onlineChunkBoundary);
 };
 #endif

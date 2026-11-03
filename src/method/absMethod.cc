@@ -937,6 +937,107 @@ void AbsMethod::PrintChunkInfo(double time, CommandLine_t CmdLine)
     return;
 }
 
+void AbsMethod::PrintIndexOverhead(std::ostream &out, const std::string &label) const
+{
+    constexpr uint64_t fingerprintBytes = CHUNK_HASH_SIZE;
+    constexpr uint64_t addressBytes = 2 * sizeof(uint64_t); // container ID + offset
+    // The two tree links and last-hit node are modeled as fingerprint refs.
+    constexpr uint64_t fpValueBytes = addressBytes + sizeof(uint64_t) + sizeof(uint64_t) +
+                                     3 * fingerprintBytes + sizeof(uint8_t) +
+                                     fingerprintBytes;
+    constexpr uint64_t fpEntryBytes = fingerprintBytes + fpValueBytes;
+    constexpr uint64_t featureEntryBytes = sizeof(super_feature_t) + fingerprintBytes;
+    const uint64_t fpIndexBytes = FPIndexEntryCount * fpEntryBytes;
+    const uint64_t featureIndexBytes = FeatureIndexEntryCount * featureEntryBytes;
+    const uint64_t groupIndexBytes = GroupIndexEntryCount * fingerprintBytes +
+                                     GroupIndexReferenceCount * fingerprintBytes;
+    const uint64_t estimatedIndexBytes = fpIndexBytes + featureIndexBytes + groupIndexBytes;
+
+    out << "-----------------" << label << "-----------------" << endl;
+    out << "FP index entries: " << FPIndexEntryCount << endl;
+    out << "Feature index entries: " << FeatureIndexEntryCount << endl;
+    out << "Group index entries: " << GroupIndexEntryCount << endl;
+    out << "Group index fingerprint references: " << GroupIndexReferenceCount << endl;
+    out << "FP Index Overhead (field estimate): " << (double)fpIndexBytes / 1024 / 1024 << "MiB"
+        << " (" << fpEntryBytes << " bytes/entry)" << endl;
+    out << "Feature Index Overhead (field estimate): " << (double)featureIndexBytes / 1024 / 1024 << "MiB"
+        << " (" << featureEntryBytes << " bytes/entry)" << endl;
+    out << "Group Index Overhead (field estimate): " << (double)groupIndexBytes / 1024 / 1024 << "MiB"
+        << " (" << fingerprintBytes << " bytes/fingerprint)" << endl;
+    out << "Index Overhead (field estimate): " << (double)estimatedIndexBytes / 1024 / 1024 << "MiB" << endl;
+    out << "Index estimate excludes hash-table buckets/nodes, vector capacity, allocator and alignment overhead." << endl;
+}
+
+void AbsMethod::PrintOdessIndexOverhead(std::ostream &out, const std::string &label) const
+{
+    constexpr uint64_t fingerprintBytes = CHUNK_HASH_SIZE;
+    constexpr uint64_t addressBytes = 2 * sizeof(uint64_t); // container ID + offset
+    constexpr uint64_t fpValueBytes = addressBytes + sizeof(uint64_t) +
+                                     sizeof(uint64_t) + sizeof(uint8_t) +
+                                     fingerprintBytes;
+    constexpr uint64_t fpEntryBytes = fingerprintBytes + fpValueBytes;
+    // Use the same per-entry feature model as Rebase: 8-byte feature key and
+    // 32-byte fingerprint value. Odess stores candidate vectors behind keys;
+    // their references are intentionally outside this field estimate.
+    constexpr uint64_t featureEntryBytes = sizeof(super_feature_t) + fingerprintBytes;
+    const uint64_t fpEntries = FPindex.size();
+    const uint64_t featureEntries = table.SFindex.size();
+    const uint64_t fpIndexBytes = fpEntries * fpEntryBytes;
+    const uint64_t featureIndexBytes = featureEntries * featureEntryBytes;
+
+    out << "-----------------" << label << "-----------------" << endl;
+    out << "FP index entries: " << fpEntries << endl;
+    out << "Feature index entries: " << featureEntries << endl;
+    out << "FP Index Overhead (Odess field estimate): "
+        << static_cast<double>(fpIndexBytes) / 1024 / 1024 << "MiB"
+        << " (" << fpEntryBytes << " bytes/entry)" << endl;
+    out << "Feature Index Overhead (Rebase feature model): "
+        << static_cast<double>(featureIndexBytes) / 1024 / 1024 << "MiB"
+        << " (" << featureEntryBytes << " bytes/entry)" << endl;
+    out << "Index Overhead (FP + Feature; group index excluded): "
+        << static_cast<double>(fpIndexBytes + featureIndexBytes) / 1024 / 1024 << "MiB" << endl;
+    out << "Estimate excludes SF candidate-vector references, hash-table buckets/nodes, "
+           "vector capacity, allocator and alignment overhead." << endl;
+}
+
+void AbsMethod::PrintIdealIndexOverhead(std::ostream &out, const std::string &label) const
+{
+    constexpr uint64_t fingerprintBytes = CHUNK_HASH_SIZE;
+    constexpr uint64_t featureBytes = sizeof(super_feature_t);
+    constexpr uint64_t addressBytes = 2 * sizeof(uint64_t); // container ID + offset
+    constexpr uint64_t fpValueBytes = addressBytes + sizeof(uint64_t) +
+                                     sizeof(uint64_t) + sizeof(uint8_t) +
+                                     fingerprintBytes;
+    constexpr uint64_t fpEntryBytes = fingerprintBytes + fpValueBytes;
+    const uint64_t fpEntries = FPindex.size();
+    const uint64_t featureEntries = table.SFindex.size();
+    uint64_t candidateReferences = 0;
+    for (const auto &[feature, chunkIds] : table.SFindex)
+    {
+        (void)feature;
+        candidateReferences += chunkIds.size();
+    }
+
+    const uint64_t fpIndexBytes = fpEntries * fpEntryBytes;
+    const uint64_t featureIndexBytes = featureEntries * featureBytes +
+                                       candidateReferences * fingerprintBytes;
+
+    out << "-----------------" << label << "-----------------" << endl;
+    out << "FP index entries: " << fpEntries << endl;
+    out << "Feature index entries: " << featureEntries << endl;
+    out << "Feature index fingerprint references: " << candidateReferences << endl;
+    out << "FP Index Overhead (shared M3/M14 field estimate): "
+        << static_cast<double>(fpIndexBytes) / 1024 / 1024 << "MiB"
+        << " (" << fpEntryBytes << " bytes/entry)" << endl;
+    out << "Feature Index Overhead (feature keys + fingerprint lists): "
+        << static_cast<double>(featureIndexBytes) / 1024 / 1024 << "MiB"
+        << " (" << featureBytes << " bytes/key + " << fingerprintBytes
+        << " bytes/fingerprint reference)" << endl;
+    out << "Index Overhead (FP + Feature; group index excluded): "
+        << static_cast<double>(fpIndexBytes + featureIndexBytes) / 1024 / 1024 << "MiB" << endl;
+    out << "Estimate excludes hash-table buckets/nodes, vector capacity, allocator and alignment overhead." << endl;
+}
+
 void AbsMethod::PrintOffline(double time, CommandLine_t CmdLine)
 {
     ofstream out;
@@ -963,6 +1064,14 @@ void AbsMethod::PrintOffline(double time, CommandLine_t CmdLine)
     out << "delta chunk size: " << deltachunkSize << endl;
     out << "-----------------METRICS-------------------------" << endl;
     out << "Overall Compression Ratio: " << (double)logicalchunkSize / (double)uniquechunkSize << endl;
+    out << "Overall DRR after offline: "
+        << (uniquechunkSize > 0 ? (double)logicalchunkSize / (double)uniquechunkSize : 0.0)
+        << " (logical bytes / stored payload bytes)" << endl;
+    out << "Overall DCE after offline: "
+        << (deltachunkNum > 0 ? DCESum / (double)deltachunkNum : 0.0);
+    if (deltachunkNum == 0)
+        out << " (N/A: no delta chunks)";
+    out << endl;
     out << "DCC: " << (double)deltachunkNum / (double)uniquechunkNum << endl;
     out << "DCR: " << (double)deltachunkOriSize / (double)deltachunkSize << endl;
     out << "DCE: " << DCESum / (double)deltachunkNum << endl;
@@ -979,9 +1088,7 @@ void AbsMethod::PrintOffline(double time, CommandLine_t CmdLine)
     out << "Encode Time: " << EncodeTime.count() << "s" << endl;
     out << "-----------------OverHead--------------------------" << endl;
     out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
-    out << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
-    out << "FP Overhead: " << (double)(uniquechunkNum * 80 + uniquechunkNum * 32) / 1024 / 1024 << "MiB" << endl;
-    out << "SF Overhead: " << (double)(basechunkNum * 120) / 1024 / 1024 << "MiB" << endl; //(3*(8+32)=120B)
+    PrintIndexOverhead(out, "Index estimate after offline batch");
     out << "Recipe Overhead: " << (double)logicalchunkNum * 8 / 1024 / 1024 << "MiB" << endl;
     out << "SF number: " << SFnum << endl;
     out << "-----------------Reduct----------------------------" << endl;
@@ -1121,9 +1228,12 @@ void AbsMethod::Version_log(double time)
     WriteSearchBreakdown(cout, *this, time);
     cout << "-----------------OverHead--------------------------" << endl;
     // out << "deltaCompressionTime: " << deltaCompressionTime.count() << "s" << endl;
-    cout << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
-    cout << "FP Overhead: " << (double)(uniquechunkNum * 80 + uniquechunkNum * 32) / 1024 / 1024 << "MiB" << endl;
-    cout << "SF Overhead: " << (double)(basechunkNum * 120) / 1024 / 1024 << "MiB" << endl; //(3*(8+32)=120B)
+    if (!UseFieldIndexEstimate)
+    {
+        cout << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
+        cout << "FP Overhead: " << (double)(uniquechunkNum * 80 + uniquechunkNum * 32) / 1024 / 1024 << "MiB" << endl;
+        cout << "SF Overhead: " << (double)(basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
+    }
     cout << "Recipe Overhead: " << (double)logicalchunkNum * 8 / 1024 / 1024 << "MiB" << endl;
     cout << "SF number: " << SFnum << endl;
     cout << "-----------------END-------------------------------" << endl;
@@ -1292,9 +1402,12 @@ void AbsMethod::Version_log(double time, double chunktime)
     cout << "Lz4 Compression Time: " << lz4CompressionTime.count() << "s" << endl;
     cout << "Delta Compression Time: " << deltaCompressionTime.count() << "s" << endl;
     cout << "-----------------OVERHEAD--------------------------" << endl;
-    cout << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
-    cout << "FP Overhead: " << (double)(uniquechunkNum * 80 + uniquechunkNum * 32) / 1024 / 1024 << "MiB" << endl;
-    cout << "SF Overhead: " << (double)(basechunkNum * 120) / 1024 / 1024 << "MiB" << endl; //(3*(8+32)=120B)
+    if (!UseFieldIndexEstimate)
+    {
+        cout << "Index Overhead: " << (double)(uniquechunkNum * 112 + basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
+        cout << "FP Overhead: " << (double)(uniquechunkNum * 80 + uniquechunkNum * 32) / 1024 / 1024 << "MiB" << endl;
+        cout << "SF Overhead: " << (double)(basechunkNum * 120) / 1024 / 1024 << "MiB" << endl;
+    }
     cout << "Recipe Overhead: " << (double)logicalchunkNum * 8 / 1024 / 1024 << "MiB" << endl;
     cout << "SF number: " << SFnum << endl;
     cout << "-----------------REDUCT----------------------------" << endl;

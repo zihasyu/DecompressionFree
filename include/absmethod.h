@@ -3,6 +3,7 @@
 
 #include <string>
 #include <chrono>
+#include <ostream>
 #include <unordered_map>
 #include "define.h"
 #include "chunker.h"
@@ -67,6 +68,12 @@ public:
     uint64_t finessehit = 0;
     double DCESum = 0;
     uint64_t SFnum = 0;
+    // Entry counts used by the requested field-level index-size estimate.
+    uint64_t FPIndexEntryCount = 0;
+    uint64_t FeatureIndexEntryCount = 0;
+    uint64_t GroupIndexEntryCount = 0;
+    uint64_t GroupIndexReferenceCount = 0;
+    bool UseFieldIndexEstimate = false;
     // SF time statics
     std::chrono::time_point<std::chrono::high_resolution_clock> startSF, endSF;
     std::chrono::duration<double> preSFTime;
@@ -170,6 +177,9 @@ public:
     virtual void PrintChunkInfo(double time, CommandLine_t CmdLine);
     virtual void PrintChunkInfo(double time, CommandLine_t CmdLine, double chunktime);
     virtual void PrintOffline(double time, CommandLine_t CmdLine);
+    void PrintIndexOverhead(std::ostream &out, const std::string &label) const;
+    void PrintOdessIndexOverhead(std::ostream &out, const std::string &label) const;
+    void PrintIdealIndexOverhead(std::ostream &out, const std::string &label) const;
 
     void StatsDelta(Chunk_t &tmpChunk);
     void StatsDeltaFeature(Chunk_t &tmpChunk);
