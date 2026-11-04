@@ -357,7 +357,8 @@ enum METHOD_TYPE
     Tree_Cache2,
     SUBTREE_REDUCTION,
     All_Greedy_LRU,
-    ALL_Greddy_LFU
+    ALL_Greddy_LFU,
+    ODESS_REBASE_NEW_BASE
 };
 enum OFFLINE_TYPE
 {

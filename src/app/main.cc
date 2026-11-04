@@ -152,6 +152,16 @@ int main(int argc, char **argv)
         absMethodObj = new Odess(CmdLine.offlineMethod);
         break;
     }
+    case ODESS_REBASE_NEW_BASE:
+    {
+        if (CmdLine.offlineMethod >= 0)
+        {
+            cerr << "ODESS_REBASE_NEW_BASE is an online-only baseline; omit -o" << endl;
+            return 1;
+        }
+        absMethodObj = new Odess(-1, true);
+        break;
+    }
     case PALANTIR:
     {
         absMethodObj = new Palantir();
@@ -254,7 +264,9 @@ int main(int argc, char **argv)
     absMethodObj->AcceptThreshold = CmdLine.AcceptThreshold;
     absMethodObj->IsFalseFilter = CmdLine.IsFalseFilter;
     absMethodObj->TurnOnNameHash = CmdLine.TurnOnNameHash;
-    const bool standaloneOdess = CmdLine.compressionMethod == ODESS && CmdLine.offlineMethod < 0;
+    const bool standaloneOdess =
+        (CmdLine.compressionMethod == ODESS ||
+         CmdLine.compressionMethod == ODESS_REBASE_NEW_BASE) && CmdLine.offlineMethod < 0;
     const bool standaloneIdeal = CmdLine.compressionMethod == All_Greedy && CmdLine.offlineMethod < 0;
     absMethodObj->UseFieldIndexEstimate = CmdLine.offlineMethod >= 0 || standaloneOdess || standaloneIdeal;
     chunkerObj->MULTI_HEADER_CHUNK = CmdLine.MultiHeaderChunk;
@@ -583,6 +595,9 @@ int main(int argc, char **argv)
         {
             absMethodObj->PrintOdessIndexOverhead(
                 cout, "Index estimate after online backup " + to_string(i + 1));
+            if (const auto *odess = dynamic_cast<const Odess *>(absMethodObj);
+                odess != nullptr && odess->IsPromoteNewBaseBaseline())
+                odess->PrintRebaseStats(cout, i + 1);
         }
         else if (standaloneIdeal)
         {

@@ -109,6 +109,7 @@ public:
     bool Chunk_Insert(Chunk_t chunk, uint8_t *lz4Buffer);
     bool Stage_Chunk(Chunk_t chunk, const uint8_t *payload);
     bool Commit_Staged_Chunks(const vector<uint64_t> &chunkIDs);
+    bool Append_Replacement_Chunk(Chunk_t replacement, const uint8_t *payload);
     int Get_Chunk_Num();
     int Get_Container_Num(Chunk_t chunk);
     Chunk_t Get_Chunk_Info(int id);

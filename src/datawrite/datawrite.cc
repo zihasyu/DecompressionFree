@@ -358,6 +358,27 @@ bool dataWrite::Commit_Staged_Chunks(const vector<uint64_t> &chunkIDs)
     return true;
 }
 
+bool dataWrite::Append_Replacement_Chunk(Chunk_t replacement, const uint8_t *payload)
+{
+    if (payload == nullptr || replacement.chunkID >= chunklist.size())
+        return false;
+
+    const uint64_t storedSize = replacement.deltaFlag == NO_LZ4
+        ? replacement.chunkSize : replacement.saveSize;
+    if (storedSize == 0)
+        return false;
+
+    replacement.chunkPtr = static_cast<uint8_t *>(malloc(storedSize));
+    if (replacement.chunkPtr == nullptr)
+        return false;
+    memcpy(replacement.chunkPtr, payload, storedSize);
+    replacement.loadFromDisk = true;
+
+    // Chunk_Insert appends the new representation and updates the chunk's
+    // active location. The old bytes remain unreachable in their container.
+    return Chunk_Insert(replacement);
+}
+
 void dataWrite::restoreHeaderFile(string fileName)
 {
     string name;

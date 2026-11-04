@@ -2,6 +2,7 @@
 #include "../../include/gear_matrix.h"
 
 #include <cassert>
+#include <algorithm>
 #include <random>
 #include <iostream>
 void FeatureIndexTable::Delete(const string &key)
@@ -336,6 +337,21 @@ void FeatureIndexTable::SF_Insert(const SuperFeatures &superfeatures, const uint
   }
   // return -1 if not found, uint64_t's MAX value
   return;
+}
+
+void FeatureIndexTable::SF_Delete(const SuperFeatures &superfeatures, const uint64_t chunkid)
+{
+  for (int i = 0; i < ODESS_SF_NUM; ++i)
+  {
+    auto it = SFindex.find(superfeatures[i]);
+    if (it == SFindex.end())
+      continue;
+
+    auto &candidates = it->second;
+    candidates.erase(std::remove(candidates.begin(), candidates.end(), chunkid), candidates.end());
+    if (candidates.empty())
+      SFindex.erase(it);
+  }
 }
 void FeatureIndexTable::Log2_SF_Insert(const SuperFeatures &superfeatures, const uint64_t chunkid)
 {

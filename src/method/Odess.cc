@@ -10,8 +10,8 @@ Odess::Odess()
     SFindex = new unordered_map<string, vector<int>>[FINESSE_SF_NUM];
 }
 
-Odess::Odess(int offlineMethod)
-    : offlineMethod(offlineMethod)
+Odess::Odess(int offlineMethod, bool promoteNewBase)
+    : promoteNewBase_(promoteNewBase), offlineMethod(offlineMethod)
 {
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
     mdCtx = EVP_MD_CTX_new();
@@ -65,6 +65,16 @@ void Odess::RefreshGroupIndexCounts(dataWrite *offlineSource, uint64_t onlineChu
     offlineIndexBoundary_ = onlineChunkBoundary;
 }
 
+void Odess::PrintRebaseStats(std::ostream &out, uint64_t backupNumber) const
+{
+    out << "Rebase promotions after online backup " << backupNumber << ": "
+        << rebaseReplacementCount_ << endl;
+    out << "Rebase delta bytes appended: " << rebaseBytesAppended_
+        << ", stale bytes retained: " << rebaseStaleBytesRetained_ << endl;
+    out << "Maximum dependency chain depth: " << maxRebaseChainDepth_ << endl;
+    out << "Append write time: " << rebaseAppendTime_.count() << "s" << endl;
+}
+
 void Odess::ProcessTrace()
 {
     string tmpChunkHash;
@@ -115,6 +125,135 @@ void Odess::ProcessTrace()
                         table.Tree_SF_Insert(superfeature, tmpChunk.chunkID);
                     }
                     basechunkid = table.SF_Find(superfeature);
+                }
+
+                // Rebase baseline: keep every searchable candidate lossless.
+                // When B matches A, store B independently and try to replace
+                // A's payload with delta(A | B), then move the feature entry
+                // from A to B.  B has a larger ID, so this creates a forward
+                // dependency while keeping the graph acyclic.
+                if (promoteNewBase_)
+                {
+                    Chunk_t oldBase;
+                    vector<uint8_t> oldBaseBytes;
+                    uint64_t oldBaseStoredSize = 0;
+                    uint64_t promotedDeltaSize = 0;
+                    bool canPromote = false;
+                    vector<uint8_t> promotedDelta;
+
+                    if (basechunkid != static_cast<uint64_t>(-1))
+                    {
+                        oldBase = dataWrite_->Get_Chunk_Info(basechunkid);
+                        if (oldBase.chunkPtr != nullptr && oldBase.chunkSize > 0)
+                        {
+                            oldBaseBytes.assign(oldBase.chunkPtr,
+                                                oldBase.chunkPtr + oldBase.chunkSize);
+                            oldBaseStoredSize = oldBase.deltaFlag == NO_LZ4
+                                ? oldBase.chunkSize : oldBase.saveSize;
+
+                            size_t encodedSize = 0;
+                            const int encodeResult = xd3_encode_memory(
+                                oldBaseBytes.data(), oldBaseBytes.size(),
+                                tmpChunk.chunkPtr, tmpChunk.chunkSize,
+                                deltaMaxChunkBuffer, &encodedSize,
+                                CONTAINER_MAX_SIZE * 2, 0);
+                            promotedDeltaSize = encodedSize;
+                            if (oldBase.loadFromDisk)
+                                free(oldBase.chunkPtr);
+
+                            if (encodeResult == 0 && promotedDeltaSize > 0 &&
+                                promotedDeltaSize < oldBaseStoredSize)
+                            {
+                                promotedDelta.assign(deltaMaxChunkBuffer,
+                                                     deltaMaxChunkBuffer + promotedDeltaSize);
+                                canPromote = true;
+                            }
+                        }
+                    }
+
+                    const int compressedSize = LZ4_compress_fast(
+                        reinterpret_cast<const char *>(tmpChunk.chunkPtr),
+                        reinterpret_cast<char *>(lz4ChunkBuffer),
+                        tmpChunk.chunkSize, tmpChunk.chunkSize, 3);
+                    if (compressedSize > 0)
+                    {
+                        tmpChunk.deltaFlag = NO_DELTA;
+                        tmpChunk.saveSize = compressedSize;
+                    }
+                    else
+                    {
+                        tmpChunk.deltaFlag = NO_LZ4;
+                        tmpChunk.saveSize = tmpChunk.chunkSize;
+                    }
+                    tmpChunk.basechunkID = -1;
+                    tmpChunkid = tmpChunk.chunkID;
+
+                    // Write the new independent base first. A's promoted delta
+                    // representation is appended separately below.
+                    if (tmpChunk.deltaFlag == NO_LZ4)
+                        dataWrite_->Chunk_Insert(tmpChunk);
+                    else
+                        dataWrite_->Chunk_Insert(tmpChunk, lz4ChunkBuffer);
+
+                    bool replacedOldBase = false;
+                    Chunk_t replacement;
+                    if (canPromote)
+                    {
+                        replacement = dataWrite_->Get_Chunk_MetaInfo(basechunkid);
+                        replacement.deltaFlag = DELTA;
+                        replacement.basechunkID = tmpChunk.chunkID;
+                        replacement.saveSize = promotedDeltaSize;
+                        const auto appendStart = std::chrono::high_resolution_clock::now();
+                        replacedOldBase = dataWrite_->Append_Replacement_Chunk(
+                            replacement, promotedDelta.data());
+                        rebaseAppendTime_ += std::chrono::high_resolution_clock::now() - appendStart;
+                    }
+
+                    if (replacedOldBase)
+                    {
+                        SuperFeatures oldBaseFeatures = table.feature_generator_.GenerateSuperFeatures(
+                            string(reinterpret_cast<const char *>(oldBaseBytes.data()), oldBaseBytes.size()));
+                        table.SF_Delete(oldBaseFeatures, basechunkid);
+                        basechunkNum--;
+                        basechunkSize -= oldBaseStoredSize;
+                        LocalReduct -= oldBase.chunkSize - oldBaseStoredSize;
+                        // DRR tracks only the active representation. The old
+                        // bytes remain physically in the container, but are
+                        // stale space and are excluded from this data-size metric.
+                        uniquechunkSize -= oldBaseStoredSize;
+
+                        replacement.chunkID = basechunkid;
+                        replacement.chunkSize = oldBase.chunkSize;
+                        replacement.saveSize = promotedDeltaSize;
+                        StatsDelta(replacement);
+                        uniquechunkSize += promotedDeltaSize;
+
+                        rebaseDepth_[basechunkid] = rebaseDepth_[tmpChunk.chunkID] + 1;
+                        const uint64_t dependentHeight = rebaseSubtreeHeight_[basechunkid];
+                        rebaseSubtreeHeight_[tmpChunk.chunkID] = std::max(
+                            rebaseSubtreeHeight_[tmpChunk.chunkID], dependentHeight + 1);
+                        maxRebaseChainDepth_ = std::max(maxRebaseChainDepth_,
+                            rebaseDepth_[basechunkid] + dependentHeight);
+                        ++rebaseReplacementCount_;
+                        rebaseBytesAppended_ += promotedDeltaSize;
+                        rebaseStaleBytesRetained_ += oldBaseStoredSize;
+                    }
+
+                    if (tmpChunk.chunkSize > 60)
+                        table.SF_Insert(superfeature, tmpChunk.chunkID);
+                    basechunkNum++;
+                    basechunkSize += tmpChunk.saveSize;
+                    LocalReduct += tmpChunk.chunkSize - tmpChunk.saveSize;
+                    uniquechunkNum++;
+                    uniquechunkSize += tmpChunk.saveSize;
+
+                    if (tmpChunk.HeaderFlag == 0)
+                        dataWrite_->Recipe_Insert(tmpChunk.chunkID);
+                    else
+                        dataWrite_->Recipe_Header_Insert(tmpChunk.chunkID);
+                    logicalchunkNum++;
+                    logicalchunkSize += tmpChunk.chunkSize;
+                    continue;
                 }
 
                 // With an offline method, keep the online representation raw.
