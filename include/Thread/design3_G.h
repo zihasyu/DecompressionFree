@@ -32,9 +32,11 @@ private:
     uint8_t *basechunk_ptr_cache = nullptr;
     ChunkBufferPool<MAX_CHUNK_SIZE, 1024> chunkCache_;
     bool selectiveTreeExpansionEnabled_ = true;
+    bool adaptiveSearchStartEnabled_ = true;
 
 public:
-    explicit Design3_G(bool selectiveTreeExpansionEnabled = true);
+    explicit Design3_G(bool selectiveTreeExpansionEnabled = true,
+                       bool adaptiveSearchStartEnabled = true);
     ~Design3_G();
     void SetPreviousOfflineSource(dataWrite *source, uint64_t boundary)
     {

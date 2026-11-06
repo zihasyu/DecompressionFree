@@ -380,7 +380,9 @@ enum OFFLINE_TYPE
     // Global-order variant without selective tree expansion.
     Design3_GT_,
     // Fix search starts at the nearest lossless ancestor in group ownership.
-    Design3_A_
+    Design3_A_,
+    // No group layout, no selective expansion threshold, and no adaptive search-start switching.
+    Design3_Basic_
 };
 enum DELTA_TYPE
 {

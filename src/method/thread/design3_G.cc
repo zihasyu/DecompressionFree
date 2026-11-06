@@ -28,10 +28,12 @@ double ComputeTreeInsertThreshold(const std::vector<Chunk_t> &chunklist, int bas
 }
 } // namespace
 
-Design3_G::Design3_G(bool selectiveTreeExpansionEnabled)
+Design3_G::Design3_G(bool selectiveTreeExpansionEnabled,
+                     bool adaptiveSearchStartEnabled)
 // : chunkCache(1024) // 在构造函数初始化列表中初始化缓存容量
 {
     selectiveTreeExpansionEnabled_ = selectiveTreeExpansionEnabled;
+    adaptiveSearchStartEnabled_ = adaptiveSearchStartEnabled;
     // cout << " Chunk_t is " << sizeof(Chunk_t) << " Chunk_t_ori is " << sizeof(Chunk_t_odess) << " <super_feature_t, unordered_set<string>> is " << sizeof(super_feature_t);
     lz4ChunkBuffer = (uint8_t *)malloc(CONTAINER_MAX_SIZE * sizeof(uint8_t));
     mdCtx = EVP_MD_CTX_new();
@@ -355,6 +357,9 @@ uint8_t *Design3_G::xd3_encode_buffer(const uint8_t *targetChunkbuffer, size_t t
 
 void Design3_G::StatsHit(uint64_t FatherID, uint64_t HitID, uint64_t BasechunkID)
 {
+    if (!adaptiveSearchStartEnabled_)
+        return;
+
     if (offline_dataWrite_->chunklist[FatherID].BeforeFit == HitID)
     {
         offline_dataWrite_->chunklist[FatherID].HitCount++;
