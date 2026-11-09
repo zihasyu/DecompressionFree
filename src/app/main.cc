@@ -5,6 +5,7 @@
 #include <chrono>
 #include <filesystem>
 #include <algorithm>
+#include <iomanip>
 
 #include "../../include/allmethod.h"
 
@@ -640,6 +641,20 @@ int main(int argc, char **argv)
     if (CmdLine.enableRestore)
     {
         double RestoreTimeSum = 0;
+        const bool collectRestoreDependencyDepth =
+            CmdLine.compressionMethod == 21 ||
+            (CmdLine.compressionMethod == 3 && CmdLine.offlineMethod < 0) ||
+            (CmdLine.compressionMethod == 14 && CmdLine.offlineMethod < 0) ||
+            CmdLine.offlineMethod == 10;
+        dataWrite *dependencyStatsData = CmdLine.offlineMethod >= 0
+            ? OfflineAbsMethodObj->offline_dataWrite_
+            : absMethodObj->dataWrite_;
+        if (collectRestoreDependencyDepth)
+        {
+            dependencyStatsData->trackRestoreDependencyDepth = true;
+            dependencyStatsData->restoreDependencyBaseCountHistogram.clear();
+            dependencyStatsData->restoreDeltaChunkCount = 0;
+        }
 
         if(CmdLine.offlineMethod >= 0)
         {
@@ -686,6 +701,7 @@ int main(int argc, char **argv)
             }
             else
                 absMethodObj->dataWrite_->restoreFile(readfileList[i]);
+
             auto endTmp = std::chrono::high_resolution_clock::now();
             auto TimeTmp = std::chrono::duration_cast<std::chrono::duration<double>>(endTmp - startTmp).count();
             RestoreTimeSum += TimeTmp;
@@ -734,6 +750,25 @@ int main(int argc, char **argv)
                 cout << "decode count / restore chunk: " << (double)absMethodObj->dataWrite_->restoreDecodeCount / absMethodObj->dataWrite_->restoreChunkNum << endl;
             }
         }
+
+        if (collectRestoreDependencyDepth)
+        {
+            cout << "----------------------restore dependency depth (all backups)-------------------------" << endl;
+            cout << "Restored delta chunk occurrences: " << dependencyStatsData->restoreDeltaChunkCount << endl;
+            cout << "Base dependencies\tDelta chunk count\tCumulative chunk count\tCDF" << endl;
+            uint64_t cumulativeCount = 0;
+            for (const auto &[baseCount, chunkCount] :
+                 dependencyStatsData->restoreDependencyBaseCountHistogram)
+            {
+                cumulativeCount += chunkCount;
+                const double cdf = dependencyStatsData->restoreDeltaChunkCount > 0
+                    ? static_cast<double>(cumulativeCount) / dependencyStatsData->restoreDeltaChunkCount
+                    : 0.0;
+                cout << baseCount << '\t' << chunkCount << '\t' << cumulativeCount
+                     << '\t' << std::fixed << std::setprecision(10) << cdf << std::defaultfloat << endl;
+            }
+        }
+
         double overallReadAmplification;
         double overallPhysicalRead;
         double overallLogicalRead;

@@ -1560,6 +1560,17 @@ Chunk_t dataWrite::xd3_recursive_restore_offline_time(uint64_t BasechunkId)
     // collect all delta chain blocks
     while (chunkChain.back().basechunkID >= 0)
         chunkChain.push_back(Get_Chunk_MetaInfo(chunkChain.back().basechunkID));
+
+    // Count base dependencies for the requested delta chunk only. The chain
+    // contains the requested chunk followed by each ancestor, ending at a
+    // lossless root, so each ancestor contributes one dependency.
+    if (trackRestoreDependencyDepth)
+    {
+        const uint64_t baseDependencyCount = chunkChain.size() - 1;
+        ++restoreDependencyBaseCountHistogram[baseDependencyCount];
+        ++restoreDeltaChunkCount;
+    }
+
     // push the last chunk
     auto startIO = std::chrono::high_resolution_clock::now();
     chunkChain.back() = Get_Chunk_Info(chunkChain.back().chunkID);

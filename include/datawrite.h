@@ -6,6 +6,7 @@
 #include "messageQueue.h"
 #include "readCache.h"
 #include <vector>
+#include <map>
 #include <sstream>
 #include <mutex>
 #include "lz4.h"
@@ -158,6 +159,11 @@ public:
     std::chrono::duration<double> restoreDecodeTime;
     int restoreDecodeCount = 0;
     int restoreChunkNum = 0;
+    // Optional per-backup histogram: number of base chunks required to
+    // reconstruct each requested delta chunk.
+    bool trackRestoreDependencyDepth = false;
+    std::map<uint64_t, uint64_t> restoreDependencyBaseCountHistogram;
+    uint64_t restoreDeltaChunkCount = 0;
 };
 
 #endif
