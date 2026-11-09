@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <iomanip>
+#include <unordered_set>
 
 #include "../../include/allmethod.h"
 
@@ -416,6 +417,30 @@ int main(int argc, char **argv)
                 OfflineAbsMethodObj->offline_dataWrite_, previousOfflineChunkBoundary);
 
         auto startBatch = std::chrono::high_resolution_clock::now();
+        if (CmdLine.offlineMethod == Design3_)
+        {
+            // Count only chunks first introduced since the previous offline
+            // batch. A full reorder may process historical chunks again, but
+            // those are not new arrivals for this batch.
+            std::unordered_set<uint64_t> newChunkIDs;
+            uint64_t groupsWithNewChunks = 0;
+            for (const auto &[groupRoot, chunkIDs] : *batchMethod->rootChunkMap)
+            {
+                bool groupHasNewChunk = false;
+                for (uint64_t chunkID : chunkIDs)
+                {
+                    if (chunkID >= previousOfflineChunkBoundary)
+                    {
+                        newChunkIDs.insert(chunkID);
+                        groupHasNewChunk = true;
+                    }
+                }
+                if (groupHasNewChunk)
+                    ++groupsWithNewChunks;
+            }
+            cout << "New chunks entering offline batch: " << newChunkIDs.size() << endl;
+            cout << "Groups with new chunks: " << groupsWithNewChunks << endl;
+        }
         if (OfflineAbsMethodObj == nullptr)
             cout << "Offline input: all chunks from the online/raw containers" << endl;
         else if (!fullReorder)
