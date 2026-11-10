@@ -304,6 +304,10 @@ int main(int argc, char **argv)
     // Sum the same per-version online wall-clock time reported by
     // Version_log(), then emit it when this batch enters offline processing.
     double currentBatchOnlineSeconds = 0.0;
+    // Chunk ID upper bound after each online backup. Offline per-backup
+    // arrival counts use adjacent boundaries to identify newly added chunks.
+    std::vector<uint64_t> backupChunkBoundaries;
+    backupChunkBoundaries.reserve(CmdLine.backupNum);
 
     // During an online batch, historical chunks are represented by the last
     // offline generation while chunks added since that generation are still
@@ -419,27 +423,56 @@ int main(int argc, char **argv)
         auto startBatch = std::chrono::high_resolution_clock::now();
         if (CmdLine.offlineMethod == Design3_)
         {
-            // Count only chunks first introduced since the previous offline
-            // batch. A full reorder may process historical chunks again, but
-            // those are not new arrivals for this batch.
-            std::unordered_set<uint64_t> newChunkIDs;
-            uint64_t groupsWithNewChunks = 0;
-            for (const auto &[groupRoot, chunkIDs] : *batchMethod->rootChunkMap)
+            const size_t firstBackupIndex =
+                static_cast<size_t>((batchNumber - 1) * CmdLine.batchSize);
+            const size_t endBackupIndex = static_cast<size_t>(completedVersions);
+            const size_t boundedEndBackupIndex =
+                std::min(endBackupIndex, backupChunkBoundaries.size());
+            std::vector<uint64_t> newChunkCounts(
+                boundedEndBackupIndex - firstBackupIndex, 0);
+            std::vector<std::unordered_set<uint64_t>> groupsWithNewChunks(
+                boundedEndBackupIndex - firstBackupIndex);
+            const uint64_t firstBatchChunkID = firstBackupIndex == 0
+                ? 0
+                : backupChunkBoundaries[firstBackupIndex - 1];
+            const uint64_t endBatchChunkID = boundedEndBackupIndex == 0
+                ? 0
+                : backupChunkBoundaries[boundedEndBackupIndex - 1];
+
+            // Walk the map once. Each unique chunk belongs to one rootChunkMap
+            // entry; its ID range identifies which backup introduced it.
+            for (const auto &group : *batchMethod->rootChunkMap)
             {
-                bool groupHasNewChunk = false;
-                for (uint64_t chunkID : chunkIDs)
+                const uint64_t groupRoot = group.first;
+                for (uint64_t chunkID : group.second)
                 {
-                    if (chunkID >= previousOfflineChunkBoundary)
-                    {
-                        newChunkIDs.insert(chunkID);
-                        groupHasNewChunk = true;
-                    }
+                    if (chunkID < firstBatchChunkID || chunkID >= endBatchChunkID)
+                        continue;
+
+                    const auto backupBoundary = std::upper_bound(
+                        backupChunkBoundaries.begin() + firstBackupIndex,
+                        backupChunkBoundaries.begin() + boundedEndBackupIndex,
+                        chunkID);
+                    const size_t backupIndex = static_cast<size_t>(
+                        backupBoundary - backupChunkBoundaries.begin());
+                    const size_t localBackupIndex = backupIndex - firstBackupIndex;
+                    ++newChunkCounts[localBackupIndex];
+                    groupsWithNewChunks[localBackupIndex].insert(groupRoot);
                 }
-                if (groupHasNewChunk)
-                    ++groupsWithNewChunks;
             }
-            cout << "New chunks entering offline batch: " << newChunkIDs.size() << endl;
-            cout << "Groups with new chunks: " << groupsWithNewChunks << endl;
+
+            for (size_t backupIndex = firstBackupIndex;
+                 backupIndex < boundedEndBackupIndex;
+                 ++backupIndex)
+            {
+                const size_t localBackupIndex = backupIndex - firstBackupIndex;
+                cout << "Backup " << (backupIndex + 1)
+                     << " new chunks entering offline batch: "
+                     << newChunkCounts[localBackupIndex] << endl;
+                cout << "Backup " << (backupIndex + 1)
+                     << " groups with new chunks: "
+                     << groupsWithNewChunks[localBackupIndex].size() << endl;
+            }
         }
         if (OfflineAbsMethodObj == nullptr)
             cout << "Offline input: all chunks from the online/raw containers" << endl;
@@ -598,6 +631,7 @@ int main(int argc, char **argv)
             absMethodObj->Version_log(TimeTmp, chunkerObj->ChunkTime.count());
 
         currentBatchOnlineSeconds += onlineVersionSeconds;
+        backupChunkBoundaries.push_back(absMethodObj->dataWrite_->chunklist.size());
 
         if (CmdLine.offlineMethod >= 0)
         {
